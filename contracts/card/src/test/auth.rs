@@ -1,5 +1,7 @@
 use ed25519_dalek::{Signer as _, SigningKey};
-use soroban_sdk::auth::{Context, ContractContext};
+use soroban_sdk::auth::{
+    Context, ContractContext, ContractExecutable, CreateContractHostFnContext,
+};
 use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::{symbol_short, vec, Address, BytesN, Env, IntoVal, Symbol, Val, Vec};
 
@@ -198,6 +200,49 @@ fn rejects_transfer_from_someone_else() {
     let m = allowed(&f);
     let someone = Address::generate(&f.env);
     let ctx = transfer_ctx(&f, &f.token, symbol_short!("transfer"), &someone, &m, USDC);
+    assert_eq!(
+        check(&f, agent.sign(&f.env, &payload(&f.env)), &ctx),
+        Err(CardError::WrongContext)
+    );
+}
+
+#[test]
+fn rejects_transfer_with_four_args() {
+    let (f, agent) = setup_with_agent();
+    let m = allowed(&f);
+    let ctx = transfer_ctx(&f, &f.token, symbol_short!("transfer"), &f.card, &m, USDC);
+    // `transfer_from(spender, from, to, amount)` shape: same name, one extra arg.
+    let four = match ctx.get(0).unwrap() {
+        Context::Contract(c) => {
+            let mut args = c.args.clone();
+            args.push_back(m.into_val(&f.env));
+            vec![
+                &f.env,
+                Context::Contract(ContractContext {
+                    contract: c.contract.clone(),
+                    fn_name: c.fn_name,
+                    args,
+                }),
+            ]
+        }
+        _ => unreachable!(),
+    };
+    assert_eq!(
+        check(&f, agent.sign(&f.env, &payload(&f.env)), &four),
+        Err(CardError::WrongContext)
+    );
+}
+
+#[test]
+fn rejects_non_contract_context() {
+    let (f, agent) = setup_with_agent();
+    let ctx: Vec<Context> = vec![
+        &f.env,
+        Context::CreateContractHostFn(CreateContractHostFnContext {
+            executable: ContractExecutable::Wasm(BytesN::from_array(&f.env, &[3u8; 32])),
+            salt: BytesN::from_array(&f.env, &[4u8; 32]),
+        }),
+    ];
     assert_eq!(
         check(&f, agent.sign(&f.env, &payload(&f.env)), &ctx),
         Err(CardError::WrongContext)
