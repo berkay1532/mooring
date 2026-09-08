@@ -1,0 +1,33 @@
+# Rust / Soroban
+/target
+**/target
+Cargo.lock.bak
+test_snapshots/
+
+# Node / web / SDK
+node_modules
+dist
+.next
+build
+
+# Env & secrets
+.env
+.env.*
+*.key
+deployed.*.json
+
+# OS / editor
+.DS_Store
+
+# Local-only SCF award docs (SOW etc.)
+instawards/
+
+# Local-only Claude context (private framing / reference paths)
+CLAUDE.local.md
+
+# SDD scratch (ledgers, briefs, review packages)
+.superpowers/
+
+# scripts
+scripts/agent/node_modules
+scripts/agent/.env
