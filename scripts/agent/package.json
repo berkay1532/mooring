@@ -1,0 +1,8 @@
+{
+  "name": "mooring-agent-scripts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@stellar/stellar-sdk": "^17.0.1"
+  }
+}
