@@ -1,9 +1,11 @@
+extern crate std;
+
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
-use soroban_sdk::{Address, BytesN};
+use soroban_sdk::{Address, BytesN, Event};
 
 use super::{default_policy, setup, DAY, T0, USDC};
 use crate::policy::enforce_payment;
-use crate::{CardError, Policy};
+use crate::{CardError, Policy, PolicyChanged, SignerChanged};
 
 #[test]
 fn owner_can_update_policy() {
@@ -118,17 +120,27 @@ fn set_signer_requires_owner_auth() {
 }
 
 #[test]
-fn update_ops_emit_events() {
+fn set_policy_and_set_signer_emit_exact_events() {
     // The test env's event log reflects only the most recent top-level
-    // contract invocation, so each op's events are counted right after it
-    // and the counts are summed rather than diffed around both calls.
+    // invocation, so each assertion sits immediately after its call.
     let f = setup();
     f.env.mock_all_auths();
+
     f.client.set_policy(&default_policy());
-    let policy_events = f.env.events().all().events().len();
-    f.client.set_signer(&BytesN::from_array(&f.env, &[9u8; 32]));
-    let signer_events = f.env.events().all().events().len();
-    assert_eq!(policy_events + signer_events, 2);
+    assert_eq!(
+        f.env.events().all(),
+        std::vec![PolicyChanged {
+            policy: default_policy()
+        }
+        .to_xdr(&f.env, &f.card)]
+    );
+
+    let signer = BytesN::from_array(&f.env, &[9u8; 32]);
+    f.client.set_signer(&signer);
+    assert_eq!(
+        f.env.events().all(),
+        std::vec![SignerChanged { signer }.to_xdr(&f.env, &f.card)]
+    );
 }
 
 /// Spends `10 USDC` to a fresh allowlisted merchant 20 hours into the first

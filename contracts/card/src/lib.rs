@@ -32,13 +32,16 @@ pub struct Withdrawn {
     pub amount: i128,
 }
 
+/// `merchant` is a topic so the app can subscribe per merchant.
 #[contractevent(topics = ["merchant_added"])]
 pub struct MerchantAdded {
+    #[topic]
     pub merchant: Address,
 }
 
 #[contractevent(topics = ["merchant_removed"])]
 pub struct MerchantRemoved {
+    #[topic]
     pub merchant: Address,
 }
 
@@ -195,6 +198,27 @@ impl Card {
     /// Budget remaining in the current period, accounting for a pending reset.
     pub fn remaining(env: Env) -> i128 {
         policy::remaining(&env)
+    }
+
+    /// One-call snapshot of the whole card, for the app. `period` and
+    /// `remaining` reflect a pending period reset; `balance` reads the token.
+    pub fn info(env: Env) -> CardInfo {
+        let s = env.storage().instance();
+        let policy: Policy = s.get(&DataKey::Policy).unwrap();
+        let stored: Period = s.get(&DataKey::Period).unwrap();
+        let period = policy::current_period(env.ledger().timestamp(), &policy, &stored);
+        let remaining = (policy.period_amount - period.spent).max(0);
+        CardInfo {
+            owner: s.get(&DataKey::Owner).unwrap(),
+            signer: s.get(&DataKey::Signer).unwrap(),
+            token: s.get(&DataKey::Token).unwrap(),
+            policy,
+            state: s.get(&DataKey::State).unwrap(),
+            period,
+            remaining,
+            balance: Self::balance(env.clone()),
+            allow_count: allowlist::get(&env).len(),
+        }
     }
 
     /// Owner: replace the spending policy. The spend already made in the period

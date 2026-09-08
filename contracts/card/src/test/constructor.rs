@@ -3,7 +3,7 @@ use soroban_sdk::testutils::Ledger as _;
 use soroban_sdk::{Address, BytesN, Env};
 
 use super::{default_policy, fund_card, setup, DAY, T0, USDC};
-use crate::{Card, Period, Policy, State};
+use crate::{Card, CardInfo, Period, Policy, State};
 
 #[test]
 fn constructor_stores_config_and_starts_active() {
@@ -109,4 +109,63 @@ fn constructor_rejects_nonpositive_per_tx_cap() {
             ..default_policy()
         },
     );
+}
+
+#[test]
+fn info_snapshots_the_whole_card_state() {
+    let f = setup();
+    fund_card(&f, 25 * USDC);
+    f.env.mock_all_auths();
+    let m = Address::generate(&f.env);
+    f.client.add_merchant(&m);
+    f.env
+        .as_contract(&f.card, || {
+            crate::policy::enforce_payment(&f.env, &m, 4 * USDC)
+        })
+        .unwrap();
+
+    assert_eq!(
+        f.client.info(),
+        CardInfo {
+            owner: f.owner.clone(),
+            signer: f.agent_pk.clone(),
+            token: f.token.clone(),
+            policy: default_policy(),
+            state: State::Active,
+            period: Period {
+                start: T0,
+                spent: 4 * USDC
+            },
+            remaining: 46 * USDC,
+            balance: 25 * USDC,
+            allow_count: 1,
+        }
+    );
+}
+
+#[test]
+fn info_materializes_a_pending_period_reset() {
+    // `period()` returns the raw stored period; `info()` must report the
+    // period that actually applies now, so a UI never shows stale spend.
+    let f = setup();
+    f.env.mock_all_auths();
+    let m = Address::generate(&f.env);
+    f.client.add_merchant(&m);
+    f.env
+        .as_contract(&f.card, || {
+            crate::policy::enforce_payment(&f.env, &m, 4 * USDC)
+        })
+        .unwrap();
+
+    f.env.ledger().set_timestamp(T0 + 3 * DAY);
+    assert_eq!(f.client.period().spent, 4 * USDC); // stale, by design
+    let i = f.client.info();
+    assert_eq!(
+        i.period,
+        Period {
+            start: T0 + 3 * DAY,
+            spent: 0
+        }
+    );
+    assert_eq!(i.remaining, 50 * USDC);
 }

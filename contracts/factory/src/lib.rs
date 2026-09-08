@@ -18,8 +18,10 @@ pub enum DataKey {
     CardWasmHash,
 }
 
+/// `owner` is a topic so the app can subscribe to one user's cards.
 #[contractevent(topics = ["card_created"])]
 pub struct CardCreated {
+    #[topic]
     pub owner: Address,
     pub card: Address,
 }

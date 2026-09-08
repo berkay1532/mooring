@@ -1,4 +1,4 @@
-use soroban_sdk::{contracterror, contracttype, BytesN};
+use soroban_sdk::{contracterror, contracttype, Address, BytesN};
 
 /// Lifecycle state of a card.
 #[contracttype]
@@ -29,6 +29,23 @@ pub struct Policy {
 pub struct Period {
     pub start: u64,
     pub spent: i128,
+}
+
+/// Everything a UI needs about a card in one call. `period` and `remaining`
+/// are materialized against the current ledger timestamp, so a pending period
+/// reset is already reflected (unlike the raw `period()` view).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CardInfo {
+    pub owner: Address,
+    pub signer: BytesN<32>,
+    pub token: Address,
+    pub policy: Policy,
+    pub state: State,
+    pub period: Period,
+    pub remaining: i128,
+    pub balance: i128,
+    pub allow_count: u32,
 }
 
 /// One ed25519 signature as encoded by stellar-sdk `authorizeEntry`.
