@@ -2,7 +2,7 @@
 
 build:
 	cargo build -p mooring-card --target wasm32v1-none --release
-	cargo build -p mooring-factory --target wasm32v1-none --release || true
+	cargo build -p mooring-factory --target wasm32v1-none --release
 
 test: build
 	cargo test --workspace
