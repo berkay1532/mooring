@@ -34,6 +34,12 @@ USDC from the funder into the card and prints its balance.
   package; `scripts/testnet/deploy.sh` does this.
 - `stellar contract invoke` on CLI 26.1.0 requires `--source-account` even
   for read-only calls (no anonymous/view-only invocation).
+- `deploy.sh` checks each identity's on-chain account (via Horizon) and its
+  USDC trustline before funding/creating a trustline, rather than only
+  checking the local keystore. This is what makes "re-run after a reset"
+  above actually safe: a local key can survive a testnet reset while its
+  on-chain account and trustlines do not, and the script now detects and
+  repairs that instead of silently skipping funding.
 
 ## Evidence
 

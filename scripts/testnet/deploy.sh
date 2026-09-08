@@ -13,15 +13,35 @@ for id in mooring-deployer mooring-owner mooring-agent mooring-merchant mooring-
   if ! stellar keys address "$id" >/dev/null 2>&1; then
     # CLI 26.1.0 has no `--global` flag (identities are saved to the global
     # config dir by default); the brief's `--global` was dropped here.
-    stellar keys generate "$id" --network $NETWORK --fund
+    stellar keys generate "$id" --network $NETWORK
+  fi
+  addr=$(stellar keys address "$id")
+  # A local key can exist (from a prior run) while the on-chain account
+  # doesn't -- testnet resets quarterly. Check Horizon, not just the local
+  # keystore, and (re)fund with friendbot whenever the account is missing.
+  if ! curl -sf "https://horizon-testnet.stellar.org/accounts/$addr" >/dev/null; then
+    stellar keys fund "$id" --network $NETWORK
   fi
 done
 
-# Merchant and funder must hold a USDC trustline (SAC settles into classic balances).
+# Merchant and funder must hold a USDC trustline (SAC settles into classic
+# balances). Only submit change-trust when the trustline is actually
+# missing (idempotent across reruns and testnet resets); let a real
+# change-trust failure abort the script instead of being swallowed.
 for id in mooring-merchant mooring-funder; do
-  stellar tx new change-trust --source "$id" --network $NETWORK \
-    --line "USDC:$USDC_ISSUER" >/dev/null || true
+  addr=$(stellar keys address "$id")
+  if ! curl -sf "https://horizon-testnet.stellar.org/accounts/$addr" \
+      | jq -e --arg iss "$USDC_ISSUER" \
+        '.balances[] | select(.asset_code=="USDC" and .asset_issuer==$iss)' >/dev/null; then
+    stellar tx new change-trust --source "$id" --network $NETWORK \
+      --line "USDC:$USDC_ISSUER"
+  fi
 done
+
+if [[ "${DEPLOY_DRY_RUN:-}" == "1" ]]; then
+  echo "DEPLOY_DRY_RUN=1: identity funding and trustline checks done; stopping before build/deploy."
+  exit 0
+fi
 
 # The factory's soroban-sdk dependency enables `experimental_spec_shaking_v2`
 # (see contracts/factory/Cargo.toml) so the imported `card::Policy` type gets
