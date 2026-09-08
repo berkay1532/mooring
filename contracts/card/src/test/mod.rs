@@ -5,6 +5,7 @@ mod auth;
 mod constructor;
 mod owner;
 mod policy;
+mod update;
 
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{token, Address, BytesN, Env};

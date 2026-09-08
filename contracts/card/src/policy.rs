@@ -3,6 +3,19 @@ use soroban_sdk::{Address, Env};
 use crate::allowlist;
 use crate::types::{CardError, DataKey, Period, Policy, State};
 
+/// Shared validation for the constructor and `set_policy`.
+pub(crate) fn validate(now: u64, policy: &Policy) -> Result<(), CardError> {
+    if policy.period_amount <= 0
+        || policy.period_duration == 0
+        || policy.max_per_tx <= 0
+        || policy.max_per_tx > policy.period_amount
+        || policy.expiry <= now
+    {
+        return Err(CardError::InvalidPolicy);
+    }
+    Ok(())
+}
+
 /// Returns the period that applies at `now`. If one or more period boundaries
 /// have passed since `stored.start`, the start aligns to the most recent boundary
 /// and `spent` resets to zero (no carry-over).
@@ -65,5 +78,5 @@ pub(crate) fn remaining(env: &Env) -> i128 {
     let policy: Policy = s.get(&DataKey::Policy).unwrap();
     let stored: Period = s.get(&DataKey::Period).unwrap();
     let period = current_period(env.ledger().timestamp(), &policy, &stored);
-    policy.period_amount - period.spent
+    (policy.period_amount - period.spent).max(0)
 }

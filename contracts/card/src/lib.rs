@@ -42,6 +42,16 @@ pub struct MerchantRemoved {
     pub merchant: Address,
 }
 
+#[contractevent(topics = ["policy_changed"])]
+pub struct PolicyChanged {
+    pub policy: Policy,
+}
+
+#[contractevent(topics = ["signer_changed"])]
+pub struct SignerChanged {
+    pub signer: BytesN<32>,
+}
+
 pub(crate) fn extend_instance(env: &Env) {
     env.storage()
         .instance()
@@ -81,12 +91,7 @@ impl Card {
         policy: Policy,
     ) {
         let now = env.ledger().timestamp();
-        if policy.period_amount <= 0
-            || policy.period_duration == 0
-            || policy.max_per_tx <= 0
-            || policy.max_per_tx > policy.period_amount
-            || policy.expiry <= now
-        {
+        if policy::validate(now, &policy).is_err() {
             panic_with_error!(&env, CardError::InvalidPolicy);
         }
         let s = env.storage().instance();
@@ -174,6 +179,25 @@ impl Card {
     /// Budget remaining in the current period, accounting for a pending reset.
     pub fn remaining(env: Env) -> i128 {
         policy::remaining(&env)
+    }
+
+    /// Owner: replace the spending policy. Current-period spend is kept; if the new
+    /// budget is below it, `remaining()` is 0 until the period resets.
+    pub fn set_policy(env: Env, policy: Policy) -> Result<(), CardError> {
+        require_owner(&env);
+        policy::validate(env.ledger().timestamp(), &policy)?;
+        env.storage().instance().set(&DataKey::Policy, &policy);
+        PolicyChanged { policy }.publish(&env);
+        extend_instance(&env);
+        Ok(())
+    }
+
+    /// Owner: rotate the agent key. Signatures by the previous key stop validating immediately.
+    pub fn set_signer(env: Env, signer: BytesN<32>) {
+        require_owner(&env);
+        env.storage().instance().set(&DataKey::Signer, &signer);
+        SignerChanged { signer }.publish(&env);
+        extend_instance(&env);
     }
 
     /// Owner: pause agent payments. Active → Frozen.

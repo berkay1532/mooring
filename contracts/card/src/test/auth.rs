@@ -8,17 +8,17 @@ use soroban_sdk::{symbol_short, vec, Address, BytesN, Env, IntoVal, Symbol, Val,
 use super::{Fixture, USDC};
 use crate::{Card, CardError, Sig};
 
-struct Agent {
+pub(super) struct Agent {
     key: SigningKey,
 }
 
 impl Agent {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Agent {
             key: SigningKey::generate(&mut rand::thread_rng()),
         }
     }
-    fn public_key(&self, env: &Env) -> BytesN<32> {
+    pub(super) fn public_key(&self, env: &Env) -> BytesN<32> {
         BytesN::from_array(env, &self.key.verifying_key().to_bytes())
     }
     fn sigs(&self, env: &Env, payload: &BytesN<32>) -> Vec<Sig> {
@@ -29,13 +29,13 @@ impl Agent {
         };
         vec![env, s]
     }
-    fn sign(&self, env: &Env, payload: &BytesN<32>) -> Val {
+    pub(super) fn sign(&self, env: &Env, payload: &BytesN<32>) -> Val {
         self.sigs(env, payload).into_val(env)
     }
 }
 
 /// Card fixture whose signer is a real ed25519 key we can sign with.
-fn setup_with_agent<'a>() -> (Fixture<'a>, Agent) {
+pub(super) fn setup_with_agent<'a>() -> (Fixture<'a>, Agent) {
     let env = Env::default();
     soroban_sdk::testutils::Ledger::set_timestamp(&env.ledger(), super::T0);
     let agent = Agent::new();
@@ -69,11 +69,11 @@ fn setup_with_agent<'a>() -> (Fixture<'a>, Agent) {
     )
 }
 
-fn payload(env: &Env) -> BytesN<32> {
+pub(super) fn payload(env: &Env) -> BytesN<32> {
     BytesN::from_array(env, &[7u8; 32])
 }
 
-fn transfer_ctx(
+pub(super) fn transfer_ctx(
     f: &Fixture,
     contract: &Address,
     fn_name: Symbol,
@@ -96,13 +96,13 @@ fn transfer_ctx(
     ]
 }
 
-fn check(f: &Fixture, sig: Val, ctx: &Vec<Context>) -> Result<(), CardError> {
+pub(super) fn check(f: &Fixture, sig: Val, ctx: &Vec<Context>) -> Result<(), CardError> {
     f.env
         .try_invoke_contract_check_auth::<CardError>(&f.card, &payload(&f.env), sig, ctx)
         .map_err(|e| e.unwrap())
 }
 
-fn allowed(f: &Fixture) -> Address {
+pub(super) fn allowed(f: &Fixture) -> Address {
     f.env.mock_all_auths();
     let m = Address::generate(&f.env);
     f.client.add_merchant(&m);
@@ -303,4 +303,22 @@ fn check_auth_emits_no_events() {
         Ok(())
     );
     assert_eq!(f.env.events().all().events().len(), 0);
+}
+
+#[test]
+fn rotated_signer_replaces_old_agent() {
+    let (f, old_agent) = setup_with_agent();
+    let m = allowed(&f);
+    let new_agent = Agent::new();
+    f.client.set_signer(&new_agent.public_key(&f.env));
+
+    let ctx = transfer_ctx(&f, &f.token, symbol_short!("transfer"), &f.card, &m, USDC);
+    assert_eq!(
+        check(&f, old_agent.sign(&f.env, &payload(&f.env)), &ctx),
+        Err(CardError::BadSignature)
+    );
+    assert_eq!(
+        check(&f, new_agent.sign(&f.env, &payload(&f.env)), &ctx),
+        Ok(())
+    );
 }
