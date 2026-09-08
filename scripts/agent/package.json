@@ -2,7 +2,17 @@
   "name": "mooring-agent-scripts",
   "private": true,
   "type": "module",
+  "scripts": {
+    "pay": "tsx src/pay.ts",
+    "race": "tsx src/race.ts"
+  },
   "dependencies": {
-    "@stellar/stellar-sdk": "^17.0.1"
+    "@stellar/stellar-sdk": "^17.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
   }
 }
