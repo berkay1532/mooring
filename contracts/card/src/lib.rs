@@ -1,6 +1,7 @@
 #![no_std]
 
 mod allowlist;
+mod policy;
 mod types;
 
 #[cfg(test)]
@@ -122,5 +123,10 @@ impl Card {
             .instance()
             .get(&DataKey::AllowCount)
             .unwrap_or(0)
+    }
+
+    /// Budget remaining in the current period, accounting for a pending reset.
+    pub fn remaining(env: Env) -> i128 {
+        policy::remaining(&env)
     }
 }

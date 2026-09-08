@@ -2,6 +2,7 @@
 
 mod allowlist;
 mod constructor;
+mod policy;
 
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{token, Address, BytesN, Env};
