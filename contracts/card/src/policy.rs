@@ -22,9 +22,7 @@ pub(crate) fn current_period(now: u64, policy: &Policy, stored: &Period) -> Peri
 /// Validates a payment of `amount` to `to` against state, expiry, allowlist,
 /// per-tx cap and period budget. On success persists the updated period.
 ///
-/// Not yet wired to a public entrypoint: `__check_auth` (Task 6) will call
-/// this to gate every agent payment. Exercised directly by unit tests until then.
-#[allow(dead_code)]
+/// Called by `__check_auth` to gate every agent payment.
 pub(crate) fn enforce_payment(env: &Env, to: &Address, amount: i128) -> Result<(), CardError> {
     if amount <= 0 {
         return Err(CardError::InvalidAmount);

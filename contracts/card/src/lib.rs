@@ -1,6 +1,7 @@
 #![no_std]
 
 mod allowlist;
+mod auth;
 mod policy;
 mod types;
 

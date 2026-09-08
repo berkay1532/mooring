@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 mod allowlist;
+mod auth;
 mod constructor;
 mod policy;
 
