@@ -1,5 +1,6 @@
 #![cfg(test)]
 
+mod allowlist;
 mod constructor;
 
 use soroban_sdk::testutils::{Address as _, Ledger as _};

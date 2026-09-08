@@ -1,5 +1,6 @@
 #![no_std]
 
+mod allowlist;
 mod types;
 
 #[cfg(test)]
@@ -13,10 +14,18 @@ use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, Byte
 pub(crate) const INSTANCE_TTL_THRESHOLD: u32 = 17_280;
 pub(crate) const INSTANCE_TTL_EXTEND_TO: u32 = 518_400;
 
+/// Maximum number of merchants that may be allowlisted at once.
+pub const MAX_ALLOWLIST: u32 = 32;
+
 pub(crate) fn extend_instance(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
+}
+
+pub(crate) fn require_owner(env: &Env) {
+    let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
+    owner.require_auth();
 }
 
 #[contract]
@@ -87,5 +96,31 @@ impl Card {
     pub fn balance(env: Env) -> i128 {
         let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         token::Client::new(&env, &token).balance(&env.current_contract_address())
+    }
+
+    /// Owner: allow payments to `merchant`. Idempotent. Bounded by MAX_ALLOWLIST.
+    pub fn add_merchant(env: Env, merchant: Address) -> Result<(), CardError> {
+        require_owner(&env);
+        allowlist::add(&env, &merchant)?;
+        extend_instance(&env);
+        Ok(())
+    }
+
+    /// Owner: disallow payments to `merchant`. No-op if absent.
+    pub fn remove_merchant(env: Env, merchant: Address) {
+        require_owner(&env);
+        allowlist::remove(&env, &merchant);
+        extend_instance(&env);
+    }
+
+    pub fn is_allowed(env: Env, merchant: Address) -> bool {
+        allowlist::is_allowed(&env, &merchant)
+    }
+
+    pub fn allow_count(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::AllowCount)
+            .unwrap_or(0)
     }
 }
