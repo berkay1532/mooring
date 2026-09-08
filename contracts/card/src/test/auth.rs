@@ -291,13 +291,16 @@ fn policy_errors_propagate() {
 
 #[test]
 fn check_auth_emits_no_events() {
+    // The test env's event log reflects only the most recent top-level
+    // invocation, so it is checked right after `check()` (a distinct
+    // invocation from `allowed()`'s add_merchant call) rather than diffed
+    // against a snapshot taken before it.
     let (f, agent) = setup_with_agent();
     let m = allowed(&f);
-    let before = f.env.events().all().events().len();
     let ctx = transfer_ctx(&f, &f.token, symbol_short!("transfer"), &f.card, &m, USDC);
     assert_eq!(
         check(&f, agent.sign(&f.env, &payload(&f.env)), &ctx),
         Ok(())
     );
-    assert_eq!(f.env.events().all().events().len(), before);
+    assert_eq!(f.env.events().all().events().len(), 0);
 }

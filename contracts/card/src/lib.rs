@@ -10,7 +10,9 @@ mod test;
 
 pub use types::*;
 
-use soroban_sdk::{contract, contractimpl, panic_with_error, token, Address, BytesN, Env};
+use soroban_sdk::{
+    contract, contractevent, contractimpl, panic_with_error, token, Address, BytesN, Env,
+};
 
 /// Extend instance TTL when below ~1 day, up to ~30 days (5s ledgers).
 pub(crate) const INSTANCE_TTL_THRESHOLD: u32 = 17_280;
@@ -18,6 +20,27 @@ pub(crate) const INSTANCE_TTL_EXTEND_TO: u32 = 518_400;
 
 /// Maximum number of merchants that may be allowlisted at once.
 pub const MAX_ALLOWLIST: u32 = 32;
+
+#[contractevent(topics = ["state_changed"])]
+pub struct StateChanged {
+    pub state: State,
+}
+
+#[contractevent(topics = ["withdrawn"])]
+pub struct Withdrawn {
+    pub to: Address,
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["merchant_added"])]
+pub struct MerchantAdded {
+    pub merchant: Address,
+}
+
+#[contractevent(topics = ["merchant_removed"])]
+pub struct MerchantRemoved {
+    pub merchant: Address,
+}
 
 pub(crate) fn extend_instance(env: &Env) {
     env.storage()
@@ -28,6 +51,20 @@ pub(crate) fn extend_instance(env: &Env) {
 pub(crate) fn require_owner(env: &Env) {
     let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
     owner.require_auth();
+}
+
+fn set_state(env: &Env, state: State) {
+    env.storage().instance().set(&DataKey::State, &state);
+    StateChanged { state }.publish(env);
+}
+
+fn transfer_to_owner(env: &Env, amount: i128) {
+    let token: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+    let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
+    // The card is the direct invoker, so this transfer is invoker-authorized and
+    // does not pass through __check_auth. Owner ops are not subject to the policy.
+    token::Client::new(env, &token).transfer(&env.current_contract_address(), &owner, &amount);
+    Withdrawn { to: owner, amount }.publish(env);
 }
 
 #[contract]
@@ -104,6 +141,10 @@ impl Card {
     pub fn add_merchant(env: Env, merchant: Address) -> Result<(), CardError> {
         require_owner(&env);
         allowlist::add(&env, &merchant)?;
+        MerchantAdded {
+            merchant: merchant.clone(),
+        }
+        .publish(&env);
         extend_instance(&env);
         Ok(())
     }
@@ -112,6 +153,10 @@ impl Card {
     pub fn remove_merchant(env: Env, merchant: Address) {
         require_owner(&env);
         allowlist::remove(&env, &merchant);
+        MerchantRemoved {
+            merchant: merchant.clone(),
+        }
+        .publish(&env);
         extend_instance(&env);
     }
 
@@ -129,5 +174,58 @@ impl Card {
     /// Budget remaining in the current period, accounting for a pending reset.
     pub fn remaining(env: Env) -> i128 {
         policy::remaining(&env)
+    }
+
+    /// Owner: pause agent payments. Active → Frozen.
+    pub fn freeze(env: Env) -> Result<(), CardError> {
+        require_owner(&env);
+        if Self::state(env.clone()) != State::Active {
+            return Err(CardError::InvalidState);
+        }
+        set_state(&env, State::Frozen);
+        extend_instance(&env);
+        Ok(())
+    }
+
+    /// Owner: resume agent payments. Frozen → Active.
+    pub fn unfreeze(env: Env) -> Result<(), CardError> {
+        require_owner(&env);
+        if Self::state(env.clone()) != State::Frozen {
+            return Err(CardError::InvalidState);
+        }
+        set_state(&env, State::Active);
+        extend_instance(&env);
+        Ok(())
+    }
+
+    /// Owner: permanently disable the card and sweep its full balance to the owner.
+    pub fn cancel(env: Env) -> Result<(), CardError> {
+        require_owner(&env);
+        if Self::state(env.clone()) == State::Cancelled {
+            return Err(CardError::InvalidState);
+        }
+        set_state(&env, State::Cancelled);
+        let bal = Self::balance(env.clone());
+        if bal > 0 {
+            transfer_to_owner(&env, bal);
+        }
+        extend_instance(&env);
+        Ok(())
+    }
+
+    /// Owner: move `amount` of the token to the owner. Allowed in any state.
+    pub fn withdraw(env: Env, amount: i128) -> Result<(), CardError> {
+        require_owner(&env);
+        if amount <= 0 {
+            return Err(CardError::InvalidAmount);
+        }
+        transfer_to_owner(&env, amount);
+        extend_instance(&env);
+        Ok(())
+    }
+
+    /// Anyone: extend the card's instance TTL so it does not get archived.
+    pub fn bump(env: Env) {
+        extend_instance(&env);
     }
 }

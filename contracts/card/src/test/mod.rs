@@ -3,6 +3,7 @@
 mod allowlist;
 mod auth;
 mod constructor;
+mod owner;
 mod policy;
 
 use soroban_sdk::testutils::{Address as _, Ledger as _};
