@@ -1,12 +1,18 @@
+extern crate std;
+
 use ed25519_dalek::{Signer as _, SigningKey};
 use soroban_sdk::auth::{
     Context, ContractContext, ContractExecutable, CreateContractHostFnContext,
 };
 use soroban_sdk::testutils::{Address as _, Events as _};
-use soroban_sdk::{symbol_short, vec, Address, BytesN, Env, IntoVal, Symbol, Val, Vec};
+use soroban_sdk::xdr::{self, WriteXdr};
+use soroban_sdk::{
+    symbol_short, token, vec, Address, Bytes, BytesN, Env, IntoVal, Symbol, TryFromVal, Val, Vec,
+};
 
 use super::{Fixture, USDC};
 use crate::{Card, CardError, Sig};
+use soroban_sdk::InvokeError;
 
 pub(super) struct Agent {
     key: SigningKey,
@@ -96,10 +102,22 @@ pub(super) fn transfer_ctx(
     ]
 }
 
-pub(super) fn check(f: &Fixture, sig: Val, ctx: &Vec<Context>) -> Result<(), CardError> {
+/// Raw `__check_auth` result: the outer `Err` is either a contract error the
+/// card returned, or an `InvokeError` when the host trapped (e.g. a failed
+/// `ed25519_verify`).
+pub(super) fn check_raw(
+    f: &Fixture,
+    sig: Val,
+    ctx: &Vec<Context>,
+) -> Result<(), Result<CardError, InvokeError>> {
     f.env
         .try_invoke_contract_check_auth::<CardError>(&f.card, &payload(&f.env), sig, ctx)
-        .map_err(|e| e.unwrap())
+}
+
+/// `check_raw` for the cases that must return a contract error; panics if the
+/// host trapped instead.
+pub(super) fn check(f: &Fixture, sig: Val, ctx: &Vec<Context>) -> Result<(), CardError> {
+    check_raw(f, sig, ctx).map_err(|e| e.unwrap())
 }
 
 pub(super) fn allowed(f: &Fixture) -> Address {
@@ -161,14 +179,18 @@ fn rejects_empty_or_multiple_signatures() {
 }
 
 #[test]
-#[should_panic]
-fn tampered_signature_bytes_trap() {
-    // ed25519_verify traps on an invalid signature; the host turns that into auth failure.
+fn signature_over_the_wrong_payload_traps() {
+    // `ed25519_verify` traps rather than returning; the host turns the trap
+    // into an aborted invocation, which the caller sees as an auth failure.
+    // Asserted on the inner result so a panic from anywhere else cannot pass.
     let (f, agent) = setup_with_agent();
     let m = allowed(&f);
     let ctx = transfer_ctx(&f, &f.token, symbol_short!("transfer"), &f.card, &m, USDC);
     let other_payload = BytesN::from_array(&f.env, &[9u8; 32]);
-    let _ = check(&f, agent.sign(&f.env, &other_payload), &ctx);
+    assert_eq!(
+        check_raw(&f, agent.sign(&f.env, &other_payload), &ctx),
+        Err(Err(InvokeError::Abort))
+    );
 }
 
 #[test]
@@ -321,4 +343,108 @@ fn rotated_signer_replaces_old_agent() {
         check(&f, new_agent.sign(&f.env, &payload(&f.env)), &ctx),
         Ok(())
     );
+}
+
+// ---- host-driven auth entry (the real x402 payment path) ----
+//
+// The tests above call `__check_auth` directly. This one goes through the
+// host: it hand-builds the `SorobanAuthorizationEntry` a facilitator would
+// submit -- address credentials for the card, a nonce, an expiration ledger,
+// and a signature over sha256(HashIdPreimage::SorobanAuthorization) -- installs
+// it with `set_auths`, and then invokes the SAC's `transfer` as any caller
+// would. Nothing is mocked, so it proves the on-chain wiring end to end.
+
+fn auth_entry(
+    f: &Fixture,
+    agent: &Agent,
+    to: &Address,
+    amount: i128,
+    nonce: i64,
+) -> xdr::SorobanAuthorizationEntry {
+    let env = &f.env;
+    let expiration = env.ledger().sequence() + 100;
+
+    let invocation = xdr::SorobanAuthorizedInvocation {
+        function: xdr::SorobanAuthorizedFunction::ContractFn(xdr::InvokeContractArgs {
+            contract_address: sc_address(&f.token),
+            function_name: xdr::ScSymbol("transfer".try_into().unwrap()),
+            args: std::vec![
+                to_sc_val(env, &f.card),
+                to_sc_val(env, to),
+                to_sc_val(env, &amount),
+            ]
+            .try_into()
+            .unwrap(),
+        }),
+        sub_invocations: std::vec::Vec::new().try_into().unwrap(),
+    };
+
+    let preimage =
+        xdr::HashIdPreimage::SorobanAuthorization(xdr::HashIdPreimageSorobanAuthorization {
+            network_id: xdr::Hash(env.ledger().network_id().to_array()),
+            nonce,
+            signature_expiration_ledger: expiration,
+            invocation: invocation.clone(),
+        });
+    let payload = env
+        .crypto()
+        .sha256(&Bytes::from_slice(
+            env,
+            &preimage.to_xdr(xdr::Limits::none()).unwrap(),
+        ))
+        .to_bytes();
+
+    xdr::SorobanAuthorizationEntry {
+        credentials: xdr::SorobanCredentials::Address(xdr::SorobanAddressCredentials {
+            address: sc_address(&f.card),
+            nonce,
+            signature_expiration_ledger: expiration,
+            signature: to_sc_val(env, &agent.sigs(env, &payload)),
+        }),
+        root_invocation: invocation,
+    }
+}
+
+fn sc_address(a: &Address) -> xdr::ScAddress {
+    let env = a.env().clone();
+    match to_sc_val(&env, a) {
+        xdr::ScVal::Address(sa) => sa,
+        _ => unreachable!("Address always converts to ScVal::Address"),
+    }
+}
+
+fn to_sc_val<T: Clone + IntoVal<Env, Val>>(env: &Env, v: &T) -> xdr::ScVal {
+    let val: Val = v.clone().into_val(env);
+    xdr::ScVal::try_from_val(env, &val).unwrap()
+}
+
+#[test]
+fn host_authorizes_a_real_sac_transfer_and_accounts_the_spend() {
+    let (f, agent) = setup_with_agent();
+    let m = allowed(&f);
+    super::fund_card(&f, 20 * USDC);
+
+    let entry = auth_entry(&f, &agent, &m, 3 * USDC, 1);
+    f.env.set_auths(&[entry]);
+
+    token::Client::new(&f.env, &f.token).transfer(&f.card, &m, &(3 * USDC));
+
+    assert_eq!(token::Client::new(&f.env, &f.token).balance(&m), 3 * USDC);
+    assert_eq!(f.client.balance(), 17 * USDC);
+    assert_eq!(f.client.period().spent, 3 * USDC);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #6)")]
+fn host_rejects_a_transfer_to_an_unlisted_merchant() {
+    // Same path as above, but the policy denies it: NotAllowlisted (#6)
+    // surfaces from `__check_auth` as an auth failure at the host level.
+    let (f, agent) = setup_with_agent();
+    super::fund_card(&f, 20 * USDC);
+    let stranger = Address::generate(&f.env);
+
+    let entry = auth_entry(&f, &agent, &stranger, USDC, 2);
+    f.env.set_auths(&[entry]);
+
+    token::Client::new(&f.env, &f.token).transfer(&f.card, &stranger, &USDC);
 }
