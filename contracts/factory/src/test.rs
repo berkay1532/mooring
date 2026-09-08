@@ -1,9 +1,11 @@
 #![cfg(test)]
 
-use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
-use soroban_sdk::{Address, BytesN, Env};
+extern crate std;
 
-use crate::{card, Factory, FactoryClient};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+use soroban_sdk::{Address, BytesN, Env, Event};
+
+use crate::{card, CardCreated, Factory, FactoryClient};
 
 const T0: u64 = 1_000;
 const DAY: u64 = 86_400;
@@ -43,9 +45,14 @@ fn creates_card_with_deterministic_address_and_event() {
     let card_addr = factory.create_card(&owner, &signer, &token, &policy(), &salt);
     assert_eq!(card_addr, expected);
 
-    let events = env.events().all();
-    let factory_events = events.filter_by_contract(&factory_id);
-    assert!(!factory_events.events().is_empty());
+    assert_eq!(
+        env.events().all(),
+        std::vec![CardCreated {
+            owner: owner.clone(),
+            card: card_addr.clone()
+        }
+        .to_xdr(&env, &factory_id)]
+    );
 
     let c = card::Client::new(&env, &card_addr);
     assert_eq!(c.owner(), owner);
