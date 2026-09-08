@@ -22,17 +22,35 @@ x402 services per request within limits the network enforces.
    address, holding USDC.
    - Storage: `owner`, `signer` (agent key), `token` (any SEP-41; USDC default), `period_amount`,
      `period_duration`, `period_start`, `spent_in_period`, `max_per_tx`, `expiry`,
-     `state` (Active/Frozen/Cancelled), allowlist as persistent `Allowed(Address)` keys (bounded).
+     `state` (Active/Frozen/Cancelled), and the merchant allowlist as one bounded
+     `Vec<Address>` (max 32) in **instance storage**, so it shares the instance TTL and is
+     enumerable by the app (`merchants()`). A one-call `info()` view returns the whole card
+     state with the current period and remaining budget already materialized.
    - Owner ops: `freeze`, `unfreeze`, `cancel` (freeze + sweep to owner), `withdraw`,
      `add_merchant`, `remove_merchant`, `set_policy` (budget / cap / duration / expiry),
      `set_signer` (agent key rotation); anyone: `bump` (TTL). Funding = send USDC to the card address.
+     `set_policy` carries the spend of the period that applies at the change into a fresh
+     period starting then, so changing `period_duration` never silently resets the budget.
    - Policy: periodic budget that **resets** each period (no carry-over), per-tx cap, expiry,
      merchant allowlist, frozen/cancelled. Enforced in `__check_auth` on exactly one
      `token.transfer(self, to, amount)` context; any other context is rejected.
    - Card **code** is immutable (no upgrade entrypoint); **configuration** (policy, signer,
      allowlist) is owner-mutable. A **factory** deploys cards (`deploy_v2` + constructor) and
-     emits `card_created(owner, card)` so the app can list them. New contract versions ship as a
-     new factory; owners migrate by `cancel` (sweeps funds) + create.
+     emits `card_created(owner, card)` — with `owner` as an event topic — so the app can list
+     them. The deploy salt is `sha256(owner_xdr ‖ user_salt)`, so a card address is
+     deterministic from (factory, owner, salt) and cannot be front-run with someone else's
+     salt. New contract versions ship as a new factory; owners migrate by `cancel` (sweeps
+     funds) + create.
+   - **Archival and restore.** Soroban archives ledger entries whose TTL runs out. Every
+     owner entrypoint and `bump()` extend the card's instance *and* code TTL to ~30 days
+     (`Deployer::extend_ttl`); the payment path uses the cheaper
+     `Storage::instance().extend_ttl`, which the host also resolves to instance+code, because
+     `__check_auth` runs under the facilitator's resource-fee ceiling. A card that goes
+     untouched past its TTL is archived: the app detects this from the RPC
+     `liveUntilLedgerSeq` on the card's instance/code entries (absent or already passed) and
+     shows an "archived" state. Recovery is a `RestoreFootprint` operation over the archived
+     entries followed by `bump()`; no funds are lost, and the card is usable again once
+     restored.
 2. **x402 server** (on `@x402/stellar`) — a 402-protected endpoint that verifies + settles agent
    payments pulled from the card.
 3. **Agent client** — detects the 402 challenge, checks card policy locally (budget / per-tx cap /
@@ -52,6 +70,16 @@ x402 services per request within limits the network enforces.
 5. **Distribution** — `@mooring/x402-client` npm package (card signer + x402 client scheme +
    local policy pre-check, plugs into `@x402/fetch`), a `mooring` CLI (`keygen`, `status`, `pay`),
    and a hosted example merchant API anyone can pay with a card.
+
+### Client notes (web app + agent client)
+- `payTo` must be a plain `G…` or `C…` address. Muxed `M…` addresses are rejected by
+  `__check_auth` as `WrongContext`: the auth context carries a plain address, so a muxed
+  destination never matches the allowlist.
+- `withdraw` and `cancel` revert if the owner has no USDC trustline — a SAC transfer to a
+  `G…` account settles into a classic balance. Check the trustline before offering either.
+- Any auth-phase host error (`Error(Auth, InvalidAction)`, or a trap inside `__check_auth`)
+  is a **policy denial**, not a transient failure: surface the card's contract error code
+  from the diagnostics and do not retry.
 
 ## Data flow (end to end)
 ```

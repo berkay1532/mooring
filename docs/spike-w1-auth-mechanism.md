@@ -94,8 +94,12 @@ fn __check_auth(env, signature_payload: BytesN<32>, signatures: Vec<Sig>, auth_c
 3. **Policy on `(to = args[1], amount = args[2])`:** state is `Active`; `now < expiry`;
    `to ∈ allowlist`; `amount ≤ max_per_tx`; period reset if `now ≥ period_start + duration`
    (reset once, even if several periods elapsed); `spent + amount ≤ period_amount`.
-4. **Mutation:** `spent += amount`, persist period fields, extend instance TTL. Writing storage
-   inside `__check_auth` is a documented pattern (soroban-examples `account`).
+4. **Mutation:** `spent += amount`, persist period fields, extend the instance TTL with
+   `Storage::instance().extend_ttl` -- the cheapest liveness call, which the host resolves to
+   `extend_current_contract_instance_and_code_ttl`. Owner entrypoints and `bump()` use the
+   explicit `Deployer::extend_ttl` form instead; the payment path stays on the cheap one
+   because of the fee ceiling. Writing storage inside `__check_auth` is a documented pattern
+   (soroban-examples `account`).
 5. **Errors:** distinct contract error codes (`BadSignature`, `WrongContext`, `Frozen`,
    `Cancelled`, `Expired`, `NotAllowlisted`, `OverPerTxCap`, `OverBudget`) so the simulation
    diagnostics tell the client and the UI *why*.
@@ -119,8 +123,12 @@ threshold) before D2 wiring.
 
 - Add `max_per_tx` to the policy (was client-only in the original design).
 - Rename "rollover" → **reset**: unused budget does not carry over.
-- Allowlist stored as persistent `Allowed(Address)` keys with a bounded count, not an instance
-  `Vec`.
+- Allowlist stored as one bounded `Vec<Address>` (max 32) in **instance storage**.
+  (Superseded the spike's original persistent `Allowed(Address)` keys: those are TTL-extended
+  only when written, so a card kept alive by its instance TTL would still lose its allowlist
+  after ~518 400 ledgers and every payment to that merchant would fail until a
+  RestoreFootprint. Instance storage shares the instance TTL, and a `Vec` is enumerable, which
+  the app needs.)
 - Add a **factory** (`deploy_v2` + constructor, `card_created` event) so the UI can list cards.
 - Card **code** is immutable; policy and signer are owner-mutable (`set_policy`, `set_signer`).
   New contract versions ship as a new factory.

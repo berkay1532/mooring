@@ -33,7 +33,7 @@ testnet; mainnet follows an audit. Never describe the web app or the client as a
 - **Card = a Soroban custom account instance** (its own address). It **holds USDC** (via SAC).
   The owner controls it (freeze / unfreeze / cancel / withdraw / set_policy / set_signer /
   allowlist); an **agent key is the signer**. Card code is immutable; config is owner-mutable.
-- Policy enforced at the **authorization boundary**: **periodic budget** (with rollover) +
+- Policy enforced at the **authorization boundary**: **periodic budget** (resets each period, no carry-over) +
   **merchant allowlist** + **expiry** + **frozen/cancelled** state. No shadow ledger — the
   policy lives in the auth path.
 - An x402 payment = a **USDC transfer from the card** to the merchant, gated by the card's
