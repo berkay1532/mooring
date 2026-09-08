@@ -34,6 +34,10 @@ USDC from the funder into the card and prints its balance.
   package; `scripts/testnet/deploy.sh` does this.
 - `stellar contract invoke` on CLI 26.1.0 requires `--source-account` even
   for read-only calls (no anonymous/view-only invocation).
+- The factory binds the deploy salt to the owner: it derives the Soroban salt as
+  `sha256(owner ‖ salt)`, so the card address above cannot be recomputed from the
+  raw salt alone — the owner address is part of the derivation, and two owners
+  passing the same salt get different card addresses.
 - `deploy.sh` checks each identity's on-chain account (via Horizon) and its
   USDC trustline before funding/creating a trustline, rather than only
   checking the local keystore. This is what makes "re-run after a reset"
@@ -43,4 +47,41 @@ USDC from the funder into the card and prints its balance.
 
 ## Evidence
 
-Filled in by Task 10.
+Collected 2026-09-09 against the deployment above.
+
+| Scenario | Tx hash | Status |
+|---|---|---|
+| Card-paid transfer within policy (`pay.ts`, 6 USDC) | `0f19bfc88b0b28d3454980a35c60627a8a22fae73745bf770a06060bac53e532` | SUCCESS |
+| Race: first of two overlapping payments (`race.ts`, 3 USDC) | `6366b7d0a70002b0c3e69f8612887c9b46389a506e356f814b459a7cb616b8df` | SUCCESS |
+| Race: second payment, over budget, rejected by `__check_auth` | `324aa5402e4a4f2e513025ee99ca4791cd3ec961b589febb8ab2446a5c793ece` | FAILED (contract error #8 OverBudget) |
+
+Simulation `minResourceFee` for a card-paid transfer: **33 926 stroops**
+(facilitator library default ceiling: 50 000 stroops — **within**, with ~32 % headroom).
+Measured with a 1-merchant allowlist; the allowlist is a bounded `Vec` scanned linearly,
+so a 32-merchant measurement is still owed before relying on this number.
+
+Both race payments simulate against the same state and so both pass simulation; the second
+executes against the state the first already updated and is rejected on-chain. The rejection
+is visible in the second transaction's diagnostic events, which name the card contract and
+the error directly:
+
+```
+{"contractId":"CAJPWJBF…AHCJ","type":"diagnostic","topics":["error",{"type":"contract","code":8}],
+ "data":"escalating Ok(ScErrorType::Contract) frame-exit to Err"}
+{"contractId":"CBIELTK6…DAMA","type":"diagnostic","topics":["error",{"type":"system","code":6,"value":"scecInvalidAction"}],
+ "data":["failed account authentication with error","CAJPWJBF…AHCJ",{"type":"contract","code":8}]}
+```
+
+The rejected payment had no effect: after the race the card's `spent` is `90000000`
+(6 + 3 USDC, the second payment not counted), its balance is `110000000`, and the merchant's
+classic USDC balance is `9.0000000` — exactly the two payments that settled.
+
+**Note on the policy during this run.** The card is deployed with the 50 USDC/day policy in the
+table above, which leaves `remaining` far higher than a 20 USDC card balance can ever spend down.
+To reach the `AMOUNT ≤ remaining < 2 × AMOUNT` state the race needs, `set_policy` was called as
+the owner after the first payment, lowering `period_amount` and `max_per_tx` to `100000000`
+(10 USDC) with `period_duration` and `expiry` unchanged
+(tx `cf033300ea3f24a4acf6fd47109493ff64abb8e20e00a5f4580f2c645b0e8ab8`). The already-spent
+`60000000` was carried over rather than reset, leaving `remaining = 40000000` — which is itself
+evidence that `set_policy`'s carry-over works on-chain. **The card's live policy is therefore
+10 USDC/day, not the 50 USDC/day it was deployed with.**

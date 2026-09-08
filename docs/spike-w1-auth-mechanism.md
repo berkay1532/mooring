@@ -119,6 +119,9 @@ testnet, record `minResourceFee`, and compare. If it exceeds the ceiling, reduce
 (pack period fields into one struct in instance storage, skip TTL extension when above
 threshold) before D2 wiring.
 
+Measured 2026-09-09: minResourceFee = 33926 stroops → within the 50 000 default ceiling
+(1-merchant allowlist; 32-merchant measurement still owed).
+
 ## Design changes adopted from this spike
 
 - Add `max_per_tx` to the policy (was client-only in the original design).
