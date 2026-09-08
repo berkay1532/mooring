@@ -52,7 +52,14 @@ const b = await buildSigned(submitterB);
 const first = await submit(a, submitterA);
 console.log("first :", first.hash, first.status); // expected SUCCESS
 if (first.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+  // The whole point of the script is that the *second* payment is rejected
+  // on-chain. If the first one did not settle there is nothing to demonstrate
+  // and the second failure would prove nothing, so stop here.
   reportFailure(first.hash, first.response);
+  console.error(
+    "first payment did not settle; aborting before the second submission.",
+  );
+  process.exit(1);
 }
 
 const second = await submit(b, submitterB);

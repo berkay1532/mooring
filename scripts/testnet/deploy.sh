@@ -67,6 +67,13 @@ AGENT_G=$(stellar keys address mooring-agent)
 AGENT_PK_HEX=$(cd scripts/agent && node --input-type=commonjs -e \
   "const {StrKey}=require('@stellar/stellar-sdk');console.log(Buffer.from(StrKey.decodeEd25519PublicKey(process.argv[1])).toString('hex'))" "$AGENT_G")
 
+# A malformed key would deploy a card no agent can ever sign for, and the
+# failure would only surface at the first payment attempt.
+if [[ ! "$AGENT_PK_HEX" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "AGENT_PK_HEX is not 64 lowercase hex chars: '$AGENT_PK_HEX'" >&2
+  exit 1
+fi
+
 EXPIRY=$(( $(date +%s) + 30*86400 ))
 SALT=$(openssl rand -hex 32)
 POLICY="{\"period_amount\":\"500000000\",\"period_duration\":86400,\"max_per_tx\":\"100000000\",\"expiry\":$EXPIRY}"

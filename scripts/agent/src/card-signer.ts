@@ -36,6 +36,10 @@ export async function signCardAuthEntries(
       _signer: Keypair | SigningCallback,
       validUntilLedgerSeq: number,
       networkPassphrase: string,
+      // `authorizeEntry`'s real 5th parameter, used for nested/delegate
+      // credentials. `signAuthEntries` calls this callback with 4 arguments,
+      // so it is always `undefined` here; it is forwarded verbatim so the
+      // override stays a drop-in for the SDK's default.
       forAddress?: string,
     ) =>
       authorizeEntry(
