@@ -1,51 +1,51 @@
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, Vec};
 
 use crate::types::{CardError, DataKey};
 use crate::MAX_ALLOWLIST;
 
-/// Persistent keys get a long TTL; the instance extension covers the rest.
-const ALLOWED_TTL_THRESHOLD: u32 = 17_280;
-const ALLOWED_TTL_EXTEND_TO: u32 = 518_400;
-
-fn count(env: &Env) -> u32 {
+/// The allowlist lives in instance storage as one bounded `Vec<Address>`.
+/// Instance storage shares the contract instance's TTL, so it stays live for
+/// as long as the card itself does -- unlike per-merchant persistent keys,
+/// which are only bumped when written and would archive under a card that is
+/// otherwise kept alive. It is also enumerable for the app (`merchants()`).
+pub(crate) fn get(env: &Env) -> Vec<Address> {
     env.storage()
         .instance()
-        .get(&DataKey::AllowCount)
-        .unwrap_or(0)
+        .get(&DataKey::Allowlist)
+        .unwrap_or_else(|| Vec::new(env))
 }
 
-fn set_count(env: &Env, n: u32) {
-    env.storage().instance().set(&DataKey::AllowCount, &n);
+fn set(env: &Env, list: &Vec<Address>) {
+    env.storage().instance().set(&DataKey::Allowlist, list);
 }
 
 pub(crate) fn is_allowed(env: &Env, merchant: &Address) -> bool {
-    env.storage()
-        .persistent()
-        .has(&DataKey::Allowed(merchant.clone()))
+    get(env).contains(merchant)
 }
 
-pub(crate) fn add(env: &Env, merchant: &Address) -> Result<(), CardError> {
-    let key = DataKey::Allowed(merchant.clone());
-    let p = env.storage().persistent();
-    if p.has(&key) {
-        p.extend_ttl(&key, ALLOWED_TTL_THRESHOLD, ALLOWED_TTL_EXTEND_TO);
-        return Ok(());
+/// Adds `merchant`. Returns `true` if the list changed (i.e. it was absent).
+pub(crate) fn add(env: &Env, merchant: &Address) -> Result<bool, CardError> {
+    let mut list = get(env);
+    if list.contains(merchant) {
+        return Ok(false);
     }
-    let n = count(env);
-    if n >= MAX_ALLOWLIST {
+    if list.len() >= MAX_ALLOWLIST {
         return Err(CardError::AllowlistFull);
     }
-    p.set(&key, &true);
-    p.extend_ttl(&key, ALLOWED_TTL_THRESHOLD, ALLOWED_TTL_EXTEND_TO);
-    set_count(env, n + 1);
-    Ok(())
+    list.push_back(merchant.clone());
+    set(env, &list);
+    Ok(true)
 }
 
-pub(crate) fn remove(env: &Env, merchant: &Address) {
-    let key = DataKey::Allowed(merchant.clone());
-    let p = env.storage().persistent();
-    if p.has(&key) {
-        p.remove(&key);
-        set_count(env, count(env).saturating_sub(1));
+/// Removes `merchant`. Returns `true` if the list changed (i.e. it was present).
+pub(crate) fn remove(env: &Env, merchant: &Address) -> bool {
+    let mut list = get(env);
+    match list.first_index_of(merchant) {
+        Some(i) => {
+            list.remove(i);
+            set(env, &list);
+            true
+        }
+        None => false,
     }
 }

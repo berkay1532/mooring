@@ -1,4 +1,4 @@
-use soroban_sdk::testutils::{Address as _, Events as _};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::{Address, BytesN};
 
 use super::{default_policy, setup, DAY, T0, USDC};
@@ -129,4 +129,52 @@ fn update_ops_emit_events() {
     f.client.set_signer(&BytesN::from_array(&f.env, &[9u8; 32]));
     let signer_events = f.env.events().all().events().len();
     assert_eq!(policy_events + signer_events, 2);
+}
+
+/// Spends `10 USDC` to a fresh allowlisted merchant 20 hours into the first
+/// period and returns the ledger timestamp at which it happened.
+fn spend_10_usdc_at_t0_plus_20h(f: &super::Fixture) -> u64 {
+    let m = Address::generate(&f.env);
+    f.client.add_merchant(&m);
+    let now = T0 + 20 * 3_600;
+    f.env.ledger().set_timestamp(now);
+    f.env
+        .as_contract(&f.card, || enforce_payment(&f.env, &m, 10 * USDC))
+        .unwrap();
+    now
+}
+
+#[test]
+fn shortening_the_period_carries_the_spend_over() {
+    // Without carry-over the shorter duration would make the stored period look
+    // long expired, silently resetting `spent` and handing back a full budget.
+    let f = setup();
+    f.env.mock_all_auths();
+    let now = spend_10_usdc_at_t0_plus_20h(&f);
+
+    f.client.set_policy(&Policy {
+        period_duration: 3_600,
+        ..default_policy()
+    });
+
+    assert_eq!(f.client.remaining(), 40 * USDC);
+    assert_eq!(f.client.period().spent, 10 * USDC);
+    assert_eq!(f.client.period().start, now);
+}
+
+#[test]
+fn lengthening_the_period_keeps_the_spend_and_restarts_at_now() {
+    let f = setup();
+    f.env.mock_all_auths();
+    let now = spend_10_usdc_at_t0_plus_20h(&f);
+
+    f.client.set_policy(&Policy {
+        period_duration: 7 * DAY,
+        ..default_policy()
+    });
+
+    assert_eq!(f.client.remaining(), 40 * USDC);
+    assert_eq!(f.client.period().spent, 10 * USDC);
+    // The new duration counts from the change, not from the old period start.
+    assert_eq!(f.client.period().start, now);
 }

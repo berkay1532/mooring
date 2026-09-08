@@ -1,5 +1,5 @@
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::Address;
+use soroban_sdk::{vec, Address};
 
 use super::setup;
 use crate::{CardError, MAX_ALLOWLIST};
@@ -57,4 +57,19 @@ fn add_merchant_requires_owner_auth() {
     let f = setup();
     // No mock_all_auths: require_auth on owner fails.
     f.client.add_merchant(&Address::generate(&f.env));
+}
+
+#[test]
+fn merchants_enumerates_the_allowlist() {
+    let f = setup();
+    f.env.mock_all_auths();
+    let a = Address::generate(&f.env);
+    let b = Address::generate(&f.env);
+    f.client.add_merchant(&a);
+    f.client.add_merchant(&b);
+    assert_eq!(f.client.merchants(), vec![&f.env, a.clone(), b.clone()]);
+
+    f.client.remove_merchant(&a);
+    assert_eq!(f.client.merchants(), vec![&f.env, b]);
+    assert_eq!(f.client.allow_count(), 1);
 }

@@ -11,7 +11,7 @@ mod test;
 pub use types::*;
 
 use soroban_sdk::{
-    contract, contractevent, contractimpl, panic_with_error, token, Address, BytesN, Env,
+    contract, contractevent, contractimpl, panic_with_error, token, Address, BytesN, Env, Vec,
 };
 
 /// Extend instance TTL when below ~1 day, up to ~30 days (5s ledgers).
@@ -52,10 +52,27 @@ pub struct SignerChanged {
     pub signer: BytesN<32>,
 }
 
+/// Cheapest liveness call: `Storage::instance().extend_ttl` resolves to the
+/// host's `extend_current_contract_instance_and_code_ttl`, so it covers the
+/// instance *and* the code entry without marshalling an Address argument.
+/// Reserved for the payment path (`__check_auth`), where every host call
+/// counts against the x402 facilitator's resource-fee ceiling.
 pub(crate) fn extend_instance(env: &Env) {
     env.storage()
         .instance()
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
+}
+
+/// Explicit instance + contract-code TTL extension. The code entry has its own
+/// TTL and, if it archives, the card is unusable until a RestoreFootprint.
+/// Used by `bump()` and every owner entrypoint; the payment path uses the
+/// cheaper `extend_instance` instead.
+pub(crate) fn extend_instance_and_code(env: &Env) {
+    env.deployer().extend_ttl(
+        env.current_contract_address(),
+        INSTANCE_TTL_THRESHOLD,
+        INSTANCE_TTL_EXTEND_TO,
+    );
 }
 
 pub(crate) fn require_owner(env: &Env) {
@@ -107,8 +124,8 @@ impl Card {
             },
         );
         s.set(&DataKey::State, &State::Active);
-        s.set(&DataKey::AllowCount, &0u32);
-        extend_instance(&env);
+        s.set(&DataKey::Allowlist, &Vec::<Address>::new(&env));
+        extend_instance_and_code(&env);
     }
 
     pub fn owner(env: Env) -> Address {
@@ -142,38 +159,37 @@ impl Card {
         token::Client::new(&env, &token).balance(&env.current_contract_address())
     }
 
-    /// Owner: allow payments to `merchant`. Idempotent. Bounded by MAX_ALLOWLIST.
+    /// Owner: allow payments to `merchant`. Idempotent (a repeat add emits no
+    /// event). Bounded by MAX_ALLOWLIST.
     pub fn add_merchant(env: Env, merchant: Address) -> Result<(), CardError> {
         require_owner(&env);
-        allowlist::add(&env, &merchant)?;
-        MerchantAdded {
-            merchant: merchant.clone(),
+        if allowlist::add(&env, &merchant)? {
+            MerchantAdded { merchant }.publish(&env);
         }
-        .publish(&env);
-        extend_instance(&env);
+        extend_instance_and_code(&env);
         Ok(())
     }
 
-    /// Owner: disallow payments to `merchant`. No-op if absent.
+    /// Owner: disallow payments to `merchant`. No-op (and no event) if absent.
     pub fn remove_merchant(env: Env, merchant: Address) {
         require_owner(&env);
-        allowlist::remove(&env, &merchant);
-        MerchantRemoved {
-            merchant: merchant.clone(),
+        if allowlist::remove(&env, &merchant) {
+            MerchantRemoved { merchant }.publish(&env);
         }
-        .publish(&env);
-        extend_instance(&env);
+        extend_instance_and_code(&env);
     }
 
     pub fn is_allowed(env: Env, merchant: Address) -> bool {
         allowlist::is_allowed(&env, &merchant)
     }
 
+    /// The full allowlist, in insertion order.
+    pub fn merchants(env: Env) -> Vec<Address> {
+        allowlist::get(&env)
+    }
+
     pub fn allow_count(env: Env) -> u32 {
-        env.storage()
-            .instance()
-            .get(&DataKey::AllowCount)
-            .unwrap_or(0)
+        allowlist::get(&env).len()
     }
 
     /// Budget remaining in the current period, accounting for a pending reset.
@@ -181,14 +197,29 @@ impl Card {
         policy::remaining(&env)
     }
 
-    /// Owner: replace the spending policy. Current-period spend is kept; if the new
-    /// budget is below it, `remaining()` is 0 until the period resets.
+    /// Owner: replace the spending policy. The spend already made in the period
+    /// that applies right now is carried over and a fresh period starts at the
+    /// current timestamp, so a change of `period_duration` never silently
+    /// resets (or silently extends) the budget. If the new `period_amount` is
+    /// below the carried spend, `remaining()` is 0 until the period rolls.
     pub fn set_policy(env: Env, policy: Policy) -> Result<(), CardError> {
         require_owner(&env);
-        policy::validate(env.ledger().timestamp(), &policy)?;
-        env.storage().instance().set(&DataKey::Policy, &policy);
+        let now = env.ledger().timestamp();
+        policy::validate(now, &policy)?;
+        let s = env.storage().instance();
+        let old: Policy = s.get(&DataKey::Policy).unwrap();
+        let stored: Period = s.get(&DataKey::Period).unwrap();
+        let cur = policy::current_period(now, &old, &stored);
+        s.set(&DataKey::Policy, &policy);
+        s.set(
+            &DataKey::Period,
+            &Period {
+                start: now,
+                spent: cur.spent,
+            },
+        );
         PolicyChanged { policy }.publish(&env);
-        extend_instance(&env);
+        extend_instance_and_code(&env);
         Ok(())
     }
 
@@ -197,7 +228,7 @@ impl Card {
         require_owner(&env);
         env.storage().instance().set(&DataKey::Signer, &signer);
         SignerChanged { signer }.publish(&env);
-        extend_instance(&env);
+        extend_instance_and_code(&env);
     }
 
     /// Owner: pause agent payments. Active → Frozen.
@@ -207,7 +238,7 @@ impl Card {
             return Err(CardError::InvalidState);
         }
         set_state(&env, State::Frozen);
-        extend_instance(&env);
+        extend_instance_and_code(&env);
         Ok(())
     }
 
@@ -218,7 +249,7 @@ impl Card {
             return Err(CardError::InvalidState);
         }
         set_state(&env, State::Active);
-        extend_instance(&env);
+        extend_instance_and_code(&env);
         Ok(())
     }
 
@@ -233,7 +264,7 @@ impl Card {
         if bal > 0 {
             transfer_to_owner(&env, bal);
         }
-        extend_instance(&env);
+        extend_instance_and_code(&env);
         Ok(())
     }
 
@@ -244,12 +275,12 @@ impl Card {
             return Err(CardError::InvalidAmount);
         }
         transfer_to_owner(&env, amount);
-        extend_instance(&env);
+        extend_instance_and_code(&env);
         Ok(())
     }
 
-    /// Anyone: extend the card's instance TTL so it does not get archived.
+    /// Anyone: extend the card's instance *and code* TTL so it does not get archived.
     pub fn bump(env: Env) {
-        extend_instance(&env);
+        extend_instance_and_code(&env);
     }
 }

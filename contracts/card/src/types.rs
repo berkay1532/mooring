@@ -1,4 +1,4 @@
-use soroban_sdk::{contracterror, contracttype, Address, BytesN};
+use soroban_sdk::{contracterror, contracttype, BytesN};
 
 /// Lifecycle state of a card.
 #[contracttype]
@@ -9,7 +9,7 @@ pub enum State {
     Cancelled = 2,
 }
 
-/// Immutable spending policy set at creation.
+/// Spending policy. Set at creation and replaceable by the owner via `set_policy`.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Policy {
@@ -48,8 +48,7 @@ pub enum DataKey {
     Policy,
     Period,
     State,
-    AllowCount,
-    Allowed(Address),
+    Allowlist,
 }
 
 #[contracterror]

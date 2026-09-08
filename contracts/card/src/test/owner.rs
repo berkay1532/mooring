@@ -1,8 +1,9 @@
-use soroban_sdk::testutils::{Address as _, Events as _};
+extern crate std;
+use soroban_sdk::testutils::{Address as _, Deployer as _, Events as _, Ledger as _};
 use soroban_sdk::{token, Address};
 
 use super::{fund_card, setup, USDC};
-use crate::{CardError, State};
+use crate::{CardError, State, INSTANCE_TTL_EXTEND_TO, INSTANCE_TTL_THRESHOLD};
 
 fn owner_balance(f: &super::Fixture) -> i128 {
     token::Client::new(&f.env, &f.token).balance(&f.owner)
@@ -120,4 +121,40 @@ fn owner_ops_emit_events() {
     f.client.add_merchant(&Address::generate(&f.env));
     let add_merchant_events = f.env.events().all().events().len();
     assert_eq!(freeze_events + add_merchant_events, 2);
+}
+
+#[test]
+fn bump_extends_instance_and_code_ttl() {
+    // The code entry has its own TTL: an instance-only extension leaves it to
+    // archive, which bricks the card until a RestoreFootprint.
+    let f = setup();
+    f.env
+        .ledger()
+        .set_sequence_number(INSTANCE_TTL_EXTEND_TO - 1_000);
+    assert!(f.env.deployer().get_contract_code_ttl(&f.card) < INSTANCE_TTL_THRESHOLD);
+
+    f.client.bump();
+
+    assert_eq!(
+        f.env.deployer().get_contract_instance_ttl(&f.card),
+        INSTANCE_TTL_EXTEND_TO
+    );
+    assert_eq!(
+        f.env.deployer().get_contract_code_ttl(&f.card),
+        INSTANCE_TTL_EXTEND_TO
+    );
+}
+
+#[test]
+fn owner_ops_extend_the_code_ttl() {
+    let f = setup();
+    f.env.mock_all_auths();
+    f.env
+        .ledger()
+        .set_sequence_number(INSTANCE_TTL_EXTEND_TO - 1_000);
+    f.client.freeze();
+    assert_eq!(
+        f.env.deployer().get_contract_code_ttl(&f.card),
+        INSTANCE_TTL_EXTEND_TO
+    );
 }

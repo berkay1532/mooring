@@ -1,9 +1,9 @@
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::testutils::{Address as _, Deployer as _, Ledger as _};
 use soroban_sdk::Address;
 
 use super::{default_policy, setup, Fixture, DAY, T0, USDC};
 use crate::policy::{current_period, enforce_payment};
-use crate::{CardError, Period, State};
+use crate::{CardError, Period, State, INSTANCE_TTL_EXTEND_TO, INSTANCE_TTL_THRESHOLD};
 
 fn allowed_merchant(f: &Fixture) -> Address {
     f.env.mock_all_auths();
@@ -159,4 +159,31 @@ fn rejects_when_frozen_or_cancelled() {
             .set(&crate::DataKey::State, &State::Cancelled);
     });
     assert_eq!(pay(&f, &m, USDC), Err(CardError::Cancelled));
+}
+
+#[test]
+fn payment_path_keeps_the_card_alive() {
+    // `enforce_payment` runs inside `__check_auth`, under the x402
+    // facilitator's resource-fee ceiling, so it uses the cheapest liveness
+    // call available: `Storage::instance().extend_ttl`, which the host
+    // resolves to `extend_current_contract_instance_and_code_ttl` -- instance
+    // and code, no Address argument to marshal. Owner entrypoints and `bump()`
+    // use the explicit `Deployer::extend_ttl` form instead.
+    let f = setup();
+    let m = allowed_merchant(&f);
+    f.env
+        .ledger()
+        .set_sequence_number(INSTANCE_TTL_EXTEND_TO - 1_000);
+    assert!(f.env.deployer().get_contract_instance_ttl(&f.card) < INSTANCE_TTL_THRESHOLD);
+
+    assert_eq!(pay(&f, &m, USDC), Ok(()));
+
+    assert_eq!(
+        f.env.deployer().get_contract_instance_ttl(&f.card),
+        INSTANCE_TTL_EXTEND_TO
+    );
+    assert_eq!(
+        f.env.deployer().get_contract_code_ttl(&f.card),
+        INSTANCE_TTL_EXTEND_TO
+    );
 }
