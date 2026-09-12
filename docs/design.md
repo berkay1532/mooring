@@ -3,8 +3,9 @@
 > Mooring is a **production product**, not a demo. The SCF sprint delivers a production-quality
 > v1 on testnet; mainnet follows a security audit. See "Product roadmap" below.
 
-Status: agreed via brainstorming (2026-08). W1 spike **resolved 2026-09-08** — see
-`docs/spike-w1-auth-mechanism.md`. Next: implementation plan (`superpowers:writing-plans`).
+Status: **D1 and D2 delivered (see `docs/testnet.md`); D3 next.** Agreed via brainstorming
+(2026-08); W1 spike **resolved 2026-09-08** — see `docs/spike-w1-auth-mechanism.md`. The x402
+integration is documented in `docs/x402-integration.md`.
 
 ## Problem
 Autonomous agents need to pay per request (APIs, inference, data, tools) without a human

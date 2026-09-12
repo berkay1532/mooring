@@ -107,6 +107,8 @@ Collected 2026-09-12 by `npm run e2e` (`packages/x402-client/e2e/testnet.e2e.ts`
 the example merchant server (`@x402/express` + `@x402/stellar`) in-process against the
 OpenZeppelin Channels testnet facilitator (`https://channels.openzeppelin.com/x402/testnet`) and
 pays it with `createMooringFetch`. Reproduce with `scripts/testnet/reset-policy.sh && npm run e2e`.
+The flow, the denial stages and the client/server setup are documented in
+`docs/x402-integration.md`; the client package itself in `packages/x402-client/README.md`.
 
 | Scenario | Outcome |
 |---|---|
