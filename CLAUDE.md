@@ -45,7 +45,10 @@ testnet; mainnet follows an audit. Never describe the web app or the client as a
 contract to be the asset and the function to be `transfer`, so a guarded `pay()` entrypoint is not
 viable. `__check_auth` must allow exactly one context (`token.transfer(self, to, amount)`) and
 reject everything else (e.g. `approve`). Details: `docs/spike-w1-auth-mechanism.md`.
-Open measurement: facilitator fee ceiling vs. custom-account auth cost — first testnet task.
+Open measurement **closed**: card-paid transfers cost 33 926 stroops (1 merchant) and 49 380
+stroops (full 32-merchant allowlist), and OZ Channels settled one at `max_fee` 51 175 — so
+custom-account auth fits inside the real facilitator ceiling. Numbers and the reduction levers
+are recorded in the "Open measurement" section of `docs/spike-w1-auth-mechanism.md`.
 
 ## Scope — 3 deliverables (see instawards/instaward-2-sow.md for the full SOW)
 
@@ -59,10 +62,13 @@ Open measurement: facilitator fee ceiling vs. custom-account auth cost — first
   rotation, agent key generation; quickstart + architecture docs; evidence package (tx hashes, CI).
 
 ### Weekly plan
-- **W1:** facilitator/settlement spike + card contract core + TDD tests + testnet deploy.
-- **W2:** x402 server + settlement wiring (card as payer) + e2e integration test.
-- **W3:** `@mooring/x402-client` npm package + `mooring` CLI + allowlist.
+- **W1 (done):** facilitator/settlement spike + card contract core + TDD tests + testnet deploy.
+- **W2 (done):** x402 server + settlement wiring (card as payer) + e2e integration test.
+- **W3 (done):** `@mooring/x402-client` npm package + `mooring` CLI + allowlist.
 - **W4:** web app (card panel + agent keys) + docs + evidence package.
+
+**D1 and D2 are delivered** (D1 in PR #1, D2 in PR #2) — evidence in `docs/testnet.md`, the
+integration guide in `docs/x402-integration.md`. **D3 is next.**
 
 ### Post-sprint roadmap (not in the 30-day SOW)
 v1.1: indexer + activity history, hosted example merchant API. v2: Soroban Audit Bank audit,
@@ -96,4 +102,6 @@ End commits with:
 ```
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 ```
-Branch off `main` for feature work; commit/push only when the owner asks.
+Workflow: branch off `main` per deliverable or task group → frequent commits → push → PR →
+CI green → merge (owner's standing instruction since 2026-09-12). Never push to `main` directly;
+never force-push.

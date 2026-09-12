@@ -55,10 +55,22 @@ Collected 2026-09-09 against the deployment above.
 | Race: first of two overlapping payments (`race.ts`, 3 USDC) | `6366b7d0a70002b0c3e69f8612887c9b46389a506e356f814b459a7cb616b8df` | SUCCESS |
 | Race: second payment, over budget, rejected by `__check_auth` | `324aa5402e4a4f2e513025ee99ca4791cd3ec961b589febb8ab2446a5c793ece` | FAILED (contract error #8 OverBudget) |
 
-Simulation `minResourceFee` for a card-paid transfer: **33 926 stroops**
-(facilitator library default ceiling: 50 000 stroops — **within**, with ~32 % headroom).
-Measured with a 1-merchant allowlist; the allowlist is a bounded `Vec` scanned linearly,
-so a 32-merchant measurement is still owed before relying on this number.
+**Fee measurements** (`minResourceFee` for a card-paid transfer, facilitator library default
+ceiling: 50 000 stroops):
+
+| Allowlist size | minResourceFee | vs. 50 000 library default |
+|---|---|---|
+| 1 merchant | 33 926 stroops | within |
+| 32 merchants (full) | 49 380 stroops | within |
+
+Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops. The allowlist
+is a bounded `Vec` scanned (and rewritten) linearly, so a full list makes `__check_auth` touch a
+larger instance entry than the 1-merchant case — that is the whole spread between the two rows.
+The 50 000 column is the **library default**, not a limit anyone enforced on us: the D2 evidence
+below shows OZ Channels accepting a card payment at `max_fee` 51 175, so its real ceiling is
+higher and the 32-merchant case is not close to it. The reduction options are kept on file in the
+"Open measurement" section of `docs/spike-w1-auth-mechanism.md` in case a future change adds
+per-payment storage.
 
 Both race payments simulate against the same state and so both pass simulation; the second
 executes against the state the first already updated and is rejected on-chain. The rejection
@@ -85,3 +97,99 @@ the owner after the first payment, lowering `period_amount` and `max_per_tx` to 
 `60000000` was carried over rather than reset, leaving `remaining = 40000000` — which is itself
 evidence that `set_policy`'s carry-over works on-chain. **The card's live policy is therefore
 10 USDC/day, not the 50 USDC/day it was deployed with.**
+`scripts/testnet/reset-policy.sh` puts the deployed policy back (50 USDC / day, 10 USDC max per
+payment, expiry +30 days) as the owner; it was run before the D2 evidence below
+(tx `508ff4eafc6144ed9cc20622c6e5a85cd33bf7a428c51e5391a24efffd5022e2`).
+
+## D2 evidence — paying an x402 API from the card
+
+Collected 2026-09-12 by `npm run e2e` (`packages/x402-client/e2e/testnet.e2e.ts`), which starts
+the example merchant server (`@x402/express` + `@x402/stellar`) in-process against the
+OpenZeppelin Channels testnet facilitator (`https://channels.openzeppelin.com/x402/testnet`) and
+pays it with `createMooringFetch`. Reproduce with `scripts/testnet/reset-policy.sh && npm run e2e`.
+The flow, the denial stages and the client/server setup are documented in
+`docs/x402-integration.md`; the client package itself in `packages/x402-client/README.md`.
+
+| Scenario | Outcome |
+|---|---|
+| `GET /weather` ($0.001) paid from the card | HTTP 200 `{"city":"Istanbul","temp":24,"conditions":"Clear"}`; settlement `{success: true, transaction: bc1b78eb…cbba, network: stellar:testnet, payer: CAJPWJBF…AHCJ}` |
+| Card budget after the payment | `spent` 0 → `10000` (exactly the $0.001 price), `remaining` `499990000`, balance `109990000` |
+| `GET /premium` ($20, above `max_per_tx`) | `CardPolicyDenied` reason `over_per_tx_cap`, stage `precheck` — refused locally, nothing signed, no network traffic |
+| Unlisted merchant, pre-check disabled | `CardPolicyDenied` reason `not_allowlisted`, stage `simulate`, contract error #6 — the card's `__check_auth` rejects the signed payment in the enforcing simulation, so it never reaches the facilitator |
+| The same unlisted-merchant payload, presented to the facilitator | OZ Channels `/verify` → `{"isValid": false, "invalidReason": "invalid_exact_stellar_payload_simulation_failed", "payer": "CAJPWJBF…AHCJ"}` |
+
+Settlement transaction
+`bc1b78eb2c0f4112d47f8faed70f608429a383d38a24f67ddda72f64453ccbba`, on Horizon:
+
+```json
+{ "successful": true, "ledger": 4644824, "max_fee": "51175", "fee_charged": "38773",
+  "source_account": "GAMPXGQBZLS5O77TDOGDMMVH7AAYREEE5D5J3O6EITHCB2A7H2VIQDIS" }
+```
+
+The source account is the facilitator's — fees are sponsored, the card only pays USDC — and the
+payer recorded in the settlement is the card contract itself.
+
+**OZ Channels' fee ceiling.** The facilitator accepted and submitted this payment with
+`max_fee = 51175` stroops (its own simulation-derived fee), i.e. **above** the 50 000-stroop
+default in `@x402/stellar`. OZ's configured ceiling is therefore higher than the library default
+— at least 51 175 stroops; the exact value is not published — and the D1 worst case (49 380
+stroops at a full 32-merchant allowlist) sits below everything OZ has been seen to accept.
+`fee_charged` came in at 38 773 stroops.
+
+**Auth credential format (CAP-71).** stellar-sdk 17 asks the RPC to record `ADDRESS_V2`
+address credentials by default; stellar-sdk 16 omits the flag and so still gets the legacy v1
+format. What was observed on 2026-09-12:
+
+- a card payload carrying **v2** credentials → OZ Channels `/verify` answers
+  `invalid_exact_stellar_payload_malformed`, with no payer, on every attempt;
+- the **identical** payment recorded as **v1** (`useUpgradedAuth: false`) → `isValid: true`,
+  `payer` = the card, and it settles;
+- a control payload from the stock `@x402/stellar` client (a `G` payer, sdk 16, hence v1) →
+  accepted at the same moment, which rules out the endpoint, the API key and the request shape
+  (the v1/v2 pair above is what isolates the credential format itself);
+- `stellar xdr decode --type TransactionEnvelope` (CLI 26.1.0 / stellar-xdr 26.0.1) also fails on
+  a v2 envelope, while both JS SDKs parse it.
+
+The rejection is therefore a property of the **deployed facilitator stack**, not of the x402 JS
+library: `@x402/stellar` decodes `ADDRESS_V2` explicitly (its `getAddressCredentials` handles the
+arm, and sdk 16.3.0's XDR has it), so the decoder that fails is elsewhere in OZ's service — most
+plausibly a Rust `stellar-xdr` of the same vintage as the CLI. Note this also means the stock
+client will hit it the day it moves to sdk 17.
+
+`CardExactStellarScheme` therefore simulates with `useUpgradedAuth: false`. Both formats are valid
+on-chain and carry the same agent signature; only the signed preimage differs (v2 binds the
+address). Remove the flag when OZ Channels accepts `ADDRESS_V2` — and note that the SDK flag is
+transitional, a no-op from protocol 28, so the facilitator side has to move first.
+
+### Re-run after the final fix wave (2026-09-12)
+
+`npm run e2e` again, unchanged scenarios, after the D2 review fixes: the shorter auth-entry
+expiry (`latestLedger + max(2, ceil(maxTimeoutSeconds / 6) - 2)` — 8 ledgers here, down from 12),
+the runtime CAP-71 credential guard, and the settle-failure reconciliation. `reset-policy.sh` was
+**not** needed (`remaining` was 499 990 000, far above the $0.001 price). All four scenarios
+behaved exactly as in the run above, with no failed checks.
+
+| Scenario | Outcome |
+|---|---|
+| `GET /weather` ($0.001) paid from the card | HTTP 200 `{"city":"Istanbul","temp":24,"conditions":"Clear"}`; settlement `{success: true, transaction: 4b2fcd1f…c5ff, network: stellar:testnet, payer: CAJPWJBF…AHCJ}` |
+| Card budget after the payment | `spent` `10000` → `20000` (exactly the $0.001 price), `remaining` `499980000`, balance `109980000` |
+| `GET /premium` ($20, above `max_per_tx`) | `CardPolicyDenied` reason `over_per_tx_cap`, stage `precheck` |
+| Unlisted merchant, pre-check disabled | `CardPolicyDenied` reason `not_allowlisted`, stage `simulate`, contract error #6 |
+| The same unlisted-merchant payload, presented to the facilitator | OZ Channels `/verify` → `{"isValid": false, "invalidReason": "invalid_exact_stellar_payload_simulation_failed", "payer": "CAJPWJBF…AHCJ"}` |
+
+Settlement transaction
+`4b2fcd1f9dfad53819bab1a012c0a0c4294399f0dd6a5bd258206c054102c5ff`, on Horizon:
+
+```json
+{ "successful": true, "ledger": 4645459, "max_fee": "34127", "fee_charged": "23947",
+  "source_account": "GBFLMQ5HZ35XDWSZRHE4SDIX5VALTCC54MAUCHJUMCSLRWFFOURZLZB4" }
+```
+
+The shorter expiry was accepted — no `invalid_exact_stellar_signature_expiration_too_far` — and
+the v1 credential guard did not fire, i.e. the RPC still records legacy `ADDRESS` credentials
+under `useUpgradedAuth: false`. `max_fee` came in at 34 127 stroops against 51 175 in the run
+above, and the source account is a different facilitator signer: OZ Channels rebuilds and prices
+the transaction itself (round-robin over its signer pool), so neither figure is a property of the
+card — the card's own cost is the `minResourceFee` measured further up (33 926 stroops at a
+1-merchant allowlist, 49 380 at the full 32), and both of these settlements sit comfortably above
+it.

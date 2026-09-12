@@ -33,15 +33,15 @@ jobs:
 
   scripts:
     runs-on: ubuntu-latest
-    # Type-check only. Nothing here touches testnet.
+    # Build + type-check only. Nothing here touches testnet.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
           cache: npm
-          cache-dependency-path: scripts/agent/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-        working-directory: scripts/agent
-      - run: npx tsc --noEmit
-        working-directory: scripts/agent
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
