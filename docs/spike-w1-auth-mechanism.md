@@ -122,6 +122,16 @@ threshold) before D2 wiring.
 Measured 2026-09-09: minResourceFee = 33926 stroops → within the 50 000 default ceiling
 (1-merchant allowlist; 32-merchant measurement still owed).
 
+Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops → within the
+50 000 default ceiling.
+
+Headroom is thin at a full allowlist: 49 380 / 50 000 stroops leaves only ~620 stroops (~1.2%)
+of margin, down from the ~32% margin measured with 1 merchant. The measurement stayed within the
+ceiling, so the "reduce writes" fallback mentioned above (pack period fields, conditional TTL
+extension, or move the allowlist to persistent storage read-only in `enforce_payment`) is not
+needed for D2, but the thin margin is worth re-checking if a future change adds any further
+per-payment storage.
+
 ## Design changes adopted from this spike
 
 - Add `max_per_tx` to the policy (was client-only in the original design).

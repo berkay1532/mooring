@@ -55,10 +55,20 @@ Collected 2026-09-09 against the deployment above.
 | Race: first of two overlapping payments (`race.ts`, 3 USDC) | `6366b7d0a70002b0c3e69f8612887c9b46389a506e356f814b459a7cb616b8df` | SUCCESS |
 | Race: second payment, over budget, rejected by `__check_auth` | `324aa5402e4a4f2e513025ee99ca4791cd3ec961b589febb8ab2446a5c793ece` | FAILED (contract error #8 OverBudget) |
 
-Simulation `minResourceFee` for a card-paid transfer: **33 926 stroops**
-(facilitator library default ceiling: 50 000 stroops — **within**, with ~32 % headroom).
-Measured with a 1-merchant allowlist; the allowlist is a bounded `Vec` scanned linearly,
-so a 32-merchant measurement is still owed before relying on this number.
+**Fee measurements** (`minResourceFee` for a card-paid transfer, facilitator library default
+ceiling: 50 000 stroops):
+
+| Allowlist size | minResourceFee | vs. 50 000 ceiling |
+|---|---|---|
+| 1 merchant | 33 926 stroops | within, ~32 % headroom |
+| 32 merchants (full) | 49 380 stroops | within, ~1.2 % headroom |
+
+Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops → within the
+50 000 default ceiling. The allowlist is a bounded `Vec` scanned (and rewritten) linearly, so a
+full list makes `__check_auth` touch a larger instance entry than the 1-merchant case; the margin
+above the ceiling shrinks from ~32 % to ~1.2 % accordingly. See the "Open measurement" section of
+`docs/spike-w1-auth-mechanism.md` for the reduction options considered (not implemented, since
+the measurement stayed within the ceiling) if this margin ever needs to grow.
 
 Both race payments simulate against the same state and so both pass simulation; the second
 executes against the state the first already updated and is rejected on-chain. The rejection
