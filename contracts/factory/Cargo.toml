@@ -1,0 +1,26 @@
+[package]
+name = "mooring-factory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+doctest = false
+
+[dependencies]
+# experimental_spec_shaking_v2 is required so the imported `card::Policy` type
+# (brought in via `contractimport!`, a "wasm import") gets a full spec entry
+# in this contract's own contractspecv0 section. Without it (default "v1"
+# spec shaking), wasm-imported types are not exported to the local spec, and
+# the `stellar` CLI (26.1.0) cannot build its implicit CLI for ANY function on
+# this contract -- including `__constructor`, which doesn't even touch
+# Policy -- failing with `error: Missing Entry Policy` on both
+# `contract deploy` and `contract invoke`. This is additive-only build
+# metadata (a non-consensus wasm custom section); it does not change contract
+# logic or behavior. See soroban-sdk::_features docs for the full explanation.
+soroban-sdk = { workspace = true, features = ["experimental_spec_shaking_v2"] }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
