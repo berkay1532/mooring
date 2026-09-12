@@ -160,3 +160,36 @@ client will hit it the day it moves to sdk 17.
 on-chain and carry the same agent signature; only the signed preimage differs (v2 binds the
 address). Remove the flag when OZ Channels accepts `ADDRESS_V2` — and note that the SDK flag is
 transitional, a no-op from protocol 28, so the facilitator side has to move first.
+
+### Re-run after the final fix wave (2026-09-12)
+
+`npm run e2e` again, unchanged scenarios, after the D2 review fixes: the shorter auth-entry
+expiry (`latestLedger + max(2, ceil(maxTimeoutSeconds / 6) - 2)` — 8 ledgers here, down from 12),
+the runtime CAP-71 credential guard, and the settle-failure reconciliation. `reset-policy.sh` was
+**not** needed (`remaining` was 499 990 000, far above the $0.001 price). All four scenarios
+behaved exactly as in the run above, with no failed checks.
+
+| Scenario | Outcome |
+|---|---|
+| `GET /weather` ($0.001) paid from the card | HTTP 200 `{"city":"Istanbul","temp":24,"conditions":"Clear"}`; settlement `{success: true, transaction: 4b2fcd1f…c5ff, network: stellar:testnet, payer: CAJPWJBF…AHCJ}` |
+| Card budget after the payment | `spent` `10000` → `20000` (exactly the $0.001 price), `remaining` `499980000`, balance `109980000` |
+| `GET /premium` ($20, above `max_per_tx`) | `CardPolicyDenied` reason `over_per_tx_cap`, stage `precheck` |
+| Unlisted merchant, pre-check disabled | `CardPolicyDenied` reason `not_allowlisted`, stage `simulate`, contract error #6 |
+| The same unlisted-merchant payload, presented to the facilitator | OZ Channels `/verify` → `{"isValid": false, "invalidReason": "invalid_exact_stellar_payload_simulation_failed", "payer": "CAJPWJBF…AHCJ"}` |
+
+Settlement transaction
+`4b2fcd1f9dfad53819bab1a012c0a0c4294399f0dd6a5bd258206c054102c5ff`, on Horizon:
+
+```json
+{ "successful": true, "ledger": 4645459, "max_fee": "34127", "fee_charged": "23947",
+  "source_account": "GBFLMQ5HZ35XDWSZRHE4SDIX5VALTCC54MAUCHJUMCSLRWFFOURZLZB4" }
+```
+
+The shorter expiry was accepted — no `invalid_exact_stellar_signature_expiration_too_far` — and
+the v1 credential guard did not fire, i.e. the RPC still records legacy `ADDRESS` credentials
+under `useUpgradedAuth: false`. `max_fee` came in at 34 127 stroops against 51 175 in the run
+above, and the source account is a different facilitator signer: OZ Channels rebuilds and prices
+the transaction itself (round-robin over its signer pool), so neither figure is a property of the
+card — the card's own cost is the `minResourceFee` measured further up (33 926 stroops at a
+1-merchant allowlist, 49 380 at the full 32), and both of these settlements sit comfortably above
+it.

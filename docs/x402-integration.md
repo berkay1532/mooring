@@ -346,5 +346,11 @@ card's `spent` moving `0 → 10000` by exactly the price, and three denial scena
 (`over_per_tx_cap`), `simulate` (`not_allowlisted`, contract error #6), and what OZ Channels
 itself answers for the same payload (`invalid_exact_stellar_payload_simulation_failed`).
 
-Reproduce with `scripts/testnet/reset-policy.sh && npm run e2e` (needs an OZ API key, a funded
-card, and `deployed.testnet.json`). The e2e spends real testnet USDC and is never run in CI.
+It was re-run unchanged after the D2 review fixes (shorter auth-entry expiry, CAP-71 runtime
+guard, settle reconciliation) and passed end to end again — tx
+`4b2fcd1f9dfad53819bab1a012c0a0c4294399f0dd6a5bd258206c054102c5ff`, `spent` `10000 → 20000`, no
+`signature_expiration_too_far` and no credential-guard failure.
+
+Reproduce with `npm run e2e` (needs an OZ API key, a funded card, and `deployed.testnet.json`;
+`scripts/testnet/reset-policy.sh` first only if the card's `remaining` has run down). The e2e
+spends real testnet USDC and is never run in CI.
