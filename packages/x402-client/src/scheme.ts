@@ -12,6 +12,7 @@ import {
   validateStellarAssetAddress,
   validateStellarDestinationAddress,
 } from "@x402/stellar";
+import { CARD_ERROR_CODES, CardPolicyDenied, classifyContractError } from "./denial.js";
 import { signCardAuthEntries } from "./signer.js";
 
 export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
@@ -24,6 +25,8 @@ export interface CardSchemeOptions {
   network: StellarNetwork;
   /** Required on pubnet; optional on testnet. */
   rpcUrl?: string;
+  /** Called when the card rejects the payment in the enforcing simulation. */
+  onDenial?: (denial: CardPolicyDenied) => void;
 }
 
 /**
@@ -43,11 +46,13 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
   private readonly network: StellarNetwork;
   private readonly rpcUrl: string;
   private readonly passphrase: string;
+  private readonly onDenial?: (denial: CardPolicyDenied) => void;
 
   constructor(opts: CardSchemeOptions) {
     this.card = opts.card;
     this.agent = opts.agent;
     this.network = opts.network;
+    this.onDenial = opts.onDenial;
     this.rpcUrl = getRpcUrl(opts.network, opts.rpcUrl ? { url: opts.rpcUrl } : undefined);
     this.passphrase = getNetworkPassphrase(opts.network);
   }
@@ -93,15 +98,44 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
     await this.sign(tx, maxLedger);
 
     // Re-simulate so the transaction carries the signed auth entries and the
-    // resources they cost.
-    await tx.simulate();
-    assertSimulationOk(tx.simulation);
+    // resources they cost. Signed entries make this simulation *enforcing*:
+    // the card's `__check_auth` runs, so a payment its policy refuses fails
+    // here — before the facilitator, and before any fee is paid.
+    try {
+      await tx.simulate({ useUpgradedAuth: false });
+      assertSimulationOk(tx.simulation);
+    } catch (err) {
+      const denial = this.denialFromCard(err);
+      if (!denial) throw err;
+      this.onDenial?.(denial);
+      throw denial;
+    }
     const still = tx.needsNonInvokerSigningBy();
     if (still.length > 0) {
       throw new Error(`unexpected signer(s) required: [${still.join(", ")}]`);
     }
 
     return { x402Version, payload: { transaction: tx.built!.toXDR() } };
+  }
+
+  /**
+   * Turns a failed enforcing simulation into a typed denial when it was the
+   * card that said no.
+   *
+   * The diagnostic text names the contract that failed authentication before
+   * the error code, so requiring the card's address keeps a token-level error
+   * (an insufficient balance, say) from being read as a policy decision.
+   * Returns `null` for anything else — those stay ordinary errors.
+   */
+  private denialFromCard(err: unknown): CardPolicyDenied | null {
+    const text = err instanceof Error ? err.message : String(err);
+    if (!text.includes(this.card)) return null;
+    const parsed = classifyContractError(text);
+    if (!parsed || !(parsed.code in CARD_ERROR_CODES)) return null;
+    return new CardPolicyDenied(parsed.reason, "simulate", {
+      contractError: parsed.code,
+      detail: text.split("\n")[0],
+    });
   }
 
   // --- collaborators (protected so tests can stub them) ---
@@ -124,6 +158,15 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
       networkPassphrase: this.passphrase,
       rpcUrl: this.rpcUrl,
       parseResultXdr: (r) => r,
+      // Record legacy (v1) address credentials rather than the CAP-71 v2 ones
+      // stellar-sdk 17 asks for by default. The x402 facilitator stack — the
+      // OZ Channels facilitator and `@x402/stellar`, which pins stellar-sdk 16
+      // — cannot decode a v2 credential and rejects the whole payload as
+      // `invalid_exact_stellar_payload_malformed`. Both formats are valid
+      // on-chain and carry the same agent signature; only the signed preimage
+      // differs (v2 binds the address). Drop this once facilitators speak v2:
+      // the SDK flag is transitional and becomes a no-op in protocol 28.
+      useUpgradedAuth: false,
     });
     assertSimulationOk(tx.simulation);
     return tx;

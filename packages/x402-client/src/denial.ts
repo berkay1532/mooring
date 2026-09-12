@@ -2,7 +2,16 @@ export type DenialReason =
   | "frozen" | "cancelled" | "expired" | "not_allowlisted" | "over_per_tx_cap" | "over_budget"
   | "wrong_token" | "insufficient_balance" | "bad_signature" | "wrong_context" | "unknown";
 
-export type DenialStage = "precheck" | "verify" | "settle";
+/**
+ * Where a payment was denied.
+ *
+ * - `precheck`  — the local policy mirror, before anything is signed.
+ * - `simulate`  — the card's `__check_auth`, in the enforcing simulation the
+ *   client runs after signing and before handing the payload to a facilitator.
+ * - `verify`    — the facilitator refused the payload.
+ * - `settle`    — the settlement transaction failed on-chain.
+ */
+export type DenialStage = "precheck" | "simulate" | "verify" | "settle";
 
 /** Card contract error codes that mean "policy denied". */
 export const CARD_ERROR_CODES: Record<number, DenialReason> = {

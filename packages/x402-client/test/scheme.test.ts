@@ -7,6 +7,7 @@ import {
   nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
+import { CardPolicyDenied } from "../src/denial.js";
 import { CardExactStellarScheme } from "../src/scheme.js";
 import { TRANSFER_TX_XDR } from "./fixtures/transfer-tx.js";
 
@@ -224,5 +225,92 @@ describe("CardExactStellarScheme.buildTransfer", () => {
     await expect(scheme.createPaymentPayload(2, reqs() as never)).rejects.toThrow(
       /simulation result is undefined/,
     );
+  });
+});
+
+describe("CardExactStellarScheme enforcing simulation", () => {
+  /** The card's `__check_auth` rejecting a payment, as the RPC reports it. */
+  const cardRejection = (code: number) =>
+    [
+      "HostError: Error(Auth, InvalidAction)",
+      "",
+      "Event log (newest first):",
+      `   0: [Diagnostic Event] contract:${TOKEN}, topics:[error, Error(Auth, InvalidAction)], ` +
+        `data:["failed account authentication with error", ${CARD}, Error(Contract, #${code})]`,
+    ].join("\n");
+
+  /**
+   * Stubs `AssembledTransaction.build` with a transaction whose first
+   * simulation succeeds and whose post-signing re-simulation fails with
+   * `error`.
+   */
+  const stubFailingResimulation = (scheme: CardExactStellarScheme, error: string) => {
+    const tx = {
+      built: new Transaction(TRANSFER_TX_XDR, PASSPHRASE),
+      simulation: { transactionData: {}, minResourceFee: "1", latestLedger: 100 } as unknown,
+      needsNonInvokerSigningBy: vi.fn().mockReturnValueOnce([CARD]).mockReturnValue([]),
+      simulate: vi.fn().mockImplementation(async () => {
+        tx.simulation = { error };
+      }),
+    };
+    vi.spyOn(contract.AssembledTransaction, "build").mockResolvedValue(tx as never);
+    vi.spyOn(scheme as any, "sign").mockResolvedValue(undefined as never);
+    vi.spyOn(scheme as any, "latestLedger").mockResolvedValue(1000 as never);
+    return tx;
+  };
+
+  it("asks for legacy (v1) address credentials, which facilitators can decode", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    const tx = stubFailingResimulation(scheme, "unused");
+    tx.simulate.mockResolvedValue(undefined);
+
+    await scheme.createPaymentPayload(2, reqs() as never);
+
+    const build = contract.AssembledTransaction.build as unknown as ReturnType<typeof vi.fn>;
+    expect(build.mock.calls[0]![0]).toMatchObject({ useUpgradedAuth: false });
+    expect(tx.simulate).toHaveBeenCalledWith({ useUpgradedAuth: false });
+  });
+
+  it("reports the card's rejection as a typed denial at the simulate stage", async () => {
+    const onDenial = vi.fn();
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+      onDenial,
+    });
+    stubFailingResimulation(scheme, cardRejection(6));
+
+    const err = await scheme.createPaymentPayload(2, reqs() as never).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CardPolicyDenied);
+    expect(err).toMatchObject({ reason: "not_allowlisted", stage: "simulate", contractError: 6 });
+    expect(onDenial).toHaveBeenCalledWith(err);
+  });
+
+  it("leaves a failure that is not the card's decision as a plain error", async () => {
+    const onDenial = vi.fn();
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+      onDenial,
+    });
+    // The token, not the card, refusing the transfer: a balance error carrying
+    // a code that happens to collide with a card policy code.
+    stubFailingResimulation(
+      scheme,
+      `HostError: Error(Contract, #6)\ndata:["resulting balance is not within the allowed range", ${TOKEN}]`,
+    );
+
+    const err = await scheme.createPaymentPayload(2, reqs() as never).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(CardPolicyDenied);
+    expect(onDenial).not.toHaveBeenCalled();
   });
 });

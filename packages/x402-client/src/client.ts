@@ -64,6 +64,10 @@ export function createMooringClient(
     agent: opts.agent,
     network: opts.network,
     rpcUrl: opts.rpcUrl,
+    // A denial raised inside the scheme (the card refusing the enforcing
+    // simulation) travels out as a thrown error, but it must reach `onDenial`
+    // and the box like every other stage.
+    onDenial: (denial) => box.set(denial, opts.onDenial),
   });
 
   const evaluate = async (req: PaymentRequirements): Promise<DenialReason | null> => {
