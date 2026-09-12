@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
+import { readCardInfo } from "../src/card.js";
 
 const CARD = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
 const TOKEN = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
@@ -62,6 +63,10 @@ function fakeServer(opts: {
   payTo?: string;
   verifyFails?: boolean;
   settleFails?: boolean;
+  /** Answer the paid request with a 402 carrying no PAYMENT-REQUIRED header. */
+  opaque402?: boolean;
+  /** Answer the paid request 200 with an undecodable PAYMENT-RESPONSE header. */
+  badSettlementHeader?: boolean;
 }) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(
@@ -77,6 +82,15 @@ function fakeServer(opts: {
       return new Response(JSON.stringify(body), {
         status: 402,
         headers: { "PAYMENT-REQUIRED": b64(body), "content-type": "application/json" },
+      });
+    }
+    if (opts.opaque402) {
+      return new Response("no", { status: 402 });
+    }
+    if (opts.badSettlementHeader) {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "PAYMENT-RESPONSE": "not-base64!!", "content-type": "application/json" },
       });
     }
     if (opts.settleFails) {
@@ -97,6 +111,33 @@ function fakeServer(opts: {
       network: "stellar:testnet",
       payer: CARD,
     };
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "PAYMENT-RESPONSE": b64(settle), "content-type": "application/json" },
+    });
+  });
+}
+
+/**
+ * Charges every URL 1 USDC, but bills `/unlisted` to a merchant the card does not
+ * allow. The paid leg settles slowly so a denial recorded by one in-flight request
+ * would be observed by the other if denials were not scoped per call.
+ */
+function routingServer() {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    const body = paymentRequired("10000", url.includes("/unlisted") ? "GOTHER" : MERCHANT);
+    if (!headers.has("PAYMENT-SIGNATURE")) {
+      return new Response(JSON.stringify(body), {
+        status: 402,
+        headers: { "PAYMENT-REQUIRED": b64(body), "content-type": "application/json" },
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const settle = { success: true, transaction: "cafebabe", network: "stellar:testnet", payer: CARD };
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { "PAYMENT-RESPONSE": b64(settle), "content-type": "application/json" },
@@ -162,6 +203,55 @@ describe("createMooringFetch", () => {
     await expect(f("http://api.test/weather")).rejects.toMatchObject({
       stage: "settle",
       detail: expect.stringContaining("deadbeef"),
+    });
+  });
+
+  it("keeps a paid 200 whose PAYMENT-RESPONSE header is undecodable", async () => {
+    const f = createMooringFetch({
+      ...opts(),
+      fetch: fakeServer({ amount: "10000", badSettlementHeader: true }),
+    });
+    const res = await f("http://api.test/weather");
+    expect(res.status).toBe(200);
+    expect(getSettlement(res)).toBeNull();
+  });
+
+  it("denies a 402 that carries no decodable PAYMENT-REQUIRED header", async () => {
+    const f = createMooringFetch({
+      ...opts(),
+      fetch: fakeServer({ amount: "10000", opaque402: true }),
+    });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "CardPolicyDenied",
+      reason: "unknown",
+      stage: "verify",
+    });
+  });
+
+  it("fails closed with a clear message when the pre-check cannot read the card", async () => {
+    vi.mocked(readCardInfo).mockRejectedValueOnce(new Error("rpc unreachable"));
+    const f = createMooringFetch({ ...opts(), fetch: fakeServer({ amount: "10000" }) });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "CardPolicyDenied",
+      reason: "unknown",
+      stage: "precheck",
+      detail: expect.stringContaining("pre-check unavailable: rpc unreachable"),
+    });
+  });
+
+  it("scopes denials per request, so a concurrent payment still succeeds", async () => {
+    const f = createMooringFetch({ ...opts(), fetch: routingServer() });
+    const denied = f("http://api.test/unlisted");
+    const paid = f("http://api.test/weather");
+    const [deniedResult, paidResult] = await Promise.allSettled([denied, paid]);
+
+    expect(paidResult.status).toBe("fulfilled");
+    expect((paidResult as PromiseFulfilledResult<Response>).value.status).toBe(200);
+    expect(deniedResult.status).toBe("rejected");
+    expect((deniedResult as PromiseRejectedResult).reason).toMatchObject({
+      name: "CardPolicyDenied",
+      reason: "not_allowlisted",
+      stage: "precheck",
     });
   });
 });

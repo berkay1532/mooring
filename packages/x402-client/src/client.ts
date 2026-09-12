@@ -47,6 +47,11 @@ class DenialBox {
  * mirrors that policy locally so an over-limit payment is refused before the
  * agent key signs anything, and classifies facilitator failures into
  * `CardPolicyDenied`.
+ *
+ * **One instance is single-flight.** x402's hook contexts carry no request
+ * identity, so the denial recorded by one payment cannot be told apart from
+ * another's: do not run concurrent payments through the same client. Build one
+ * per payment, or use `createMooringFetch`, which does that for you.
  */
 export function createMooringClient(
   opts: MooringClientOptions,
@@ -82,7 +87,15 @@ export function createMooringClient(
 
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {
     if (opts.precheck === false) return;
-    const reason = await evaluate(selectedRequirements);
+    let reason: DenialReason | null;
+    try {
+      reason = await evaluate(selectedRequirements);
+    } catch (err) {
+      // Fail closed: a card we cannot read is a card we cannot spend from.
+      const detail = `pre-check unavailable: ${err instanceof Error ? err.message : String(err)}`;
+      box.set(new CardPolicyDenied("unknown", "precheck", { detail }), opts.onDenial);
+      return { abort: true, reason: detail };
+    }
     if (reason) {
       box.set(new CardPolicyDenied(reason, "precheck"), opts.onDenial);
       return { abort: true, reason };
@@ -131,15 +144,18 @@ export function createMooringClient(
  * A `fetch` that pays x402-protected requests from the card, and rejects with
  * `CardPolicyDenied` (never a bare 402) whenever the payment is denied at any
  * stage. Denied payments are never retried.
+ *
+ * Each call builds its own client and denial scope — `x402Client.fromConfig`
+ * does no I/O — so concurrent requests through the same returned `fetch` cannot
+ * observe each other's denials.
  */
 export function createMooringFetch(
   opts: MooringClientOptions & { fetch?: typeof globalThis.fetch },
 ): typeof globalThis.fetch {
-  const box = new DenialBox();
-  const client = createMooringClient(opts, box);
-  const wrapped = wrapFetchWithPayment(opts.fetch ?? globalThis.fetch, client);
+  const transport = opts.fetch ?? globalThis.fetch;
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    box.last = undefined;
+    const box = new DenialBox();
+    const wrapped = wrapFetchWithPayment(transport, createMooringClient(opts, box));
     try {
       const res = await wrapped(input, init);
       // Verify and settle failures come back as a non-2xx response, not a
@@ -149,6 +165,13 @@ export function createMooringFetch(
       if (settlement && !settlement.success) {
         throw new CardPolicyDenied("unknown", "settle", {
           detail: `${settlement.errorReason ?? "settle failed"} tx=${settlement.transaction}`,
+        });
+      }
+      if (res.status === 402) {
+        // The payment was made and still refused, but the response says nothing
+        // the hooks could classify.
+        throw new CardPolicyDenied("unknown", "verify", {
+          detail: "payment rejected (402) without a decodable PAYMENT-REQUIRED header",
         });
       }
       return res;
@@ -161,9 +184,17 @@ export function createMooringFetch(
   }) as typeof globalThis.fetch;
 }
 
-/** Decodes the PAYMENT-RESPONSE header of a paid response, if present. */
+/**
+ * Decodes the PAYMENT-RESPONSE header of a paid response. Returns `null` when
+ * the header is absent or undecodable — a settlement we cannot read is not a
+ * failed payment, and must never turn a 200 into an error.
+ */
 export function getSettlement(res: Response): Settlement | null {
   const header = res.headers.get("PAYMENT-RESPONSE") ?? res.headers.get("X-PAYMENT-RESPONSE");
   if (!header) return null;
-  return decodePaymentResponseHeader(header) as Settlement;
+  try {
+    return decodePaymentResponseHeader(header) as Settlement;
+  } catch {
+    return null;
+  }
 }
