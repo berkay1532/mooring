@@ -120,17 +120,26 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
 
   /**
    * Turns a failed enforcing simulation into a typed denial when it was the
-   * card that said no.
+   * card's `__check_auth` that said no.
    *
-   * The diagnostic text names the contract that failed authentication before
-   * the error code, so requiring the card's address keeps a token-level error
-   * (an insufficient balance, say) from being read as a policy decision.
-   * Returns `null` for anything else — those stay ordinary errors.
+   * The card's address alone is not evidence: it appears in the `transfer`
+   * arguments of every diagnostic this transaction can produce, and the token's
+   * own error codes overlap the card's 1–8 range — a SAC balance error would be
+   * read as a policy decision. What identifies an auth failure is the host's
+   * phrase, which names the failing account and its error together:
+   *
+   *   ["failed account authentication with error", <card>, Error(Contract, #N)]
+   *
+   * so the reason is taken from that fragment and nowhere else. Anything that
+   * does not match stays an ordinary error.
    */
   private denialFromCard(err: unknown): CardPolicyDenied | null {
     const text = err instanceof Error ? err.message : String(err);
-    if (!text.includes(this.card)) return null;
-    const parsed = classifyContractError(text);
+    const fragment = new RegExp(
+      `failed account authentication with error"?,\\s*${this.card}\\s*,[^\\]]*`,
+    ).exec(text);
+    if (!fragment) return null;
+    const parsed = classifyContractError(fragment[0]);
     if (!parsed || !(parsed.code in CARD_ERROR_CODES)) return null;
     return new CardPolicyDenied(parsed.reason, "simulate", {
       contractError: parsed.code,
@@ -159,13 +168,17 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
       rpcUrl: this.rpcUrl,
       parseResultXdr: (r) => r,
       // Record legacy (v1) address credentials rather than the CAP-71 v2 ones
-      // stellar-sdk 17 asks for by default. The x402 facilitator stack — the
-      // OZ Channels facilitator and `@x402/stellar`, which pins stellar-sdk 16
-      // — cannot decode a v2 credential and rejects the whole payload as
-      // `invalid_exact_stellar_payload_malformed`. Both formats are valid
+      // stellar-sdk 17 asks for by default. Measured 2026-09-12 against OZ
+      // Channels testnet: a v2 payload is rejected as
+      // `invalid_exact_stellar_payload_malformed`, the identical v1 payload
+      // verifies. The `@x402/stellar` JS library does understand v2, so the
+      // refusal comes from somewhere else in the deployed facilitator stack —
+      // most likely a Rust `stellar-xdr` decoder, since `stellar xdr decode`
+      // (CLI 26.1.0) also fails on a v2 envelope. Both formats are valid
       // on-chain and carry the same agent signature; only the signed preimage
-      // differs (v2 binds the address). Drop this once facilitators speak v2:
-      // the SDK flag is transitional and becomes a no-op in protocol 28.
+      // differs (v2 binds the address). Drop this once OZ Channels accepts
+      // ADDRESS_V2 — and note the SDK flag is transitional: it becomes a no-op
+      // in protocol 28, so that has to happen first.
       useUpgradedAuth: false,
     });
     assertSimulationOk(tx.simulation);

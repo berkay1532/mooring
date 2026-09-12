@@ -125,18 +125,22 @@ Measured 2026-09-09: minResourceFee = 33926 stroops → within the 50 000 defaul
 Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops → within the
 50 000 default ceiling.
 
-OZ Channels testnet accepted a card payment at `max_fee` = 51 175 stroops on 2026-09-12
-(settlement tx `bc1b78eb2c0f4112d47f8faed70f608429a383d38a24f67ddda72f64453ccbba`, `fee_charged`
-38 773) — above the 50 000-stroop library default, so the facilitator's configured ceiling is
-higher than the default the measurements above were compared against. The open question from W1
-is closed: custom-account auth fits inside OZ's fee ceiling.
+**The ceiling that actually applies is OZ's, and it is higher than 50 000.** OZ Channels testnet
+accepted and submitted a card payment at `max_fee` = 51 175 stroops on 2026-09-12 (settlement tx
+`bc1b78eb2c0f4112d47f8faed70f608429a383d38a24f67ddda72f64453ccbba`, `fee_charged` 38 773). The
+50 000-stroop figure the two measurements above were compared against is only the library
+default; OZ's configured value is still not published, but it is now known to be **at least
+51 175 stroops**. The open question from W1 is closed: custom-account auth fits inside OZ's fee
+ceiling, with the worst allowlist we support.
 
-Headroom is thin at a full allowlist: 49 380 / 50 000 stroops leaves only ~620 stroops (~1.2%)
-of margin, down from the ~32% margin measured with 1 merchant. The measurement stayed within the
-ceiling, so the "reduce writes" fallback mentioned above (pack period fields, conditional TTL
-extension, or move the allowlist to persistent storage read-only in `enforce_payment`) is not
-needed for D2, but the thin margin is worth re-checking if a future change adds any further
-per-payment storage.
+Margin, restated against that: the 32-merchant worst case (49 380 stroops) is below every value
+OZ has been observed to accept, so it is not close to a limit — against the *library* default it
+would have left ~1.2 %, which is why the earlier note read as tight. Since the exact OZ ceiling
+is unknown, the reduction levers stay on the shelf rather than on the roadmap: pack the period
+fields into one instance-storage struct, extend the TTL conditionally, or move the allowlist to
+persistent storage read-only in `enforce_payment`. Re-measure if a change adds per-payment
+storage, or if a facilitator ever rejects a payment with
+`invalid_exact_stellar_payload_fee_exceeds_maximum`.
 
 ## Design changes adopted from this spike
 

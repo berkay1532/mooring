@@ -292,7 +292,7 @@ describe("CardExactStellarScheme enforcing simulation", () => {
     expect(onDenial).toHaveBeenCalledWith(err);
   });
 
-  it("leaves a failure that is not the card's decision as a plain error", async () => {
+  it("leaves a token-level failure a plain error, even when it names the card", async () => {
     const onDenial = vi.fn();
     const scheme = new CardExactStellarScheme({
       card: CARD,
@@ -300,16 +300,47 @@ describe("CardExactStellarScheme enforcing simulation", () => {
       network: "stellar:testnet",
       onDenial,
     });
-    // The token, not the card, refusing the transfer: a balance error carrying
-    // a code that happens to collide with a card policy code.
+    // The token, not the card, refusing the transfer. The card's address is in
+    // the `transfer` arguments of every such diagnostic, and the SAC's own error
+    // codes overlap the card's 1-8 range — only the account-authentication
+    // phrase distinguishes a policy decision from this.
     stubFailingResimulation(
       scheme,
-      `HostError: Error(Contract, #6)\ndata:["resulting balance is not within the allowed range", ${TOKEN}]`,
+      [
+        "HostError: Error(Contract, #8)",
+        "",
+        "Event log (newest first):",
+        `   0: [Diagnostic Event] contract:${TOKEN}, topics:[error, Error(Contract, #8)], ` +
+          `data:["resulting balance is not within the allowed range", 0, -10000, 9223372036854775807]`,
+        `   1: [Diagnostic Event] topics:[fn_call, ${TOKEN}, transfer], ` +
+          `data:[${CARD}, ${MERCHANT}, 10000]`,
+      ].join("\n"),
     );
 
     const err = await scheme.createPaymentPayload(2, reqs() as never).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(CardPolicyDenied);
+    expect(onDenial).not.toHaveBeenCalled();
+  });
+
+  it("ignores an authentication failure that is not the card's", async () => {
+    const onDenial = vi.fn();
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+      onDenial,
+    });
+    stubFailingResimulation(
+      scheme,
+      `HostError: Error(Auth, InvalidAction)\n   0: [Diagnostic Event] contract:${TOKEN}, ` +
+        `data:["failed account authentication with error", ${MERCHANT}, Error(Contract, #3)], ` +
+        `args:[${CARD}]`,
+    );
+
+    const err = await scheme.createPaymentPayload(2, reqs() as never).catch((e: unknown) => e);
+
     expect(err).not.toBeInstanceOf(CardPolicyDenied);
     expect(onDenial).not.toHaveBeenCalled();
   });

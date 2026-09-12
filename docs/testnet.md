@@ -58,17 +58,19 @@ Collected 2026-09-09 against the deployment above.
 **Fee measurements** (`minResourceFee` for a card-paid transfer, facilitator library default
 ceiling: 50 000 stroops):
 
-| Allowlist size | minResourceFee | vs. 50 000 ceiling |
+| Allowlist size | minResourceFee | vs. 50 000 library default |
 |---|---|---|
-| 1 merchant | 33 926 stroops | within, ~32 % headroom |
-| 32 merchants (full) | 49 380 stroops | within, ~1.2 % headroom |
+| 1 merchant | 33 926 stroops | within |
+| 32 merchants (full) | 49 380 stroops | within |
 
-Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops → within the
-50 000 default ceiling. The allowlist is a bounded `Vec` scanned (and rewritten) linearly, so a
-full list makes `__check_auth` touch a larger instance entry than the 1-merchant case; the margin
-above the ceiling shrinks from ~32 % to ~1.2 % accordingly. See the "Open measurement" section of
-`docs/spike-w1-auth-mechanism.md` for the reduction options considered (not implemented, since
-the measurement stayed within the ceiling) if this margin ever needs to grow.
+Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops. The allowlist
+is a bounded `Vec` scanned (and rewritten) linearly, so a full list makes `__check_auth` touch a
+larger instance entry than the 1-merchant case — that is the whole spread between the two rows.
+The 50 000 column is the **library default**, not a limit anyone enforced on us: the D2 evidence
+below shows OZ Channels accepting a card payment at `max_fee` 51 175, so its real ceiling is
+higher and the 32-merchant case is not close to it. The reduction options are kept on file in the
+"Open measurement" section of `docs/spike-w1-auth-mechanism.md` in case a future change adds
+per-payment storage.
 
 Both race payments simulate against the same state and so both pass simulation; the second
 executes against the state the first already updated and is rejected on-chain. The rejection
@@ -127,16 +129,32 @@ payer recorded in the settlement is the card contract itself.
 
 **OZ Channels' fee ceiling.** The facilitator accepted and submitted this payment with
 `max_fee = 51175` stroops (its own simulation-derived fee), i.e. **above** the 50 000-stroop
-default in `@x402/stellar`. OZ therefore runs a higher ceiling than the library default; the
-D1 margin note (49 380 stroops at a full 32-merchant allowlist) is comfortable against it.
+default in `@x402/stellar`. OZ's configured ceiling is therefore higher than the library default
+— at least 51 175 stroops; the exact value is not published — and the D1 worst case (49 380
+stroops at a full 32-merchant allowlist) sits below everything OZ has been seen to accept.
 `fee_charged` came in at 38 773 stroops.
 
 **Auth credential format (CAP-71).** stellar-sdk 17 asks the RPC to record `ADDRESS_V2`
-address credentials by default. The facilitator stack cannot decode them — `@x402/stellar` pins
-stellar-sdk 16, and OZ Channels rejected every such payload with
-`invalid_exact_stellar_payload_malformed` (a `G`-account payload from the stock client, built
-with sdk 16, was accepted at the same moment, and `stellar xdr decode` on CLI 26.1.0 also fails
-on a v2 envelope). `CardExactStellarScheme` therefore simulates with `useUpgradedAuth: false`,
-which records the legacy v1 credentials every facilitator understands; both formats are valid
-on-chain and carry the same agent signature. The SDK flag is transitional — it becomes a no-op
-in protocol 28 — so this needs revisiting when facilitators speak v2.
+address credentials by default; stellar-sdk 16 omits the flag and so still gets the legacy v1
+format. What was observed on 2026-09-12:
+
+- a card payload carrying **v2** credentials → OZ Channels `/verify` answers
+  `invalid_exact_stellar_payload_malformed`, with no payer, on every attempt;
+- the **identical** payment recorded as **v1** (`useUpgradedAuth: false`) → `isValid: true`,
+  `payer` = the card, and it settles;
+- a control payload from the stock `@x402/stellar` client (a `G` payer, sdk 16, hence v1) →
+  accepted at the same moment, which rules out the endpoint, the API key and the request shape
+  (the v1/v2 pair above is what isolates the credential format itself);
+- `stellar xdr decode --type TransactionEnvelope` (CLI 26.1.0 / stellar-xdr 26.0.1) also fails on
+  a v2 envelope, while both JS SDKs parse it.
+
+The rejection is therefore a property of the **deployed facilitator stack**, not of the x402 JS
+library: `@x402/stellar` decodes `ADDRESS_V2` explicitly (its `getAddressCredentials` handles the
+arm, and sdk 16.3.0's XDR has it), so the decoder that fails is elsewhere in OZ's service — most
+plausibly a Rust `stellar-xdr` of the same vintage as the CLI. Note this also means the stock
+client will hit it the day it moves to sdk 17.
+
+`CardExactStellarScheme` therefore simulates with `useUpgradedAuth: false`. Both formats are valid
+on-chain and carry the same agent signature; only the signed preimage differs (v2 binds the
+address). Remove the flag when OZ Channels accepts `ADDRESS_V2` — and note that the SDK flag is
+transitional, a no-op from protocol 28, so the facilitator side has to move first.
