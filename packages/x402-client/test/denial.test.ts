@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { CARD_ERROR_CODES, CardPolicyDenied, classifyContractError } from "../src/denial.js";
+import {
+  CARD_ERROR_CODES,
+  CardPolicyDenied,
+  PaymentError,
+  cardDenialFromEvents,
+  classifyContractError,
+} from "../src/denial.js";
+import { authFailureEvents, tokenFailureEvents } from "./fixtures/events.js";
+
+const CARD = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
+const OTHER_CARD = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
 
 describe("classifyContractError", () => {
   it("maps card error codes", () => {
@@ -26,5 +36,54 @@ describe("CardPolicyDenied", () => {
     expect(e.contractError).toBe(8);
     expect(e.message).toContain("over_budget");
     expect(e).toBeInstanceOf(Error);
+  });
+});
+
+describe("PaymentError", () => {
+  it("carries kind, transaction and detail", () => {
+    const e = new PaymentError({ kind: "unconfirmed", transaction: "cafe", detail: "why" });
+    expect(e.name).toBe("PaymentError");
+    expect(e.kind).toBe("unconfirmed");
+    expect(e.transaction).toBe("cafe");
+    expect(e.detail).toBe("why");
+    expect(e.message).toContain("unconfirmed");
+    expect(e.message).toContain("cafe");
+    expect(e.message).toContain("why");
+    expect(e).toBeInstanceOf(Error);
+    expect(e).not.toBeInstanceOf(CardPolicyDenied);
+  });
+
+  it("is a rejection when the facilitator refused before submitting", () => {
+    const e = new PaymentError({ kind: "rejected", detail: "fee_exceeds_maximum" });
+    expect(e.kind).toBe("rejected");
+    expect(e.transaction).toBeUndefined();
+  });
+});
+
+describe("cardDenialFromEvents", () => {
+  it("reads the card's error out of the host's account-authentication event", () => {
+    expect(cardDenialFromEvents(authFailureEvents(CARD, 8), CARD)).toEqual({
+      code: 8,
+      reason: "over_budget",
+    });
+  });
+
+  it("ignores an authentication failure that is not the card's", () => {
+    expect(cardDenialFromEvents(authFailureEvents(OTHER_CARD, 8), CARD)).toBeNull();
+  });
+
+  it("ignores a token-level failure that merely names the card", () => {
+    expect(cardDenialFromEvents(tokenFailureEvents(CARD), CARD)).toBeNull();
+  });
+
+  it("returns null for no events at all", () => {
+    expect(cardDenialFromEvents([], CARD)).toBeNull();
+  });
+
+  it("maps a code the card does not define to unknown", () => {
+    expect(cardDenialFromEvents(authFailureEvents(CARD, 42), CARD)).toEqual({
+      code: 42,
+      reason: "unknown",
+    });
   });
 });

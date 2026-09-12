@@ -12,7 +12,7 @@ import {
   validateStellarAssetAddress,
   validateStellarDestinationAddress,
 } from "@x402/stellar";
-import { CARD_ERROR_CODES, CardPolicyDenied, classifyContractError } from "./denial.js";
+import { CARD_ERROR_CODES, CardPolicyDenied, PaymentError, classifyContractError } from "./denial.js";
 import { signCardAuthEntries } from "./signer.js";
 
 export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
@@ -27,6 +27,8 @@ export interface CardSchemeOptions {
   rpcUrl?: string;
   /** Called when the card rejects the payment in the enforcing simulation. */
   onDenial?: (denial: CardPolicyDenied) => void;
+  /** Called when the payment fails for a reason that is not the card's policy. */
+  onPaymentError?: (error: PaymentError) => void;
 }
 
 /**
@@ -47,12 +49,14 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
   private readonly rpcUrl: string;
   private readonly passphrase: string;
   private readonly onDenial?: (denial: CardPolicyDenied) => void;
+  private readonly onPaymentError?: (error: PaymentError) => void;
 
   constructor(opts: CardSchemeOptions) {
     this.card = opts.card;
     this.agent = opts.agent;
     this.network = opts.network;
     this.onDenial = opts.onDenial;
+    this.onPaymentError = opts.onPaymentError;
     this.rpcUrl = getRpcUrl(opts.network, opts.rpcUrl ? { url: opts.rpcUrl } : undefined);
     this.passphrase = getNetworkPassphrase(opts.network);
   }

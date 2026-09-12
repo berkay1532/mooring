@@ -1,3 +1,5 @@
+import { humanizeEvents, type xdr } from "@stellar/stellar-sdk";
+
 export type DenialReason =
   | "frozen" | "cancelled" | "expired" | "not_allowlisted" | "over_per_tx_cap" | "over_budget"
   | "wrong_token" | "insufficient_balance" | "bad_signature" | "wrong_context" | "unknown";
@@ -35,6 +37,39 @@ export function classifyContractError(text: string): { code: number; reason: Den
   return { code, reason: CARD_ERROR_CODES[code] ?? "unknown" };
 }
 
+/** The host's phrase that attributes an authorization failure to an account. */
+const AUTH_FAILURE = "failed account authentication with error";
+
+/**
+ * Reads the card's own `__check_auth` verdict out of a transaction's diagnostic
+ * events.
+ *
+ * The card's address alone is not evidence: it appears in the `transfer`
+ * arguments of every diagnostic this transaction can produce, and the token's
+ * own error codes overlap the card's 1-8 range — a SAC balance error would be
+ * read as a policy decision. What identifies an auth failure is the host's
+ * event, which names the failing account and its error together:
+ *
+ *   ["failed account authentication with error", <card>, Error(Contract, #N)]
+ *
+ * so the reason is taken from that event and nowhere else. Anything that does
+ * not match returns `null`, and the caller reports `unknown`.
+ */
+export function cardDenialFromEvents(
+  events: readonly xdr.DiagnosticEvent[],
+  card: string,
+): { code: number; reason: DenialReason } | null {
+  for (const e of humanizeEvents([...events])) {
+    const data = e.data;
+    if (!Array.isArray(data) || data.length < 3) continue;
+    if (data[0] !== AUTH_FAILURE || data[1] !== card) continue;
+    const err = data[2] as { type?: string; code?: number } | undefined;
+    if (err?.type !== "contract" || typeof err.code !== "number") continue;
+    return { code: err.code, reason: CARD_ERROR_CODES[err.code] ?? "unknown" };
+  }
+  return null;
+}
+
 export class CardPolicyDenied extends Error {
   readonly reason: DenialReason;
   readonly stage: DenialStage;
@@ -47,6 +82,36 @@ export class CardPolicyDenied extends Error {
     this.reason = reason;
     this.stage = stage;
     this.contractError = opts.contractError;
+    this.detail = opts.detail;
+  }
+}
+
+/**
+ * Why a payment did not deliver the resource, when the card's policy is *not*
+ * the reason. `CardPolicyDenied` means exactly one thing — the card refused —
+ * so everything else lands here:
+ *
+ * - `rejected`    — the facilitator (or the transport) refused the payment
+ *   before anything was submitted: a malformed payload, a fee above the
+ *   facilitator's ceiling, an expiration it will not accept, a 5xx. Nothing
+ *   was spent.
+ * - `unconfirmed` — the settlement state is unknown or contradictory: the
+ *   server reported a failure for a transaction the ledger accepted, or the
+ *   transaction was never observed. The card may have been debited; reconcile
+ *   `transaction` against the network before retrying.
+ */
+export class PaymentError extends Error {
+  readonly kind: "rejected" | "unconfirmed";
+  readonly transaction?: string;
+  readonly detail?: string;
+
+  constructor(opts: { kind: "rejected" | "unconfirmed"; transaction?: string; detail?: string }) {
+    super(
+      `payment ${opts.kind}${opts.transaction ? ` (tx ${opts.transaction})` : ""}${opts.detail ? `: ${opts.detail}` : ""}`,
+    );
+    this.name = "PaymentError";
+    this.kind = opts.kind;
+    this.transaction = opts.transaction;
     this.detail = opts.detail;
   }
 }

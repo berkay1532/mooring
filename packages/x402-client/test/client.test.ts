@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
 import { readCardInfo } from "../src/card.js";
+import { reconcileSettlement } from "../src/reconcile.js";
+import { authFailureEvents, tokenFailureEvents } from "./fixtures/events.js";
 
 const CARD = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
 const TOKEN = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
@@ -27,6 +29,9 @@ const info = {
 vi.mock("../src/card.js", () => ({
   readCardInfo: vi.fn(async () => info),
   readMerchants: vi.fn(async () => [MERCHANT]),
+}));
+vi.mock("../src/reconcile.js", () => ({
+  reconcileSettlement: vi.fn(async () => ({ status: "NOT_FOUND" })),
 }));
 vi.mock("../src/scheme.js", () => ({
   CardExactStellarScheme: class {
@@ -62,7 +67,13 @@ function fakeServer(opts: {
   amount: string;
   payTo?: string;
   verifyFails?: boolean;
+  /** The facilitator's `invalidReason` for a failed verify. */
+  verifyError?: string;
   settleFails?: boolean;
+  /** The facilitator's `errorReason` for a failed settle. */
+  settleError?: string;
+  /** Answer the failed settle with an empty hash (nothing was submitted). */
+  settleWithoutHash?: boolean;
   /** Answer the paid request with a 402 carrying no PAYMENT-REQUIRED header. */
   opaque402?: boolean;
   /** Answer the paid request 200 with an undecodable PAYMENT-RESPONSE header. */
@@ -77,7 +88,7 @@ function fakeServer(opts: {
       const body = paymentRequired(
         opts.amount,
         opts.payTo,
-        paid ? "invalid_exact_stellar_payload_simulation_failed" : undefined,
+        paid ? (opts.verifyError ?? "invalid_exact_stellar_payload_simulation_failed") : undefined,
       );
       return new Response(JSON.stringify(body), {
         status: 402,
@@ -96,8 +107,8 @@ function fakeServer(opts: {
     if (opts.settleFails) {
       const settle = {
         success: false,
-        errorReason: "settle_exact_stellar_transaction_failed",
-        transaction: "deadbeef",
+        errorReason: opts.settleError ?? "settle_exact_stellar_transaction_failed",
+        transaction: opts.settleWithoutHash ? "" : "deadbeef",
         network: "stellar:testnet",
       };
       return new Response(JSON.stringify(settle), {
@@ -195,15 +206,132 @@ describe("createMooringFetch", () => {
     });
   });
 
-  it("classifies a settle failure as a policy denial with the tx hash", async () => {
+  it("names the policy reason at verify when the re-run pre-check finds one", async () => {
+    const onDenial = vi.fn();
+    const f = createMooringFetch({
+      ...opts(),
+      onDenial,
+      precheck: false,
+      fetch: fakeServer({ amount: "10000", payTo: "GOTHER", verifyFails: true }),
+    });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "CardPolicyDenied",
+      reason: "not_allowlisted",
+      stage: "verify",
+    });
+    expect(onDenial).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a non-policy verify refusal as a PaymentError, not a denial", async () => {
+    const onDenial = vi.fn();
+    const onPaymentError = vi.fn();
+    const f = createMooringFetch({
+      ...opts(),
+      precheck: false,
+      onDenial,
+      onPaymentError,
+      fetch: fakeServer({
+        amount: "10000",
+        verifyFails: true,
+        verifyError: "invalid_exact_stellar_payload_fee_exceeds_maximum",
+      }),
+    });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "PaymentError",
+      kind: "rejected",
+      detail: expect.stringContaining("fee_exceeds_maximum"),
+    });
+    expect(onDenial).not.toHaveBeenCalled();
+    expect(onPaymentError).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles a settle failure the ledger confirms failed, and names the card's error", async () => {
+    vi.mocked(reconcileSettlement).mockResolvedValueOnce({
+      status: "FAILED",
+      events: authFailureEvents(CARD, 8),
+    } as never);
     const f = createMooringFetch({
       ...opts(),
       fetch: fakeServer({ amount: "10000", settleFails: true }),
     });
     await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "CardPolicyDenied",
+      reason: "over_budget",
       stage: "settle",
+      contractError: 8,
       detail: expect.stringContaining("deadbeef"),
     });
+    expect(vi.mocked(reconcileSettlement).mock.calls[0]![2]).toBe("deadbeef");
+  });
+
+  it("reports a confirmed-failed settlement it cannot attribute to the card as unknown", async () => {
+    vi.mocked(reconcileSettlement).mockResolvedValueOnce({
+      status: "FAILED",
+      events: tokenFailureEvents(CARD),
+    } as never);
+    const f = createMooringFetch({
+      ...opts(),
+      fetch: fakeServer({ amount: "10000", settleFails: true }),
+    });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "CardPolicyDenied",
+      reason: "unknown",
+      stage: "settle",
+      contractError: undefined,
+    });
+  });
+
+  it("never calls a settlement the ledger accepted a policy denial", async () => {
+    vi.mocked(reconcileSettlement).mockResolvedValueOnce({ status: "SUCCESS" } as never);
+    const onDenial = vi.fn();
+    const onPaymentError = vi.fn();
+    const f = createMooringFetch({
+      ...opts(),
+      onDenial,
+      onPaymentError,
+      fetch: fakeServer({ amount: "10000", settleFails: true }),
+    });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "PaymentError",
+      kind: "unconfirmed",
+      transaction: "deadbeef",
+      detail: expect.stringContaining("settled on-chain but the server reported failure"),
+    });
+    expect(onDenial).not.toHaveBeenCalled();
+    expect(onPaymentError).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a settlement still unseen after the reconciliation window as unconfirmed", async () => {
+    vi.mocked(reconcileSettlement).mockResolvedValueOnce({ status: "NOT_FOUND" } as never);
+    const f = createMooringFetch({
+      ...opts(),
+      fetch: fakeServer({ amount: "10000", settleFails: true }),
+    });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "PaymentError",
+      kind: "unconfirmed",
+      transaction: "deadbeef",
+    });
+  });
+
+  it("reports a settlement that never reached the ledger as a rejection", async () => {
+    const f = createMooringFetch({
+      ...opts(),
+      precheck: false,
+      fetch: fakeServer({
+        amount: "10000",
+        settleFails: true,
+        settleWithoutHash: true,
+        settleError: "settle_exact_stellar_transaction_submission_failed",
+      }),
+    });
+    await expect(f("http://api.test/weather")).rejects.toMatchObject({
+      name: "PaymentError",
+      kind: "rejected",
+      transaction: undefined,
+      detail: expect.stringContaining("submission_failed"),
+    });
+    expect(reconcileSettlement).not.toHaveBeenCalled();
   });
 
   it("keeps a paid 200 whose PAYMENT-RESPONSE header is undecodable", async () => {
@@ -216,16 +344,22 @@ describe("createMooringFetch", () => {
     expect(getSettlement(res)).toBeNull();
   });
 
-  it("denies a 402 that carries no decodable PAYMENT-REQUIRED header", async () => {
+  it("reports an opaque 402 as unconfirmed, not as a policy denial", async () => {
+    const onDenial = vi.fn();
+    const onPaymentError = vi.fn();
     const f = createMooringFetch({
       ...opts(),
+      onDenial,
+      onPaymentError,
       fetch: fakeServer({ amount: "10000", opaque402: true }),
     });
     await expect(f("http://api.test/weather")).rejects.toMatchObject({
-      name: "CardPolicyDenied",
-      reason: "unknown",
-      stage: "verify",
+      name: "PaymentError",
+      kind: "unconfirmed",
+      detail: "402 without PAYMENT-REQUIRED or PAYMENT-RESPONSE; settlement state unknown",
     });
+    expect(onDenial).not.toHaveBeenCalled();
+    expect(onPaymentError).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed with a clear message when the pre-check cannot read the card", async () => {

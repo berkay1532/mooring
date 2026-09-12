@@ -1,6 +1,14 @@
 export { signCardAuthEntries } from "./signer.js";
-export { CARD_ERROR_CODES, CardPolicyDenied, classifyContractError } from "./denial.js";
+export {
+  CARD_ERROR_CODES,
+  CardPolicyDenied,
+  PaymentError,
+  cardDenialFromEvents,
+  classifyContractError,
+} from "./denial.js";
 export type { DenialReason, DenialStage } from "./denial.js";
+export { reconcileSettlement } from "./reconcile.js";
+export type { SettlementOutcome } from "./reconcile.js";
 export { precheck } from "./precheck.js";
 export type { PaymentTerms } from "./precheck.js";
 export { readCardInfo, readMerchants } from "./card.js";
