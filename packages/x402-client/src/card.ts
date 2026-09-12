@@ -22,7 +22,7 @@ export interface CardInfo {
 }
 
 /** `CardInfo` as `scValToNative` hands it back, before normalization. */
-type RawInfo = {
+export type RawCardInfo = {
   owner: string;
   signer: Buffer | Uint8Array;
   token: string;
@@ -57,24 +57,50 @@ async function simulateView<T>(
   return tx.result;
 }
 
+/**
+ * Normalizes a raw `info()` result into `CardInfo`: `signer` becomes a
+ * `Uint8Array` (it arrives as a node `Buffer`), `allow_count` a `number`, and
+ * `state` is range-checked before it is narrowed. Every other field is already
+ * the `bigint` the contract declared, and is passed through untouched.
+ *
+ * @throws if `state` is not one of the contract's three variants.
+ */
+export function normalizeInfo(raw: RawCardInfo): CardInfo {
+  const state = Number(raw.state);
+  if (state !== 0 && state !== 1 && state !== 2) {
+    throw new Error(`Unknown card state: ${raw.state}`);
+  }
+  return {
+    owner: raw.owner,
+    signer: new Uint8Array(raw.signer),
+    token: raw.token,
+    policy: raw.policy,
+    state: state as CardState,
+    period: raw.period,
+    remaining: raw.remaining,
+    balance: raw.balance,
+    allow_count: Number(raw.allow_count),
+  };
+}
+
+/**
+ * Normalizes a raw `merchants()` result into strkeys. `scValToNative` already
+ * renders an `ScAddress` as a strkey, so the guard is a no-op today; it keeps
+ * the reader honest if a future SDK hands back the raw XDR instead.
+ */
+export function normalizeMerchants(list: readonly unknown[]): string[] {
+  return list.map((a) =>
+    typeof a === "string" ? a : Address.fromScAddress(a as xdr.ScAddress).toString(),
+  );
+}
+
 /** Reads the card's `info()` view via simulation (no signing, no fees). */
 export async function readCardInfo(
   rpcUrl: string,
   networkPassphrase: string,
   card: string,
 ): Promise<CardInfo> {
-  const raw = await simulateView<RawInfo>(rpcUrl, networkPassphrase, card, "info");
-  return {
-    owner: raw.owner,
-    signer: new Uint8Array(raw.signer),
-    token: raw.token,
-    policy: raw.policy,
-    state: raw.state as CardState,
-    period: raw.period,
-    remaining: raw.remaining,
-    balance: raw.balance,
-    allow_count: Number(raw.allow_count),
-  };
+  return normalizeInfo(await simulateView<RawCardInfo>(rpcUrl, networkPassphrase, card, "info"));
 }
 
 /** Reads the card's `merchants()` view via simulation. */
@@ -83,10 +109,5 @@ export async function readMerchants(
   networkPassphrase: string,
   card: string,
 ): Promise<string[]> {
-  const list = await simulateView<string[]>(rpcUrl, networkPassphrase, card, "merchants");
-  // `scValToNative` already renders `ScAddress` as a strkey; the guard keeps
-  // the reader honest if a future SDK hands back the raw XDR instead.
-  return list.map((a) =>
-    typeof a === "string" ? a : Address.fromScAddress(a as unknown as xdr.ScAddress).toString(),
-  );
+  return normalizeMerchants(await simulateView<unknown[]>(rpcUrl, networkPassphrase, card, "merchants"));
 }

@@ -1,5 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
-import { Keypair, Transaction, xdr } from "@stellar/stellar-sdk";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  Address,
+  Keypair,
+  Transaction,
+  contract,
+  nativeToScVal,
+  xdr,
+} from "@stellar/stellar-sdk";
 import { CardExactStellarScheme } from "../src/scheme.js";
 import { TRANSFER_TX_XDR } from "./fixtures/transfer-tx.js";
 
@@ -17,6 +24,10 @@ const reqs = (over: Partial<Record<string, unknown>> = {}) => ({
   maxTimeoutSeconds: 60,
   extra: { areFeesSponsored: true },
   ...over,
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("CardExactStellarScheme.validateRequirements", () => {
@@ -116,6 +127,102 @@ describe("CardExactStellarScheme.createPaymentPayload", () => {
 
     await expect(scheme.createPaymentPayload(2, reqs() as never)).rejects.toThrow(
       /unexpected signer\(s\) required/,
+    );
+  });
+});
+
+describe("CardExactStellarScheme.buildTransfer", () => {
+  /** A minimal AssembledTransaction stand-in with a controllable simulation. */
+  const fakeTx = (simulation: unknown) => ({
+    built: new Transaction(TRANSFER_TX_XDR, PASSPHRASE),
+    simulation,
+    needsNonInvokerSigningBy: vi.fn().mockReturnValueOnce([CARD]).mockReturnValue([]),
+    simulate: vi.fn().mockResolvedValue(undefined),
+  });
+
+  /** Stubs only `AssembledTransaction.build`, so `buildTransfer`'s body runs. */
+  const stubBuild = (scheme: CardExactStellarScheme, simulation: unknown) => {
+    const build = vi
+      .spyOn(contract.AssembledTransaction, "build")
+      .mockResolvedValue(fakeTx(simulation) as never);
+    vi.spyOn(scheme as any, "sign").mockResolvedValue(undefined as never);
+    vi.spyOn(scheme as any, "latestLedger").mockResolvedValue(1000 as never);
+    return build;
+  };
+
+  const okSimulation = { transactionData: {}, minResourceFee: "1", latestLedger: 100 };
+
+  it("invokes asset.transfer(card, payTo, amount) with address/address/i128 args", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    const build = stubBuild(scheme, okSimulation);
+
+    await scheme.createPaymentPayload(2, reqs() as never);
+
+    expect(build).toHaveBeenCalledTimes(1);
+    const opts = build.mock.calls[0]![0] as {
+      contractId: string;
+      method: string;
+      networkPassphrase: string;
+      args: xdr.ScVal[];
+    };
+    expect(opts.contractId).toBe(TOKEN);
+    expect(opts.method).toBe("transfer");
+    expect(opts.networkPassphrase).toBe(PASSPHRASE);
+    expect(opts.args).toHaveLength(3);
+
+    const expected = [
+      nativeToScVal(Address.fromString(CARD), { type: "address" }),
+      nativeToScVal(Address.fromString(MERCHANT), { type: "address" }),
+      nativeToScVal(10000n, { type: "i128" }),
+    ];
+    expect(opts.args.map((a) => a.toXDR("base64"))).toEqual(
+      expected.map((a) => a.toXDR("base64")),
+    );
+  });
+
+  it("rejects a failed simulation", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    stubBuild(scheme, { error: "boom" });
+
+    await expect(scheme.createPaymentPayload(2, reqs() as never)).rejects.toThrow(
+      /Stellar simulation failed: boom/,
+    );
+  });
+
+  it("rejects a simulation that needs a ledger entry restore", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    stubBuild(scheme, {
+      ...okSimulation,
+      restorePreamble: { transactionData: {}, minResourceFee: "1" },
+    });
+
+    await expect(scheme.createPaymentPayload(2, reqs() as never)).rejects.toThrow(
+      /requires a ledger entry restore/,
+    );
+  });
+
+  it("rejects a missing simulation", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    stubBuild(scheme, undefined);
+
+    await expect(scheme.createPaymentPayload(2, reqs() as never)).rejects.toThrow(
+      /simulation result is undefined/,
     );
   });
 });
