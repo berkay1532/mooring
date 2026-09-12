@@ -42,4 +42,24 @@ describe("mooring pay", () => {
     await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
     expect(out.join("\n")).toContain("cafe");
   });
+
+  it("prints a clean error and exits 1 on a malformed agent secret, without a stack trace", async () => {
+    const out: string[] = [];
+    process.env.AGENT_SECRET = "not-a-valid-secret";
+    const originalExitCode = process.exitCode;
+    const program = buildProgram({ stdout: (s: string) => out.push(s) } as never);
+    await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
+    expect(out.join("\n")).toBe("Invalid agent secret in $AGENT_SECRET");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = originalExitCode;
+  });
+
+  it("rejects an unknown --network value", async () => {
+    process.env.AGENT_SECRET = "SDCXRZMPIMR74JONSVNG7MQJS7SLQX2KTNKO5EIZHZLUFQYQ3JTT26SC";
+    const program = buildProgram({ stdout: () => {} } as never);
+    program.exitOverride();
+    await expect(
+      program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD, "--network", "stellar:bogus"]),
+    ).rejects.toThrow();
+  });
 });

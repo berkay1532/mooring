@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { Keypair } from "@stellar/stellar-sdk";
 import { getNetworkPassphrase, getRpcUrl } from "@x402/stellar";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   CardPolicyDenied,
   createMooringFetch,
@@ -74,7 +75,9 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
     .command("status")
     .description("Print a card's on-chain info and merchant allowlist")
     .requiredOption("--card <address>", "card contract address (C...)")
-    .option("--network <network>", "stellar:testnet | stellar:pubnet", "stellar:testnet")
+    .addOption(
+      new Option("--network <network>", "stellar network").choices(["stellar:testnet", "stellar:pubnet"]).default("stellar:testnet"),
+    )
     .option("--rpc <url>", "override the default RPC URL for the network")
     .option("--json", "print machine-readable JSON instead of a table")
     .action(async (opts: { card: string; network: StellarNetwork; rpc?: string; json?: boolean }) => {
@@ -102,7 +105,9 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
     .argument("<url>", "the x402-protected URL to request")
     .requiredOption("--card <address>", "card contract address (C...)")
     .option("--agent-secret-env <name>", "env var holding the agent's Stellar secret key", "AGENT_SECRET")
-    .option("--network <network>", "stellar:testnet | stellar:pubnet", "stellar:testnet")
+    .addOption(
+      new Option("--network <network>", "stellar network").choices(["stellar:testnet", "stellar:pubnet"]).default("stellar:testnet"),
+    )
     .option("--rpc <url>", "override the default RPC URL for the network")
     .option("--no-precheck", "skip the local policy pre-check before signing")
     .action(
@@ -123,7 +128,14 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
           process.exitCode = 2;
           return;
         }
-        const agent = Keypair.fromSecret(secret);
+        let agent: Keypair;
+        try {
+          agent = Keypair.fromSecret(secret);
+        } catch {
+          deps.stdout(`Invalid agent secret in $${secretEnvName}`);
+          process.exitCode = 1;
+          return;
+        }
         const fetchWithPayment = deps.createMooringFetch({
           card: opts.card,
           agent,
@@ -158,13 +170,33 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
 // Re-exported so callers building `--json` output against `status` can type the result.
 export type { CardInfo };
 
+/**
+ * Resolves a path through symlinks, falling back to a plain `path.resolve`
+ * when the path does not exist (e.g. under test) or cannot be read.
+ */
+function realOrResolved(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
 // Robust equivalent of `import.meta.url === \`file://${process.argv[1]}\``:
-// resolves both sides to real filesystem paths so it works regardless of
-// how the entrypoint was invoked (symlinked bin, relative path, etc.), and
-// so it never runs `parseAsync` when the module is only imported by tests.
+// resolves both sides through symlinks before comparing, so it works when the
+// CLI is invoked through its installed bin symlink (npm links `mooring` into
+// `node_modules/.bin`, which points at the package under `node_modules/@mooring/cli`,
+// itself a workspace symlink — `fileURLToPath(import.meta.url)` follows all of
+// that back to the real `dist/index.js`, but `process.argv[1]` does not unless
+// resolved the same way). Never runs `parseAsync` when the module is only imported.
 const isMainModule =
-  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realOrResolved(process.argv[1]);
 
 if (isMainModule) {
-  void buildProgram().parseAsync(process.argv);
+  void buildProgram()
+    .parseAsync(process.argv)
+    .catch((err: unknown) => {
+      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+      process.exitCode = 1;
+    });
 }
