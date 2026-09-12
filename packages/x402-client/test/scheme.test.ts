@@ -7,7 +7,7 @@ import {
   nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
-import { CardPolicyDenied } from "../src/denial.js";
+import { CardPolicyDenied, PaymentError } from "../src/denial.js";
 import { CardExactStellarScheme } from "../src/scheme.js";
 import { TRANSFER_TX_XDR } from "./fixtures/transfer-tx.js";
 
@@ -83,7 +83,10 @@ describe("CardExactStellarScheme.createPaymentPayload", () => {
     const out = await scheme.createPaymentPayload(2, reqs() as never);
 
     expect(build).toHaveBeenCalledWith(TOKEN, CARD, MERCHANT, 10000n);
-    expect(sign).toHaveBeenCalledWith(fakeTx, 1000 + Math.ceil(60 / 5));
+    // latest + max(2, ceil(60 / 6) - 2): a conservative 6 s ledger estimate
+    // with a 2-ledger margin, so the expiry can never exceed the window the
+    // facilitator computes from its own (Horizon-sampled) estimate.
+    expect(sign).toHaveBeenCalledWith(fakeTx, 1000 + 8);
     expect(fakeTx.simulate).toHaveBeenCalledTimes(1);
     expect(out.x402Version).toBe(2);
     expect(typeof (out.payload as { transaction: string }).transaction).toBe("string");
@@ -343,5 +346,125 @@ describe("CardExactStellarScheme enforcing simulation", () => {
 
     expect(err).not.toBeInstanceOf(CardPolicyDenied);
     expect(onDenial).not.toHaveBeenCalled();
+  });
+});
+
+describe("CardExactStellarScheme auth-entry expiration", () => {
+  /** Runs `createPaymentPayload` and reports the expiration it signed with. */
+  const expirationFor = async (maxTimeoutSeconds: number): Promise<number> => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    vi.spyOn(contract.AssembledTransaction, "build").mockResolvedValue({
+      built: new Transaction(TRANSFER_TX_XDR, PASSPHRASE),
+      simulation: { transactionData: {}, minResourceFee: "1", latestLedger: 100 },
+      needsNonInvokerSigningBy: vi.fn().mockReturnValueOnce([CARD]).mockReturnValue([]),
+      simulate: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    const sign = vi.spyOn(scheme as any, "sign").mockResolvedValue(undefined as never);
+    vi.spyOn(scheme as any, "latestLedger").mockResolvedValue(1000 as never);
+    await scheme.createPaymentPayload(2, reqs({ maxTimeoutSeconds }) as never);
+    return sign.mock.calls[0]![1] as number;
+  };
+
+  it("stays inside the window the facilitator derives from a 6 s ledger", async () => {
+    // The facilitator computes maxLedger = current + ceil(maxTimeoutSeconds /
+    // its own estimate) and rejects anything more than 2 ledgers beyond that
+    // (`invalid_exact_stellar_signature_expiration_too_far`). A slower ledger
+    // than the stock 5 s constant assumes — pubnet runs closer to 6 s — makes
+    // that window *smaller*, so the client aims below it. Shorter is always
+    // safe: the expiry only has to outlive settlement.
+    expect(await expirationFor(60)).toBe(1000 + 8);
+    expect(await expirationFor(120)).toBe(1000 + 18);
+  });
+
+  it("never asks for less than a 2-ledger margin", async () => {
+    expect(await expirationFor(10)).toBe(1000 + 2);
+    expect(await expirationFor(1)).toBe(1000 + 2);
+  });
+});
+
+describe("CardExactStellarScheme CAP-71 credential guard", () => {
+  /** An auth entry for `account`, recorded as legacy v1 or CAP-71 v2. */
+  const entryFor = (account: string, v2: boolean): xdr.SorobanAuthorizationEntry => {
+    const credentials = new xdr.SorobanAddressCredentials({
+      address: Address.fromString(account).toScAddress(),
+      nonce: xdr.Int64.fromString("7"),
+      signatureExpirationLedger: 0,
+      signature: xdr.ScVal.scvVoid(),
+    });
+    return new xdr.SorobanAuthorizationEntry({
+      credentials: v2
+        ? xdr.SorobanCredentials.sorobanCredentialsAddressV2(credentials)
+        : xdr.SorobanCredentials.sorobanCredentialsAddress(credentials),
+      rootInvocation: new xdr.SorobanAuthorizedInvocation({
+        function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+          new xdr.InvokeContractArgs({
+            contractAddress: Address.fromString(TOKEN).toScAddress(),
+            functionName: "transfer",
+            args: [],
+          }),
+        ),
+        subInvocations: [],
+      }),
+    });
+  };
+
+  /** A built transaction whose single operation carries `auth`. */
+  const stubBuiltWithAuth = (
+    scheme: CardExactStellarScheme,
+    auth: xdr.SorobanAuthorizationEntry[],
+  ) => {
+    vi.spyOn(contract.AssembledTransaction, "build").mockResolvedValue({
+      built: { operations: [{ type: "invokeHostFunction", auth }], toXDR: () => "AAAA" },
+      simulation: { transactionData: {}, minResourceFee: "1", latestLedger: 100 },
+      needsNonInvokerSigningBy: vi.fn().mockReturnValueOnce([CARD]).mockReturnValue([]),
+      simulate: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    vi.spyOn(scheme as any, "sign").mockResolvedValue(undefined as never);
+    vi.spyOn(scheme as any, "latestLedger").mockResolvedValue(1000 as never);
+  };
+
+  it("refuses to send a card entry the deployed facilitator cannot decode", async () => {
+    const onPaymentError = vi.fn();
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+      onPaymentError,
+    });
+    stubBuiltWithAuth(scheme, [entryFor(CARD, true)]);
+
+    const err = await scheme.createPaymentPayload(2, reqs() as never).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(PaymentError);
+    expect(err).toMatchObject({ kind: "rejected", detail: expect.stringContaining("ADDRESS_V2") });
+    expect(onPaymentError).toHaveBeenCalledWith(err);
+  });
+
+  it("accepts the legacy v1 entry the client asks for", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    stubBuiltWithAuth(scheme, [entryFor(CARD, false)]);
+    await expect(scheme.createPaymentPayload(2, reqs() as never)).resolves.toMatchObject({
+      x402Version: 2,
+    });
+  });
+
+  it("only guards the card's own entries", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    stubBuiltWithAuth(scheme, [entryFor(MERCHANT, true), entryFor(CARD, false)]);
+    await expect(scheme.createPaymentPayload(2, reqs() as never)).resolves.toMatchObject({
+      x402Version: 2,
+    });
   });
 });

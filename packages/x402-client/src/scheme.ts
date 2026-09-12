@@ -1,11 +1,10 @@
-import { Address, Keypair, contract, nativeToScVal, rpc } from "@stellar/stellar-sdk";
+import { Address, Keypair, contract, nativeToScVal, rpc, xdr } from "@stellar/stellar-sdk";
 import type {
   PaymentPayloadResult,
   PaymentRequirements,
   SchemeNetworkClient,
 } from "@x402/core/types";
 import {
-  DEFAULT_ESTIMATED_LEDGER_SECONDS,
   findDefaultAsset,
   getNetworkPassphrase,
   getRpcUrl,
@@ -16,6 +15,33 @@ import { CARD_ERROR_CODES, CardPolicyDenied, PaymentError, classifyContractError
 import { signCardAuthEntries } from "./signer.js";
 
 export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
+
+/**
+ * Seconds per ledger assumed when turning `maxTimeoutSeconds` into an auth
+ * expiration. Deliberately slower than `@x402/stellar`'s 5 s constant: the
+ * facilitator derives its own ceiling from a Horizon sample, and a slower
+ * ledger makes that ceiling *smaller*. Assuming 6 s keeps the client below it.
+ */
+const CONSERVATIVE_LEDGER_SECONDS = 6;
+/** Ledgers subtracted from (and floored at) the derived expiration. */
+const LEDGER_MARGIN = 2;
+
+/**
+ * How far ahead the card's auth entry may be valid.
+ *
+ * The facilitator computes `maxLedger = currentLedger + ceil(maxTimeoutSeconds
+ * / estimatedLedgerSeconds)` and rejects an entry more than 2 ledgers beyond
+ * it (`invalid_exact_stellar_signature_expiration_too_far`). Its estimate is
+ * sampled from Horizon, so it can be slower than the 5 s the stock client
+ * assumes — on pubnet it usually is. Aiming low costs nothing: the expiry only
+ * has to outlive settlement, and a shorter one is never rejected.
+ */
+export function authExpirationLedgers(maxTimeoutSeconds: number): number {
+  return Math.max(
+    LEDGER_MARGIN,
+    Math.ceil(maxTimeoutSeconds / CONSERVATIVE_LEDGER_SECONDS) - LEDGER_MARGIN,
+  );
+}
 
 export interface CardSchemeOptions {
   /** Card contract address (C...). The card is the payer. */
@@ -87,18 +113,17 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
   ): Promise<PaymentPayloadResult> {
     this.validateRequirements(req);
     const tx = await this.buildTransfer(req.asset, this.card, req.payTo, BigInt(req.amount));
+    this.assertLegacyCardCredentials(tx);
 
     const pending = tx.needsNonInvokerSigningBy();
     if (!pending.includes(this.card) || pending.length > 1) {
       throw new Error(`Expected to sign with [${this.card}], but got [${pending.join(", ")}]`);
     }
 
-    // The stock client samples Horizon for the real ledger close time; the 5 s
-    // constant avoids that dependency and lands on the same 12 ledgers for the
-    // usual maxTimeoutSeconds = 60.
-    const maxLedger =
-      (await this.latestLedger()) +
-      Math.ceil(req.maxTimeoutSeconds / DEFAULT_ESTIMATED_LEDGER_SECONDS);
+    // The stock client samples Horizon for the real ledger close time; this
+    // avoids that dependency by assuming a slower ledger than it would find,
+    // which is the safe direction (see `authExpirationLedgers`).
+    const maxLedger = (await this.latestLedger()) + authExpirationLedgers(req.maxTimeoutSeconds);
     await this.sign(tx, maxLedger);
 
     // Re-simulate so the transaction carries the signed auth entries and the
@@ -149,6 +174,37 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
       contractError: parsed.code,
       detail: text.split("\n")[0],
     });
+  }
+
+  /**
+   * Refuses to build a payment whose card auth entry the deployed facilitator
+   * cannot decode.
+   *
+   * `buildTransfer` asks the RPC to record legacy v1 `ADDRESS` credentials
+   * (`useUpgradedAuth: false`) because OZ Channels rejects CAP-71 `ADDRESS_V2`
+   * as `invalid_exact_stellar_payload_malformed`. That flag is transitional —
+   * it becomes a no-op from protocol 28 — and an RPC or SDK that ignores it
+   * would otherwise produce a payload that is signed, sent and refused with a
+   * reason that says nothing about why. This checks what was actually
+   * recorded, and fails before the agent key signs anything.
+   */
+  private assertLegacyCardCredentials(tx: contract.AssembledTransaction<unknown>): void {
+    const op = tx.built?.operations?.[0] as
+      | { auth?: xdr.SorobanAuthorizationEntry[] }
+      | undefined;
+    for (const entry of op?.auth ?? []) {
+      const credentials = entry.credentials;
+      if (credentials.type !== "sorobanCredentialsAddressV2") continue;
+      if (Address.fromScAddress(credentials.value.address).toString() !== this.card) continue;
+      const error = new PaymentError({
+        kind: "rejected",
+        detail:
+          "RPC returned CAP-71 ADDRESS_V2 credentials; the deployed OZ Channels " +
+          "facilitator rejects them (see docs/x402-integration.md, CAP-71 note)",
+      });
+      this.onPaymentError?.(error);
+      throw error;
+    }
   }
 
   // --- collaborators (protected so tests can stub them) ---

@@ -14,8 +14,9 @@
     "test": "vitest run",
     "e2e": "tsx e2e/testnet.e2e.ts"
   },
+  "//": "@stellar/stellar-sdk is pinned exactly: CardExactStellarScheme records legacy (v1) auth credentials via `useUpgradedAuth: false`, a transitional flag the deployed OZ Channels facilitator still requires (see docs/x402-integration.md, CAP-71 note). An SDK that changes how auth credentials are recorded would silently change the payload; the client also asserts the recorded format at build time.",
   "dependencies": {
-    "@stellar/stellar-sdk": "^17.0.1",
+    "@stellar/stellar-sdk": "17.0.1",
     "@x402/core": "2.25.0",
     "@x402/fetch": "2.25.0",
     "@x402/stellar": "2.25.0"
