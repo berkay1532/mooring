@@ -57,7 +57,12 @@ Step by step:
    `asset.transfer(card, payTo, amount)` — the card contract address is the `from` argument, so
    the card is the payer — and simulates it.
 4. **Sign.** `signCardAuthEntries` signs the card's auth entry with the agent ed25519 key through
-   a custom `authorizeEntry`, with `expiration = latestLedger + ceil(maxTimeoutSeconds / 5)`.
+   a custom `authorizeEntry`, with
+   `expiration = latestLedger + max(2, ceil(maxTimeoutSeconds / 6) - 2)`. The facilitator derives
+   its own ceiling from a Horizon-sampled ledger time and refuses anything more than two ledgers
+   past it, so the client assumes a *slower* ledger (6 s) than the stock client's 5 s constant and
+   keeps a two-ledger margin: the expiry only has to outlive settlement, and shorter is never
+   rejected.
 5. **Enforcing simulation.** The transaction is re-simulated with the signed entry in place. Now
    the host actually runs the card's `__check_auth`, so a payment the policy refuses fails
    *here* — locally, before any facilitator sees it and before any fee is paid.
@@ -91,15 +96,18 @@ authorization path. Full reasoning in `docs/spike-w1-auth-mechanism.md`.
 
 ## Denial semantics
 
-Every refusal surfaces as one typed error, `CardPolicyDenied`, carrying a `reason`, the `stage`
-it was caught at, and — where the contract spoke — `contractError`.
+A refusal by the **card's policy** surfaces as `CardPolicyDenied`, carrying a `reason`, the
+`stage` it was caught at, and — where the contract spoke — `contractError`. That error means one
+thing and only that thing: *the card said no*. Every other way a payment can fail to deliver the
+resource is a `PaymentError` (see [below](#paymenterror-everything-that-is-not-the-cards-verdict)),
+so a caller can treat `CardPolicyDenied` as a policy decision without checking anything else.
 
 | Stage | How it is detected | What the client throws | Reached the network? | Retryable |
 |---|---|---|---|---|
 | `precheck` | local mirror of the policy over `info()` + `merchants()`, before signing | `CardPolicyDenied(reason, "precheck")` | two read-only simulations, nothing signed | Not automatically. The card must change (owner action, funding, or the budget period rolling over) before the same payment can succeed. |
 | `simulate` | the client's own **enforcing** simulation runs the card's `__check_auth`; the host diagnostic `["failed account authentication with error", <card>, Error(Contract, #N)]` names the code | `CardPolicyDenied(reason, "simulate", { contractError })` | no — the payload never leaves the process, no fee is paid | Not automatically. This is the card's own verdict. |
 | `verify` | the facilitator answered the paid request with another 402; the client re-evaluates the card and parses any contract error out of the response | `CardPolicyDenied(reason, "verify", { contractError?, detail })` | yes — the payload reached the facilitator; nothing was submitted on-chain | Not automatically. |
-| `settle` | the settlement response came back `success: false` | `CardPolicyDenied(reason, "settle", { contractError?, detail: "… tx=<hash>" })` | yes — a transaction was submitted and failed | Not automatically. This is the concurrency case (see Known limits); whether a caller re-tries is the caller's decision, made once it knows the reason. |
+| `settle` | the settlement response came back `success: false`; the facilitator did not observe success within its window, so the client reconciles the hash against the RPC before deciding, and reports a denial only for a transaction the ledger actually rejected whose diagnostics name the card | `CardPolicyDenied(reason, "settle", { contractError?, detail: "… tx=<hash>" })` | yes — a transaction was submitted and failed | Not automatically. This is the concurrency case (see Known limits); whether a caller re-tries is the caller's decision, made once it knows the reason. |
 
 **Denied payments are never retried automatically.** `createMooringFetch` rejects; it does not
 re-attempt the request, and it never returns a bare 402 for a payment that was denied.
@@ -118,7 +126,45 @@ Reasons (`DenialReason`):
 | `over_budget` | #8 | amount above what is left in the current period |
 | `wrong_token` | — | the 402 asks for an asset that is not the card's token (pre-check only) |
 | `insufficient_balance` | — | the card's USDC balance is below the amount (pre-check only) |
-| `unknown` | — | a denial we could not classify, including "the card could not be read" at pre-check |
+| `unknown` | — | the card refused, but the client could not read *which* rule — it is not a policy verdict, only an unclassified one. It covers a card that could not be read at pre-check, a facilitator `simulation_failed` the re-run pre-check no longer explains (typically a race), and an on-chain failure whose diagnostics do not name the card. |
+
+### `PaymentError` — everything that is not the card's verdict
+
+```ts
+class PaymentError extends Error {
+  kind: "rejected" | "unconfirmed";
+  transaction?: string;  // the settlement hash, when one exists
+  detail?: string;       // the facilitator's reason, verbatim where it gave one
+}
+```
+
+| `kind` | What happened | Was the card debited? | What to do |
+|---|---|---|---|
+| `rejected` | the facilitator (or the transport) refused the payment **before submitting** it: `invalid_exact_stellar_payload_malformed`, `…_fee_exceeds_maximum`, `…_signature_expiration_too_far`, a 5xx, a transport failure — or the client's own CAP-71 guard, before the agent key signed anything | no — nothing reached the ledger | fix the payload or the configuration; retrying the same payment unchanged will fail the same way |
+| `unconfirmed` | the settlement state is unknown or contradictory: the server reported a failure for a transaction the ledger **accepted**, or the transaction was never observed within the reconciliation window, or the server answered a bare `402` with neither a `PAYMENT-REQUIRED` nor a `PAYMENT-RESPONSE` header | **possibly** — the resource was not delivered either way | reconcile `transaction` against the network (Horizon/RPC `getTransaction`) and check the card's `spent` before retrying; when there is no hash, the card's `info()` is the record that settles it |
+
+Why `unconfirmed` exists: the facilitator answers `settle_exact_stellar_transaction_failed` both
+for a transaction the ledger rejected **and** for one whose 60-second poll simply ran out, and
+`@x402/express` answers a bare `402 {}` from its own settlement path, *after* the facilitator may
+already have submitted. Neither is evidence that the payment did not happen, so neither is ever
+reported as a policy denial. When a settle failure carries a hash the client asks the RPC directly
+(~10 s, one read per second) and only then decides: a transaction the ledger accepted is
+`unconfirmed`, never a denial of the card's.
+
+Both errors are thrown by `createMooringFetch` and never swallowed; `onDenial` fires for
+`CardPolicyDenied` and `onPaymentError` for `PaymentError`.
+
+```ts
+try {
+  const res = await fetchWithPayment(url);
+} catch (err) {
+  if (err instanceof CardPolicyDenied) console.error(err.reason, "at", err.stage);
+  else if (err instanceof PaymentError && err.kind === "unconfirmed") {
+    console.error("reconcile", err.transaction ?? "(no hash)", err.detail);
+  } else if (err instanceof PaymentError) console.error("refused:", err.detail);
+  else throw err;
+}
+```
 
 ## Server setup
 
@@ -168,8 +214,12 @@ try {
 ```
 
 `createMooringClient(opts)` returns the underlying `x402Client` if you want to wire it into
-something other than `fetch`. Note that one client instance is **single-flight** (see Known
-limits); `createMooringFetch` builds a fresh one per call, so it is safe to share.
+something other than `fetch`. Two caveats. One instance is **single-flight** (see Known limits);
+`createMooringFetch` builds a fresh one per call, so it is safe to share. And the returned
+`x402Client` is stock x402: it throws x402's own generic errors and hands back bare `402`
+responses. Used directly, the **hooks are the only place the typed reason appears** — pass
+`onDenial` and `onPaymentError` and read them there. Turning those into thrown `CardPolicyDenied`
+/ `PaymentError` is what `createMooringFetch` adds.
 
 Options:
 
@@ -181,6 +231,7 @@ Options:
 | `rpcUrl` | testnet default; **required** on pubnet | RPC endpoint |
 | `precheck` | `true` | run the local policy mirror before signing |
 | `onDenial` | — | called with the `CardPolicyDenied` at every stage |
+| `onPaymentError` | — | called with the `PaymentError` for every non-policy failure |
 | `fetch` | `globalThis.fetch` | transport (`createMooringFetch` only) |
 
 x402's own USD-based spend controls are switched off (`spendControls: false`): the card enforces
@@ -248,6 +299,19 @@ are valid on-chain and carry the same agent signature; only the signed preimage 
 the address). **This flag is transitional** — it becomes a no-op from protocol 28, so OZ has to
 accept `ADDRESS_V2` first; remove it then. The full evidence is in `docs/testnet.md`.
 
+Because the workaround depends on what the RPC and the SDK actually record, it is guarded on both
+sides:
+
+- **A runtime assertion.** After building the transfer, the scheme inspects every auth entry
+  addressed to the card and throws `PaymentError("rejected", "RPC returned CAP-71 ADDRESS_V2
+  credentials…")` if the credentials came back as `ADDRESS_V2` — before the agent key signs
+  anything. Without it, a payload recorded in the wrong format is signed, sent, and refused as
+  `invalid_exact_stellar_payload_malformed`, a reason that says nothing about why.
+- **An exact SDK pin.** `@stellar/stellar-sdk` is pinned to **`17.0.1`** (no `^`) in
+  `packages/x402-client`, `packages/cli` and `scripts/agent` for as long as the workaround stands,
+  since a minor SDK release could change how auth credentials are recorded. Drop the pin together
+  with the flag and the guard.
+
 ## Known limits
 
 - **The pre-check is advisory, not authoritative.** It is a local mirror of the policy, evaluated
@@ -257,10 +321,11 @@ accept `ADDRESS_V2` first; remove it then. The full evidence is in `docs/testnet
   (`precheck: false`, `--no-precheck`) removes a convenience, not a control.
 - **Concurrent payments can both pass verify, and one will fail at settle.** Two payments
   simulated against the same card state both look affordable; the second executes against the
-  state the first already wrote and is rejected on-chain. The client reports that as
-  `CardPolicyDenied` at stage `settle` — a policy denial, not a transient error. This is visible
-  on testnet in the D1 race evidence (`docs/testnet.md`): the second transaction failed with
-  contract error #8 `OverBudget` and had no effect on the card's `spent`.
+  state the first already wrote and is rejected on-chain. The client reconciles the settlement hash
+  with the RPC and, for a transaction the ledger really did reject whose diagnostics name the card,
+  reports `CardPolicyDenied` at stage `settle` — a policy denial, not a transient error. This is
+  visible on testnet in the D1 race evidence (`docs/testnet.md`): the second transaction failed
+  with contract error #8 `OverBudget` and had no effect on the card's `spent`.
 - **One `createMooringClient` instance is single-flight.** x402's hook contexts carry no request
   identity, so a denial recorded by one in-flight payment cannot be told apart from another's.
   Build one client per payment — or use `createMooringFetch`, which creates a fresh client and
