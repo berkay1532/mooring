@@ -32,3 +32,9 @@ CLAUDE.local.md
 # scripts
 scripts/agent/node_modules
 scripts/agent/.env
+
+# node workspaces
+**/node_modules
+**/dist
+**/.env
+!**/.env.example

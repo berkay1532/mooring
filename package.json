@@ -1,0 +1,13 @@
+{
+  "name": "mooring-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "examples/*", "scripts/agent"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "e2e": "npm run e2e -w @mooring/x402-client"
+  },
+  "engines": { "node": ">=20" }
+}

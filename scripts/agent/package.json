@@ -4,9 +4,11 @@
   "type": "module",
   "scripts": {
     "pay": "tsx src/pay.ts",
-    "race": "tsx src/race.ts"
+    "race": "tsx src/race.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mooring/x402-client": "0.1.0",
     "@stellar/stellar-sdk": "^17.0.1",
     "dotenv": "^16.4.5"
   },
