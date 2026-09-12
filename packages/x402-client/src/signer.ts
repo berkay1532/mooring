@@ -23,8 +23,10 @@ export async function signCardAuthEntries(
   agent: Keypair,
   expirationLedger: number,
 ): Promise<void> {
+  // `payload` is already the `Uint8Array` `Keypair.sign` takes, and the result
+  // is one too: no node `Buffer` is involved, so the client signs in a browser.
   const signPayload: SigningCallback = async (_preimage, payload) => ({
-    signature: Uint8Array.from(agent.sign(Buffer.from(payload))),
+    signature: agent.sign(payload),
     publicKey: agent.publicKey(),
   });
 

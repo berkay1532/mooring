@@ -90,3 +90,13 @@ describe("normalizeMerchants", () => {
     expect(normalizeMerchants([])).toEqual([]);
   });
 });
+
+/**
+ * Compile-time guard (checked by `npm run typecheck`): the published card
+ * types must not mention node's `Buffer`, or the package cannot be consumed
+ * from a browser build. `scValToNative` hands back a `Buffer` at runtime,
+ * which is a `Uint8Array` and so still assignable.
+ */
+type WithoutBuffer<T> = [Extract<T, Buffer>] extends [never] ? true : false;
+const _signerIsBufferFree: WithoutBuffer<RawCardInfo["signer"]> = true;
+void _signerIsBufferFree;

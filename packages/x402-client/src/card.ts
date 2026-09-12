@@ -24,7 +24,7 @@ export interface CardInfo {
 /** `CardInfo` as `scValToNative` hands it back, before normalization. */
 export type RawCardInfo = {
   owner: string;
-  signer: Buffer | Uint8Array;
+  signer: Uint8Array;
   token: string;
   policy: CardPolicy;
   state: number;
@@ -59,7 +59,9 @@ async function simulateView<T>(
 
 /**
  * Normalizes a raw `info()` result into `CardInfo`: `signer` becomes a
- * `Uint8Array` (it arrives as a node `Buffer`), `allow_count` a `number`, and
+ * plain `Uint8Array` (`scValToNative` hands back a node `Buffer`, which is one
+ * — copying it keeps node's type out of the published API), `allow_count` a
+ * `number`, and
  * `state` is range-checked before it is narrowed. Every other field is already
  * the `bigint` the contract declared, and is passed through untouched.
  *

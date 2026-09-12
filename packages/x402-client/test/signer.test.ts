@@ -31,7 +31,43 @@ function unsignedEntry(card: string, token: string, to: string, amount: bigint):
   });
 }
 
+/** Builds the fake AssembledTransaction both tests sign through. */
+function fakeTxFor(entry: xdr.SorobanAuthorizationEntry, passphrase: string) {
+  const authSlot: { auth: xdr.SorobanAuthorizationEntry[] } = { auth: [entry] };
+  const tx = {
+    built: { operations: [authSlot] },
+    options: { networkPassphrase: passphrase },
+    signAuthEntries: async (opts: { authorizeEntry?: Function }) => {
+      // emulate the SDK: call the custom authorizeEntry with 4 args
+      authSlot.auth[0] = await opts.authorizeEntry!(entry, undefined, 123456, passphrase);
+    },
+  } as unknown as Parameters<typeof signCardAuthEntries>[0];
+  return { tx, authSlot };
+}
+
 describe("signCardAuthEntries", () => {
+  it("signs without a global Buffer, so the client runs in a browser", async () => {
+    const agent = Keypair.random();
+    const card = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
+    const token = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
+    const passphrase = "Test SDF Network ; September 2015";
+    const entry = unsignedEntry(card, token, Keypair.random().publicKey(), 10_000n);
+    const { tx, authSlot } = fakeTxFor(entry, passphrase);
+
+    const realBuffer = globalThis.Buffer;
+    try {
+      // @ts-expect-error deliberately removing the Node global
+      delete globalThis.Buffer;
+      await signCardAuthEntries(tx, card, agent, 123456);
+    } finally {
+      globalThis.Buffer = realBuffer;
+    }
+
+    const creds = (authSlot.auth[0]!.credentials as any).address as xdr.SorobanAddressCredentials;
+    expect(creds.signatureExpirationLedger).toBe(123456);
+    expect(((creds.signature as any).vec as xdr.ScVal[]).length).toBe(1);
+  });
+
   it("signs entries addressed to the card with the agent key and encodes Vec[{public_key, signature}]", async () => {
     const agent = Keypair.random();
     const card = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
