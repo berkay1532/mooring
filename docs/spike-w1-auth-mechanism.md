@@ -125,6 +125,12 @@ Measured 2026-09-09: minResourceFee = 33926 stroops → within the 50 000 defaul
 Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops → within the
 50 000 default ceiling.
 
+OZ Channels testnet accepted a card payment at `max_fee` = 51 175 stroops on 2026-09-12
+(settlement tx `bc1b78eb2c0f4112d47f8faed70f608429a383d38a24f67ddda72f64453ccbba`, `fee_charged`
+38 773) — above the 50 000-stroop library default, so the facilitator's configured ceiling is
+higher than the default the measurements above were compared against. The open question from W1
+is closed: custom-account auth fits inside OZ's fee ceiling.
+
 Headroom is thin at a full allowlist: 49 380 / 50 000 stroops leaves only ~620 stroops (~1.2%)
 of margin, down from the ~32% margin measured with 1 merchant. The measurement stayed within the
 ceiling, so the "reduce writes" fallback mentioned above (pack period fields, conditional TTL
