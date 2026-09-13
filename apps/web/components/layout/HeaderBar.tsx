@@ -15,7 +15,11 @@ export function HeaderBar() {
   const onCards = pathname?.startsWith("/cards") ?? false;
 
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-text-hi/[0.07] bg-bg-raised/60 px-6 py-4 sm:px-8">
+    // `flex-wrap`: below ~420px the wordmark, the two nav links and the wallet
+    // badge no longer fit on one line, and without it the badge pushed the
+    // document ~60px wider than the viewport (caught by the 400px e2e smoke).
+    // It has no effect at any width where the row already fits.
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-text-hi/[0.07] bg-bg-raised/60 px-6 py-4 sm:px-8">
       <div className="flex items-center gap-6">
         <span className="font-display text-lg tracking-[0.06em] text-text-hi">MOORING</span>
         <nav className="flex items-center gap-5">
