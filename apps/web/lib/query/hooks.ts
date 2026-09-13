@@ -10,7 +10,13 @@ import { config } from "../config";
 import { keys } from "./keys";
 
 export { NOT_CONFIRMED_TITLE, useContractAction } from "./action";
-export type { ActionState, BuiltTransaction, ContractActionOptions, ContractActionResult } from "./action";
+export type {
+  ActionState,
+  BuiltTransaction,
+  ContractActionOptions,
+  ContractActionResult,
+  TxDetails,
+} from "./action";
 
 /**
  * `document.visibilityState` guard for the 10 s poll interval (spec §4.1):

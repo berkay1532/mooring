@@ -67,6 +67,7 @@ import { CARD_ERRORS } from "@mooring/x402-client";
 import { addCard } from "../../lib/prefs";
 import { config } from "../../lib/config";
 import { contractInstanceKey, deriveCardAddress, saltBytes } from "../../lib/chain/derive";
+import { describeTransaction } from "../../lib/query/action";
 import { useCardInfo, useCards, useContractAction, useMerchants } from "../../lib/query/hooks";
 import { keys } from "../../lib/query/keys";
 
@@ -105,6 +106,32 @@ function realTx(): Transaction {
 }
 function realTxXdr(): string {
   return realTx().toXDR();
+}
+
+/**
+ * A real SAC `transfer(OWNER → CARD, 1.5 USDC)` envelope — exactly
+ * `buildFundTransfer`'s shape, captured from the builder itself. Kept as XDR
+ * rather than rebuilt here because js-xdr cannot serialize a string function
+ * name under jsdom (Node `Buffer` vs the jsdom realm's `Uint8Array`), the
+ * same realm pitfall `lib/chain/derive.ts` documents.
+ */
+const TRANSFER_XDR =
+  "AAAAAgAAAACSluZl5yRENO5nJlaaA4dJPkzQdlfsaJnWGzUEEskkxQAAAGQAAAAAAAAAZQAAAAEAAAAAAAAAAAAAAABqplCGAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABUEXNXsBymnaP1a0CUFhS308Cjc6DDlrFIgm6SEg7LwEAAAAIdHJhbnNmZXIAAAADAAAAEgAAAAAAAAAAkpbmZeckRDTuZyZWmgOHST5M0HZX7GiZ1hs1BBLJJMUAAAASAAAAAW5yeQ41KjSRQDvSYt4vxJHz+oW0CaBiZOndIjrFJeyfAAAACgAAAAAAAAAAAAAAAADk4cAAAAAAAAAAAAAAAAA=";
+
+function transferTx(): Transaction {
+  return TransactionBuilder.fromXDR(TRANSFER_XDR, PASSPHRASE) as Transaction;
+}
+
+/** A duck-typed `AssembledTransaction` wrapping a real built transaction. */
+function assembledAround(built: Transaction): AssembledTransaction<unknown> {
+  const fake = {
+    built,
+    simulation: { transactionData: {} },
+    simulate: vi.fn(async function (this: unknown) {
+      return this;
+    }),
+  };
+  return fake as unknown as AssembledTransaction<unknown>;
 }
 
 function makeWallet(signTransaction: Wallet["signTransaction"]): Wallet {
@@ -328,6 +355,54 @@ describe("useContractAction", () => {
     expect(result.current.state).toBe("confirmed");
   });
 
+  it("exposes the signing details of both transaction shapes, from `preparing` onward", async () => {
+    vi.useFakeTimers();
+    const signTransaction = vi.fn(async () => ({ signedTxXdr: realTxXdr() }));
+    walletValue = { wallet: makeWallet(signTransaction), networkPassphrase: PASSPHRASE };
+    sendTransaction.mockResolvedValue({ status: "PENDING", hash: "cafebabe", latestLedger: 1, latestLedgerCloseTime: 1 });
+    getTransaction.mockResolvedValue({ status: "SUCCESS" });
+
+    const plainTx = transferTx();
+    const { result } = renderHook(
+      () => useContractAction(async () => plainTx, { invalidates: () => [] }),
+      { wrapper },
+    );
+    expect(result.current.details).toBeNull();
+
+    act(() => {
+      void result.current.run({});
+    });
+    await advance(0);
+
+    // The classic, hand-built fund transfer.
+    expect(result.current.details).toEqual({
+      contract: config.usdc,
+      fn: "transfer",
+      args: [
+        { name: "from", value: OWNER },
+        { name: "to", value: CARD },
+        { name: "amount", value: "15000000" },
+      ],
+      xdr: TRANSFER_XDR,
+    });
+    await advance(1000);
+
+    // The same decode for a bindings `AssembledTransaction`, read off `built`.
+    expect(describeTransaction(assembledAround(transferTx()))).toEqual({
+      contract: config.usdc,
+      fn: "transfer",
+      args: [
+        { name: "from", value: OWNER },
+        { name: "to", value: CARD },
+        { name: "amount", value: "15000000" },
+      ],
+      xdr: TRANSFER_XDR,
+    });
+
+    // A transaction it cannot read never breaks a write.
+    expect(describeTransaction({ toXDR: () => { throw new Error("nope"); } } as unknown as Transaction)).toBeNull();
+  });
+
   it("reset() returns to idle and clears hash/error", async () => {
     const signTransaction = vi.fn(async () => {
       throw { code: -4 };
@@ -348,6 +423,7 @@ describe("useContractAction", () => {
     expect(result.current.state).toBe("idle");
     expect(result.current.hash).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(result.current.details).toBeNull();
   });
 
   it("wallet === null fails immediately with a typed 'connect a wallet' error", async () => {

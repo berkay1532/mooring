@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
+import { Address, TransactionBuilder, scValToNative, type Transaction, type xdr } from "@stellar/stellar-sdk";
 import type { AssembledTransaction } from "@stellar/stellar-sdk/contract";
 import { Api } from "@stellar/stellar-sdk/rpc";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
@@ -36,6 +36,22 @@ export interface ContractActionOptions<TArgs> {
   onConfirmed?: (hash: string) => void;
 }
 
+/**
+ * What the owner is about to sign, in the form spec §7 asks for: the invoked
+ * contract and function, the arguments in human-readable form, and the raw
+ * transaction envelope. Derived from the assembled transaction itself, so it
+ * can never drift from what the wallet is handed.
+ */
+export interface TxDetails {
+  /** The invoked contract's address (`C…`). Empty if the transaction carries no contract call. */
+  contract: string;
+  /** The invoked function's name. Empty if the transaction carries no contract call. */
+  fn: string;
+  args: Array<{ name: string; value: string }>;
+  /** The unsigned transaction envelope, base64 XDR. */
+  xdr: string;
+}
+
 export interface ContractActionResult<TArgs> {
   /** Starts the action. A no-op while one is already in flight. */
   run(args: TArgs): Promise<void>;
@@ -43,8 +59,94 @@ export interface ContractActionResult<TArgs> {
   /** The submitted transaction's hash, once known. Kept through `failed` so a timed-out or failed action can still be looked up. */
   hash: string | null;
   error: TranslatedError | null;
-  /** Returns to `idle`, clearing `hash` and `error`. */
+  /**
+   * What this action assembled, from `preparing` onward — the disclosure
+   * `TxStatus` shows before the wallet prompt. `null` while idle, or if the
+   * transaction could not be decoded.
+   */
+  details: TxDetails | null;
+  /** Returns to `idle`, clearing `hash`, `error` and `details`. */
   reset(): void;
+}
+
+/**
+ * Parameter names for the calls this app builds, so the disclosure can label
+ * an argument instead of numbering it. Taken from the contracts themselves
+ * (`contracts/card/src/lib.rs`, `contracts/factory/src/lib.rs`) and SEP-41's
+ * `transfer`. Anything not listed falls back to `arg N`.
+ */
+const ARG_NAMES: Record<string, readonly string[]> = {
+  transfer: ["from", "to", "amount"],
+  create_card: ["owner", "signer", "token", "policy", "label", "salt"],
+  set_label: ["label"],
+  set_policy: ["policy"],
+  set_signer: ["signer"],
+  add_merchant: ["merchant"],
+  remove_merchant: ["merchant"],
+  withdraw: ["amount"],
+};
+
+function hex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * A one-line rendering of a decoded argument: integers as decimals, byte
+ * arrays as hex, structs (a policy) as compact JSON, addresses and strings
+ * as themselves.
+ */
+function renderValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Uint8Array) return hex(value);
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value, (_key, v: unknown) =>
+        typeof v === "bigint" ? v.toString() : v instanceof Uint8Array ? hex(v) : v,
+      );
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+/**
+ * Describes what a built transaction actually invokes, for the pre-signature
+ * disclosure. Handles both shapes a builder can return: a bindings
+ * `AssembledTransaction` (read through its `built` transaction) and the
+ * hand-built classic `Transaction` the fund path produces — both carry a
+ * single `invokeHostFunction` operation, so one decode serves them.
+ *
+ * Never throws: a transaction it cannot read yields `null` (or, for a
+ * non-invocation operation, the envelope with empty contract/function), so a
+ * disclosure can never break a write.
+ */
+export function describeTransaction(tx: BuiltTransaction): TxDetails | null {
+  try {
+    const built = isAssembledTransaction(tx) ? (tx.built as Transaction | undefined) : tx;
+    if (!built) return null;
+    const envelope = built.toXDR();
+    const op = built.operations?.[0];
+    const func = op?.type === "invokeHostFunction" ? op.func : undefined;
+    if (!func || func.type !== "hostFunctionTypeInvokeContract") {
+      return { contract: "", fn: "", args: [], xdr: envelope };
+    }
+    const invoke = func.invokeContract;
+    const fn = invoke.functionName.toString();
+    const names = ARG_NAMES[fn] ?? [];
+    return {
+      contract: Address.fromScAddress(invoke.contractAddress).toString(),
+      fn,
+      args: invoke.args.map((arg: xdr.ScVal, i: number) => ({
+        name: names[i] ?? `arg ${i + 1}`,
+        value: renderValue(scValToNative(arg)),
+      })),
+      xdr: envelope,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -148,6 +250,7 @@ export function useContractAction<TArgs>(
   const [state, setState] = useState<ActionState>("idle");
   const [hash, setHash] = useState<string | null>(null);
   const [error, setError] = useState<TranslatedError | null>(null);
+  const [details, setDetails] = useState<TxDetails | null>(null);
 
   const inFlightRef = useRef(false);
 
@@ -201,6 +304,7 @@ export function useContractAction<TArgs>(
       if (mountedRef.current) {
         setError(null);
         setHash(null);
+        setDetails(null);
         setState("preparing");
       }
 
@@ -245,6 +349,11 @@ export function useContractAction<TArgs>(
           }
         }
         if (!mountedRef.current) return;
+
+        // Spec §7: the owner sees exactly what is about to be signed —
+        // contract, function, arguments and the raw envelope — decoded from
+        // the assembled transaction, not from what the caller meant to build.
+        setDetails(describeTransaction(tx));
 
         // --- signing --------------------------------------------------------
         setState("signing");
@@ -334,7 +443,8 @@ export function useContractAction<TArgs>(
     setState("idle");
     setHash(null);
     setError(null);
+    setDetails(null);
   }, []);
 
-  return { run, state, hash, error, reset };
+  return { run, state, hash, error, details, reset };
 }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TxStatus } from "../../components/ui/TxStatus";
@@ -89,5 +89,44 @@ describe("TxStatus", () => {
     render(<TxStatus state="failed" error={{ title: "Failed", next: "Fix" }} />);
     expect(screen.queryByRole("button", { name: "Fix" })).not.toBeInTheDocument();
     expect(screen.getByText("Fix")).toBeInTheDocument();
+  });
+
+  it("renders the transaction details disclosure: contract, function, args and the envelope XDR", () => {
+    render(
+      <TxStatus
+        state="signing"
+        details={{
+          contract: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+          fn: "transfer",
+          args: [
+            { name: "from", value: "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD" },
+            { name: "amount", value: "15000000" },
+          ],
+          xdr: "AAAAAgAAAAC=",
+        }}
+      />,
+    );
+
+    const disclosure = screen.getByTestId("tx-details");
+    expect(disclosure.tagName).toBe("DETAILS");
+    expect(screen.getByText("Transaction details")).toBeInTheDocument();
+    expect(within(disclosure).getByText("contract")).toBeInTheDocument();
+    expect(
+      within(disclosure).getByText("CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"),
+    ).toBeInTheDocument();
+    expect(within(disclosure).getByText("transfer")).toBeInTheDocument();
+    expect(within(disclosure).getByText("from")).toBeInTheDocument();
+    expect(within(disclosure).getByText("amount")).toBeInTheDocument();
+    expect(within(disclosure).getByText("15000000")).toBeInTheDocument();
+    expect(disclosure.querySelector("pre")?.textContent).toBe("AAAAAgAAAAC=");
+    expect(within(disclosure).getByRole("button", { name: "copy" })).toBeInTheDocument();
+  });
+
+  it("renders no disclosure when there are no details, or while idle", () => {
+    const { container, rerender } = render(<TxStatus state="signing" />);
+    expect(container.querySelector('[data-testid="tx-details"]')).toBeNull();
+
+    rerender(<TxStatus state="idle" details={{ contract: "C", fn: "freeze", args: [], xdr: "AAAA" }} />);
+    expect(container.querySelector('[data-testid="tx-details"]')).toBeNull();
   });
 });

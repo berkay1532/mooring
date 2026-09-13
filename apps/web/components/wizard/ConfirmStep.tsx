@@ -4,7 +4,7 @@ import type { Card } from "@mooring/contracts-ts";
 
 import { periodLabel } from "@/components/cards/summary";
 import { Button } from "@/components/ui/Button";
-import { TxStatus, type TxError, type TxState } from "@/components/ui/TxStatus";
+import { TxStatus, type TxDetailsProps, type TxError, type TxState } from "@/components/ui/TxStatus";
 import { formatDate } from "@/components/wizard/PolicyStep";
 import { explorerTxUrl } from "@/lib/chain/rpc";
 import { config } from "@/lib/config";
@@ -24,7 +24,7 @@ export interface ConfirmStepProps {
   addressError?: boolean;
   /** Extra line under the status box, e.g. "Adding merchant 2 of 3". */
   progress?: string;
-  tx: { state: TxState; hash?: string; error?: TxError };
+  tx: { state: TxState; hash?: string; error?: TxError; details?: TxDetailsProps };
   /** Disabled until the expected address is known and nothing is in flight. */
   canCreate: boolean;
   creating: boolean;
@@ -142,6 +142,7 @@ export function ConfirmStep({
         hash={tx.hash}
         error={tx.error}
         explorerUrl={tx.hash ? explorerTxUrl(tx.hash) : undefined}
+        details={tx.details}
       />
       {progress ? <p className="mt-2 text-xs text-text-lo">{progress}</p> : null}
       {tx.state === "failed" && onSkipMerchants ? (

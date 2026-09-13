@@ -244,7 +244,12 @@ function NewCardWizard() {
                       ? `Card created. Adding merchant ${flow.merchantIndex + 1} of ${draft.merchants.length}.`
                       : undefined
                 }
-                tx={{ state: flow.state, hash: flow.hash ?? undefined, error: flow.error ?? undefined }}
+                tx={{
+                  state: flow.state,
+                  hash: flow.hash ?? undefined,
+                  error: flow.error ?? undefined,
+                  details: flow.details ?? undefined,
+                }}
                 canCreate={(createDraft !== null || timedOut) && !flow.busy}
                 creating={flow.busy}
                 locked={locked}

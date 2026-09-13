@@ -9,7 +9,7 @@ import { buildAddMerchant, buildCreateCard } from "@/lib/chain/card";
 import type { TranslatedError } from "@/lib/chain/errors";
 import { saltBytes } from "@/lib/chain/derive";
 import { config } from "@/lib/config";
-import { useContractAction, type ActionState } from "@/lib/query/hooks";
+import { useContractAction, type ActionState, type TxDetails } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
 
 export interface CreateCardDraft {
@@ -41,6 +41,8 @@ export interface CreateCardFlow {
   state: ActionState;
   hash: string | null;
   error: TranslatedError | null;
+  /** What the transaction on screen is handing the wallet (spec §7). */
+  details: TxDetails | null;
   /** A transaction is in flight, or more are queued. */
   busy: boolean;
   /**
@@ -227,6 +229,7 @@ export function useCreateCard(
     state,
     hash: active.hash,
     error: active.error,
+    details: active.details,
     busy: state !== "failed" && (phase === "card" || phase === "merchants"),
     locked: phase !== "idle" && !createAborted,
     start,

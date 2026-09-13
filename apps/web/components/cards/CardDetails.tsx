@@ -195,6 +195,7 @@ function CardDetailsInner({
           hash={freeze.hash ?? undefined}
           error={freeze.error ?? undefined}
           explorerUrl={freeze.hash ? explorerTxUrl(freeze.hash) : undefined}
+          details={freeze.details ?? undefined}
         />
       ) : null}
 

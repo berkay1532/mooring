@@ -141,6 +141,7 @@ export function MerchantsSection({ address, merchants, loading, disabled, onDone
           hash={op.hash ?? undefined}
           error={op.error ?? undefined}
           explorerUrl={op.hash ? explorerTxUrl(op.hash) : undefined}
+          details={op.details ?? undefined}
         />
       ) : null}
     </div>

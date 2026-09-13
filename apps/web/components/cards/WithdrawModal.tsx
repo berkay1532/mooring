@@ -101,6 +101,7 @@ export function WithdrawModal({ open, onClose, address, info, owner, onDone }: W
         hash={op.hash ?? undefined}
         error={op.error ?? undefined}
         explorerUrl={op.hash ? explorerTxUrl(op.hash) : undefined}
+        details={op.details ?? undefined}
       />
 
       <div className="mt-5 flex justify-end gap-2.5">

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 export type TxState = "idle" | "preparing" | "signing" | "submitted" | "confirmed" | "failed";
 
 export interface TxError {
@@ -15,6 +17,19 @@ export interface TxError {
   next?: string;
 }
 
+/**
+ * What the owner is about to sign (spec §7): the invoked contract and
+ * function, its arguments in readable form, and the raw envelope XDR. Mirrors
+ * `TxDetails` from `lib/query/action.ts`, kept structural so this component
+ * stays independent of the chain layer.
+ */
+export interface TxDetailsProps {
+  contract: string;
+  fn: string;
+  args: Array<{ name: string; value: string }>;
+  xdr: string;
+}
+
 export interface TxStatusProps {
   state: TxState;
   /** The transaction hash, once known (from `submitted` onward). */
@@ -24,7 +39,72 @@ export interface TxStatusProps {
   explorerUrl?: string;
   /** Called when `error.next` is clicked. Omit to render `error.next` as plain text. */
   onNext?: () => void;
+  /** What the wallet is being handed — rendered as a collapsed disclosure. */
+  details?: TxDetailsProps;
   className?: string;
+}
+
+/**
+ * The collapsible "Transaction details" disclosure (spec §7): what the owner
+ * is signing, down to the raw envelope, without leaving the flow. Collapsed
+ * by default — it is a verification affordance, not part of the happy path.
+ */
+function TxDetailsDisclosure({ details }: { details: TxDetailsProps }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(details.xdr);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // A clipboard the browser refuses is not an error worth showing: the
+      // XDR is on screen and selectable either way.
+    }
+  }
+
+  return (
+    <details data-testid="tx-details" className="mt-2.5 rounded-[14px] border border-text-hi/[0.07] bg-bg-raised px-4 py-2.5">
+      <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber">
+        Transaction details
+      </summary>
+
+      <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        {details.contract ? (
+          <>
+            <dt className="font-mono text-text-lo">contract</dt>
+            <dd className="min-w-0 break-all font-mono text-text-hi">{details.contract}</dd>
+          </>
+        ) : null}
+        {details.fn ? (
+          <>
+            <dt className="font-mono text-text-lo">function</dt>
+            <dd className="min-w-0 break-all font-mono text-text-hi">{details.fn}</dd>
+          </>
+        ) : null}
+        {details.args.map((arg, index) => (
+          <div key={`${arg.name}-${index}`} className="contents">
+            <dt className="font-mono text-text-lo">{arg.name}</dt>
+            <dd className="min-w-0 break-all font-mono text-text-hi">{arg.value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">envelope xdr</span>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="rounded font-mono text-[11px] text-amber underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+        >
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-text-lo">
+        {details.xdr}
+      </pre>
+    </details>
+  );
 }
 
 const STEPS = [
@@ -99,7 +179,7 @@ const BOX_ANATOMY_CLASS = "flex items-center gap-3.5 rounded-[14px] border bg-bg
  * renders the rejected-policy example as a standalone status row with no
  * timeline).
  */
-export function TxStatus({ state, hash, error, explorerUrl, onNext, className }: TxStatusProps) {
+export function TxStatus({ state, hash, error, explorerUrl, onNext, details, className }: TxStatusProps) {
   const inFlight = state === "preparing" || state === "signing" || state === "submitted";
   const showBox = state !== "idle";
   const showTimeline = state !== "idle" && state !== "failed";
@@ -164,6 +244,8 @@ export function TxStatus({ state, hash, error, explorerUrl, onNext, className }:
           </div>
         </div>
       ) : null}
+
+      {showBox && details ? <TxDetailsDisclosure details={details} /> : null}
 
       {showTimeline ? (
         <ol className="mt-3.5 flex gap-0">
