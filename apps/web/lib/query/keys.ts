@@ -13,4 +13,11 @@ export const keys = {
   info: (address: string): QueryKey => ["card", address, "info"],
   /** A single card's `merchants()` allowlist read. */
   merchants: (address: string): QueryKey => ["card", address, "merchants"],
+  /**
+   * A USDC (SAC) balance read for any address. Used for the *owner's*
+   * wallet balance (the Fund sheet's quick picks, the withdraw/cancel
+   * trustline check) — a card's own balance already comes back inside
+   * `info()`, so it is keyed by `info`, not here.
+   */
+  balance: (address: string): QueryKey => ["balance", address],
 };

@@ -7,8 +7,11 @@ import {
   StrKey,
   TransactionBuilder,
   nativeToScVal,
+  scValToNative,
   type Transaction,
+  type xdr,
 } from "@stellar/stellar-sdk";
+import { AssembledTransaction } from "@stellar/stellar-sdk/contract";
 
 import { config } from "../config";
 import { getRpcServer, type AccountRpc } from "./rpc";
@@ -75,6 +78,29 @@ export function readInfo(address: string): Promise<CardInfo> {
 /** Reads a card's `merchants()` view via simulation. */
 export function readMerchants(address: string): Promise<string[]> {
   return readCardMerchants(config.rpcUrl, config.networkPassphrase, address);
+}
+
+/**
+ * Reads `balance(address)` on the USDC SAC by simulation (no signing, no
+ * fees), in base units.
+ *
+ * A *card's* balance already arrives inside `info()` (`CardInfo.balance`),
+ * so this exists for the one balance `info()` cannot give us: the **owner's
+ * own** wallet balance, which the Fund sheet needs for its quick picks and
+ * "max", and which the withdraw/cancel flows use as a trustline probe — the
+ * SAC panics when an account holds no trustline for the asset, so a rejected
+ * read is itself the answer (see `lib/query/hooks.ts`'s `useUsdcBalance`).
+ */
+export async function readBalance(address: string, token: string = config.usdc): Promise<bigint> {
+  const tx = await AssembledTransaction.build<bigint>({
+    contractId: token,
+    method: "balance",
+    args: [Address.fromString(address).toScVal()],
+    networkPassphrase: config.networkPassphrase,
+    rpcUrl: config.rpcUrl,
+    parseResultXdr: (v: xdr.ScVal) => scValToNative(v) as bigint,
+  });
+  return tx.result;
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
-import { readInfo, readMerchants, type CardInfo } from "../chain/card";
+import { readBalance, readInfo, readMerchants, type CardInfo } from "../chain/card";
 import { discoverCards } from "../chain/discover";
 import { getRpcServer } from "../chain/rpc";
 import { getAddedCards } from "../prefs";
@@ -61,6 +61,26 @@ export function useCardInfo(address: string | null | undefined): UseQueryResult<
     queryKey: keys.info(address ?? ""),
     enabled: address != null,
     queryFn: () => readInfo(address as string),
+    refetchInterval: () => (isTabVisible() ? 10_000 : false),
+  });
+}
+
+/**
+ * A USDC (SAC) balance for any address — in practice the connected owner's
+ * own wallet, for the Fund sheet's quick picks and as the withdraw/cancel
+ * trustline probe (the SAC rejects `balance` for an account with no
+ * trustline, so a query `error` mentioning a trustline *is* the missing
+ * trustline). A card's own balance is not read here: it already arrives
+ * inside `useCardInfo`'s `info()`.
+ */
+export function useUsdcBalance(address: string | null | undefined): UseQueryResult<bigint> {
+  return useQuery({
+    queryKey: keys.balance(address ?? ""),
+    enabled: address != null,
+    queryFn: () => readBalance(address as string),
+    // A failed trustline probe must not be retried four times before the
+    // Fund sheet can explain itself.
+    retry: false,
     refetchInterval: () => (isTabVisible() ? 10_000 : false),
   });
 }
