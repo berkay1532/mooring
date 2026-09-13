@@ -184,6 +184,65 @@ describe("CardCarousel", () => {
     );
   });
 
+  it("does not open the wizard with the click that follows a swipe onto the + slot", () => {
+    render(<Harness />);
+    const stage = screen.getByRole("region");
+    const newSlot = screen.getByRole("button", { name: "New card" });
+
+    // Swipe left twice: from `inference-agent` past `ops-agent` onto "+ new card".
+    firePointer(stage, "pointerdown", 400);
+    firePointer(stage, "pointerup", 200);
+    firePointer(stage, "pointerdown", 400);
+    firePointer(stage, "pointerup", 200);
+
+    // The synthetic click the browser sends after the drag must be swallowed.
+    fireEvent.click(newSlot);
+    expect(push).not.toHaveBeenCalled();
+
+    // A real click still works.
+    fireEvent.click(newSlot);
+    expect(push).toHaveBeenCalledWith("/cards/new");
+  });
+
+  it("clears a stale drag flag on pointercancel and before a keyboard activation", () => {
+    const selectedLabel = (container: HTMLElement) =>
+      container.querySelector('[data-selected="true"]')?.getAttribute("aria-label");
+    const { container } = render(<Harness />);
+    const stage = screen.getByRole("region");
+
+    // A drag that ends in a cancel (the pointer left the window) must not
+    // leave the flag set: the next click is a real one.
+    firePointer(stage, "pointerdown", 400);
+    firePointer(stage, "pointerup", 200);
+    expect(selectedLabel(container)).toContain("ops-agent");
+    fireEvent(stage, new MouseEvent("pointercancel", { bubbles: true }));
+    fireEvent.click(container.querySelector('[data-slide-offset="-1"] button') as HTMLElement);
+    expect(selectedLabel(container)).toContain("inference-agent");
+
+    // A keydown clears it too, so a keyboard-activated click is never swallowed.
+    firePointer(stage, "pointerdown", 400);
+    firePointer(stage, "pointerup", 200);
+    expect(selectedLabel(container)).toContain("ops-agent");
+    fireEvent.keyDown(stage, { key: "Tab" });
+    fireEvent.click(container.querySelector('[data-slide-offset="-1"] button') as HTMLElement);
+    expect(selectedLabel(container)).toContain("inference-agent");
+  });
+
+  it("hands focus back to the stage when a dot is clicked, so the arrow keys keep working", () => {
+    const { container } = render(<Harness />);
+    const stage = screen.getByRole("region");
+    const dots = screen.getAllByRole("button", { name: /^Go to / });
+
+    fireEvent.click(dots[0]);
+    expect(document.activeElement).toBe(stage);
+
+    fireEvent.keyDown(stage, { key: "ArrowRight" });
+    expect(container.querySelector('[data-selected="true"]')).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("inference-agent"),
+    );
+  });
+
   it("drops the 3D transforms under prefers-reduced-motion", () => {
     vi.stubGlobal(
       "matchMedia",

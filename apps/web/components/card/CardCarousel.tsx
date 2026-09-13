@@ -63,6 +63,7 @@ const ARROW_CLASS =
  */
 export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouselProps) {
   const router = useRouter();
+  const stageRef = useRef<HTMLDivElement>(null);
   const newSlot = items.length; // the "+ new card" slot sits after the last card
   const [index, setIndex] = useState(() => {
     const i = items.findIndex((item) => item.address === selected);
@@ -110,6 +111,12 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
    * panel far below it.
    */
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    // A keyboard interaction ends any drag the flag might still be holding
+    // open: a pointerdown that never produced a pointerup (the pointer left
+    // the window, a drag that started in the background) must not swallow
+    // the click a keyboard activation produces next.
+    dragged.current = false;
+
     const target = event.target as HTMLElement | null;
     const tag = target?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
@@ -139,6 +146,11 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
     dragStart.current = event.clientX;
     dragged.current = false;
   }
+  /** A cancelled pointer (or a stage that lost focus) never produces the click the flag is meant to swallow. */
+  function endDrag() {
+    dragStart.current = null;
+    dragged.current = false;
+  }
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const start = dragStart.current;
     dragStart.current = null;
@@ -149,12 +161,21 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
     goTo(index + (delta < 0 ? 1 : -1));
   }
 
-  function selectSlide(target: number) {
+  /**
+   * Runs a slot's click action unless it is the synthetic click that follows
+   * a mouse drag — including the "+ new card" slot, which would otherwise
+   * open the wizard whenever a swipe happened to end on it.
+   */
+  function afterDrag(action: () => void) {
     if (dragged.current) {
       dragged.current = false;
       return;
     }
-    goTo(target);
+    action();
+  }
+
+  function selectSlide(target: number) {
+    afterDrag(() => goTo(target));
   }
 
   const now = nowUnix ?? Math.floor(Date.now() / 1000);
@@ -166,10 +187,13 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
         aria-roledescription="carousel"
         aria-label="Your cards"
         tabIndex={0}
+        ref={stageRef}
         onKeyDown={onKeyDown}
         className="relative flex h-[330px] items-center justify-center overflow-hidden [perspective:1400px] focus-visible:outline-none"
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
+        onPointerCancel={endDrag}
+        onBlur={endDrag}
       >
         <span
           aria-hidden
@@ -226,7 +250,7 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
           >
             <button
               type="button"
-              onClick={openWizard}
+              onClick={() => afterDrag(openWizard)}
               tabIndex={newSlot === index ? 0 : -1}
               className="flex h-[250px] w-[420px] items-center justify-center rounded-[20px] border border-dashed border-text-hi/30 font-display text-[40px] text-text-hi transition hover:border-amber/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
             >
@@ -251,7 +275,13 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
             type="button"
             aria-label={`Go to ${item.info?.label ?? item.address}`}
             aria-current={i === index}
-            onClick={() => goTo(i)}
+            onClick={() => {
+              goTo(i);
+              // The arrow keys are handled on the stage, so hand focus back to
+              // it: otherwise focus stays on a dot outside the stage and the
+              // next ArrowRight does nothing.
+              stageRef.current?.focus();
+            }}
             className={`h-1.5 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber ${
               i === index ? "w-5 bg-amber" : "w-1.5 bg-text-hi/20 hover:bg-text-hi/40"
             }`}
@@ -261,7 +291,10 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
           type="button"
           aria-label="Jump to the create-card slot"
           aria-current={index === newSlot}
-          onClick={() => setIndex(newSlot)}
+          onClick={() => {
+            setIndex(newSlot);
+            stageRef.current?.focus();
+          }}
           className={`h-1.5 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber ${
             index === newSlot ? "w-5 bg-amber" : "w-1.5 bg-text-hi/20 hover:bg-text-hi/40"
           }`}

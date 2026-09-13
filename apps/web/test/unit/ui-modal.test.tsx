@@ -86,4 +86,24 @@ describe("Modal", () => {
     expect(onCloseModal).toHaveBeenCalledTimes(1);
     expect(onCloseSheet).not.toHaveBeenCalled();
   });
+
+  it("Escape closes the nested dialog even when both open in the same commit", async () => {
+    const { Sheet } = await import("../../components/ui/Sheet");
+    const onCloseSheet = vi.fn();
+    const onCloseModal = vi.fn();
+
+    // Both `open` on the first render: React runs the Modal's (child) effect
+    // before the Sheet's, so push order alone would put the Sheet on top.
+    render(
+      <Sheet open onClose={onCloseSheet} title="Card details">
+        <Modal open onClose={onCloseModal} title="Cancel card">
+          <button type="button">confirm</button>
+        </Modal>
+      </Sheet>,
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCloseModal).toHaveBeenCalledTimes(1);
+    expect(onCloseSheet).not.toHaveBeenCalled();
+  });
 });

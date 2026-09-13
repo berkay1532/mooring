@@ -34,4 +34,13 @@ describe("derive", () => {
       deriveCardAddress(OWNER, saltBytes(1), FACTORY, PASS),
     );
   });
+
+  it("rejects a salt index outside the four bytes it is encoded in", () => {
+    expect(() => saltBytes(-1)).toThrow(RangeError);
+    expect(() => saltBytes(2 ** 32)).toThrow(RangeError);
+    expect(() => saltBytes(1.5)).toThrow(RangeError);
+    // The boundaries themselves are fine.
+    expect(saltBytes(0)).toHaveLength(32);
+    expect(Array.from(saltBytes(2 ** 32 - 1).slice(28))).toEqual([255, 255, 255, 255]);
+  });
 });

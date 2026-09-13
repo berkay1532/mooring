@@ -138,6 +138,13 @@ export function MooringCard({
       : false;
   const tiltEnabled = isFullFace && tilt && !reducedMotion;
 
+  // `nowUnix` is injectable because `Date.now()` differs between the server
+  // render and the first client render: a card rendered on the server would
+  // hydrate with a countdown computed a few hundred milliseconds earlier. The
+  // pages that render cards pass a value frozen on the client (the wizard's
+  // `nowUnix`, the dashboard's ticking `now`); the fallback below is only for
+  // a standalone render, where the countdown is coarse enough (minutes, then
+  // days) that the difference is invisible.
   const now = nowUnix ?? Math.floor(Date.now() / 1000);
   const expiresText = expiry === undefined ? "—" : formatCountdown(expiry, now);
 
@@ -240,10 +247,11 @@ export function MooringCard({
           background: dimmed ? "none" : `radial-gradient(ellipse at center, ${glowTone}, transparent 60%)`,
         }}
       />
-      {/* Diagonal sheen — mockup `.card3::after` */}
+      {/* Diagonal sheen — mockup `.card3::after`, which paints *over* the
+          card's text (`z-index` above the content, never interactive). */}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 z-10"
         style={{
           background:
             "linear-gradient(115deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 60%, rgba(242,180,74,.06) 100%)",

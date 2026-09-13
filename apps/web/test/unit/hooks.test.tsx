@@ -574,9 +574,12 @@ describe("useCards", () => {
     const discovered1 = addressFor(OWNER, 1);
     const added = "CADDEDCARD00000000000000000000000000000000000000000AA";
     const existing = new Set([discovered0, discovered1].map(keyOf));
-    getLedgerEntries.mockImplementation(async (key) =>
-      existing.has(key.toXDR("base64")) ? { entries: [{}] } : { entries: [] },
-    );
+    // One call per round, carrying every key of that round (see discoverCards).
+    getLedgerEntries.mockImplementation(async (...ledgerKeys: { toXDR(f: string): string }[]) => ({
+      entries: ledgerKeys
+        .filter((key) => existing.has(key.toXDR("base64")))
+        .map((key) => ({ key })),
+    }));
 
     addCard(OWNER, discovered0); // already discovered: must not duplicate
     addCard(OWNER, added);

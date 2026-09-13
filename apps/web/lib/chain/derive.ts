@@ -4,8 +4,15 @@ import { Address, StrKey, hash, xdr } from "@stellar/stellar-sdk";
  * A 32-byte deployer salt with the counter `n` encoded big-endian in the
  * last 4 bytes. The factory enumerates one owner's cards by walking
  * consecutive salts (0, 1, 2, ...), so callers must pick `n` in that order.
+ *
+ * @throws if `n` is not an integer in `[0, 2^32)` — the range the last four
+ *   bytes can hold. `DataView.setUint32` would otherwise wrap silently (2^32
+ *   and 0 would produce the same salt, and so the same card address).
  */
 export function saltBytes(n: number): Uint8Array {
+  if (!Number.isInteger(n) || n < 0 || n > 0xffff_ffff) {
+    throw new RangeError(`salt index ${n} is out of range (0 .. 2^32 - 1)`);
+  }
   const salt = new Uint8Array(32);
   new DataView(salt.buffer).setUint32(28, n, false);
   return salt;

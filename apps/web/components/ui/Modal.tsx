@@ -35,7 +35,10 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   useEffect(() => {
     if (!open) return;
 
-    const dialogToken = pushDialog();
+    // The panel element is registered with the dialog: `dialogStack` uses it
+    // to resolve which dialog is really in front when two open in the same
+    // commit (a nested dialog registers before its parent).
+    const dialogToken = pushDialog(panelRef.current);
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
