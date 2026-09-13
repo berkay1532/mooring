@@ -134,7 +134,7 @@ export function PolicyStep({
         </p>
       )}
       {draft.expiryPreset !== "date" && errors.expiry ? (
-        <p className="mt-1.5 text-xs text-danger">{errors.expiry}</p>
+        <p className="mt-1.5 text-xs text-danger-text">{errors.expiry}</p>
       ) : null}
 
       <div className="mt-6 flex justify-end gap-2.5">

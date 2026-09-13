@@ -7,6 +7,10 @@
   --color-amber: #f2b44a;
   --color-seaglass: #7fb8a8;
   --color-danger: #e05548;
+  /* Small danger TEXT on a raised surface: #e05548 measures 4.45:1 on
+     --color-surface, just under the 4.5:1 AA threshold (axe color-contrast).
+     Fills, borders and rings keep --color-danger. */
+  --color-danger-text: #e8695c;
   --color-text-hi: #f2eee4;
   --color-text-lo: #93a3b5;
   --font-display: var(--font-instrument-serif), Georgia, serif;

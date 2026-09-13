@@ -60,8 +60,11 @@ test.describe("cards dashboard", () => {
     await expect(tx.locator("li[data-step]")).toHaveCount(4);
     await expect(tx.locator('li[data-step-status="done"]')).toHaveCount(4);
 
-    // The write really went through the RPC, and the card reads frozen after.
-    expect(rpc.submitted.map((call) => call.fn)).toContain("freeze");
+    // The write really went through the RPC — on this card, exactly once —
+    // and the card reads frozen after.
+    expect(rpc.submitted.map(({ contract, fn }) => ({ contract, fn }))).toEqual([
+      { contract: CARD_ONE.address, fn: "freeze" },
+    ]);
     await expect(page.getByRole("button", { name: "Unfreeze" })).toBeVisible();
   });
 

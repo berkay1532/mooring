@@ -88,7 +88,7 @@ export function AgentStep({ draft, patch, agentError, agentValid, onBack, onCont
                 type="button"
                 onClick={() => remove(merchant)}
                 aria-label={`Remove merchant ${shortAddress(merchant)}`}
-                className="shrink-0 rounded font-body text-xs text-danger transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+                className="shrink-0 rounded font-body text-xs text-danger-text transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
               >
                 ×
               </button>

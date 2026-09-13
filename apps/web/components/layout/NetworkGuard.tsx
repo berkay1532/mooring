@@ -36,7 +36,7 @@ export function GateContent({ status, ready, connect }: GateProps) {
         <p
           role="status"
           aria-live="polite"
-          className="max-w-md rounded-full border border-danger/40 bg-danger/10 px-5 py-2 font-mono text-sm text-danger"
+          className="max-w-md rounded-full border border-danger/40 bg-danger/10 px-5 py-2 font-mono text-sm text-danger-text"
         >
           Wrong network — switch your wallet to {networkLabel(config.networkPassphrase)}.
         </p>

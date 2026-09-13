@@ -36,6 +36,9 @@ export default defineConfig({
     command: `npm run build:web && npm run start -- --port ${PORT} --hostname 127.0.0.1`,
     url: BASE_URL,
     env: appEnv,
+    // Locally a server already listening on this (non-default) port is
+    // reused, which keeps an edit-run loop fast; CI always builds and serves
+    // its own, so a run can never be answered by a stale tree.
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     stdout: "pipe",

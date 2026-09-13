@@ -71,12 +71,26 @@ jobs:
       - run: npm run build -w @mooring/contracts-ts -w @mooring/x402-client
       - run: npm run typecheck -w @mooring/web
       - run: npm test -w @mooring/web
-      - name: next build
+      # The *shipping* configuration: this is the only place the app is built
+      # the way it is deployed (NEXT_PUBLIC_WALLET unset -> freighter). The
+      # Playwright build below is a different configuration (mock wallet), so
+      # neither build makes the other redundant.
+      - name: next build (freighter, as deployed)
         run: |
           set -a
           source apps/web/.env.example
           set +a
           npm run build:web -w @mooring/web
+
+      # The mock wallet must not be reachable in a shipping build: the adapter
+      # is behind a dynamic import guarded by the inlined NEXT_PUBLIC_WALLET
+      # literal, so webpack drops the branch and never emits the chunk.
+      - name: assert the mock wallet is not in the production bundle
+        run: |
+          if grep -rl "__mooringMock" apps/web/.next/static/chunks; then
+            echo "::error::the mock wallet adapter reached a freighter production bundle"
+            exit 1
+          fi
 
       - name: Install Playwright chromium
         run: npx playwright install --with-deps chromium
@@ -86,6 +100,11 @@ jobs:
       # route-intercepted Soroban RPC -- nothing here touches testnet.
       - name: e2e (Playwright)
         run: npm run e2e -w @mooring/web
+
+      # ... and the mock build must still contain it, or the grep above would
+      # pass for the wrong reason (a renamed hook, a moved chunk directory).
+      - name: assert the mock build does contain it
+        run: grep -rl "__mooringMock" apps/web/.next/static/chunks
 
       - uses: actions/upload-artifact@v4
         if: failure()

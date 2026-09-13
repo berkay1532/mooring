@@ -55,7 +55,7 @@ export function RenameModal({ open, onClose, address, info, onDone }: OpModalPro
         error={bytes > MAX_LABEL_BYTES ? `A card name is at most ${MAX_LABEL_BYTES} bytes of UTF-8.` : undefined}
         hint={bytes === 0 ? "A card name cannot be empty." : undefined}
       />
-      <p className={`mt-1.5 font-mono text-xs ${bytes > MAX_LABEL_BYTES ? "text-danger" : "text-text-lo"}`}>
+      <p className={`mt-1.5 font-mono text-xs ${bytes > MAX_LABEL_BYTES ? "text-danger-text" : "text-text-lo"}`}>
         {bytes}/{MAX_LABEL_BYTES} bytes
       </p>
       <p className="mt-3 text-xs text-text-lo">

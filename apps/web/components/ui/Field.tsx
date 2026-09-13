@@ -54,7 +54,7 @@ export function Field({
         {unit ? <span className="ml-2 shrink-0 font-mono text-xs text-text-lo">{unit}</span> : null}
       </div>
       {error ? (
-        <p id={errorId} className="mt-1.5 text-xs text-danger">
+        <p id={errorId} className="mt-1.5 text-xs text-danger-text">
           {error}
         </p>
       ) : hint ? (

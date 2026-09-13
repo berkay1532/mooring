@@ -7,8 +7,9 @@
  * reach the states a real wallet would otherwise have to produce: no extension
  * installed, or connected to the wrong network.
  */
-import { test as base, type Page } from "@playwright/test";
+import { test as base, expect as baseExpect, type Page } from "@playwright/test";
 
+import { RPC_URL } from "./env";
 import { installRpcMock, type RpcMock } from "./rpc-mock";
 
 export { installRpcMock } from "./rpc-mock";
@@ -24,13 +25,43 @@ export const test = base.extend<{
   // spec in this suite runs against the mocked chain. A test that wants to
   // inspect what was called simply names `rpc` in its arguments.
   rpc: [
-    async ({ page }, use) => {
+    async ({ page, baseURL }, use) => {
       const mock = await installRpcMock(page);
+      await installNetworkGuard(page, baseURL as string);
       await use(mock);
+      // An RPC method the mock does not implement answers -32601, which the
+      // SDK turns into a throw — but the app's own error handling can absorb
+      // that into a UI state no assertion looks at. Fail the test instead.
+      baseExpect(mock.unhandled, "the app called an RPC method the mock does not implement").toEqual([]);
     },
     { auto: true },
   ],
 });
+
+/**
+ * Aborts anything that is neither the app under test nor the mocked RPC.
+ * Nothing in the app reaches a third party today (fonts are self-hosted, QR
+ * codes are generated in-process, stellar.expert only ever appears as an
+ * `href`); this makes that structural rather than circumstantial — a request
+ * that leaks in later fails loudly instead of quietly hitting the network
+ * from CI.
+ */
+async function installNetworkGuard(page: Page, baseURL: string): Promise<void> {
+  const allowed = new Set([new URL(baseURL).origin, new URL(RPC_URL).origin]);
+  // Registered after the RPC mock, so it runs *first*: an allowed request is
+  // handed back with `fallback()` (which is what lets the RPC mock still see
+  // its own calls), anything else is aborted.
+  await page.route("**/*", async (route) => {
+    const url = route.request().url();
+    const origin = url.startsWith("http") ? new URL(url).origin : null;
+    if (origin === null || allowed.has(origin)) {
+      await route.fallback();
+      return;
+    }
+    console.error(`e2e: blocked an unexpected request to ${url}`);
+    await route.abort("blockedbyclient");
+  });
+}
 
 export const expect = test.expect;
 

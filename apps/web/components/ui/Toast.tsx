@@ -16,7 +16,7 @@ export interface ToastProps {
 const TONE_CLASS: Record<ToastTone, string> = {
   default: "border-text-hi/[0.14] text-text-hi",
   success: "border-seaglass/40 text-seaglass",
-  danger: "border-danger/40 text-danger",
+  danger: "border-danger/40 text-danger-text",
 };
 
 /**

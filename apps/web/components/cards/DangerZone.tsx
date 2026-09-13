@@ -16,7 +16,7 @@ export interface DangerZoneProps {
  */
 export function DangerZone({ onCancel, cancelled, disabled, onRemove }: DangerZoneProps) {
   return (
-    <div className="mt-[18px] flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] uppercase tracking-[0.16em] text-danger">
+    <div className="mt-[18px] flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] uppercase tracking-[0.16em] text-danger-text">
       <span>Danger zone ·</span>
       <button
         type="button"

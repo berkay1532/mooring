@@ -103,7 +103,7 @@ export function MerchantsSection({ address, merchants, loading, disabled, onDone
             type="button"
             onClick={() => void remove.run(merchant)}
             disabled={busy || remove.mine || add.mine}
-            className="shrink-0 rounded font-body text-xs text-danger transition hover:brightness-125 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+            className="shrink-0 rounded font-body text-xs text-danger-text transition hover:brightness-125 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
           >
             <span aria-hidden>Remove</span>
             <span className="sr-only">Remove merchant {shortAddress(merchant)}</span>

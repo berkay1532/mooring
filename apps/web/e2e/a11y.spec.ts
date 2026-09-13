@@ -14,17 +14,19 @@ import { connectWallet, expect, test } from "./fixtures/app";
 const BLOCKING = new Set(["serious", "critical"]);
 
 /**
- * `color-contrast` is disabled, deliberately and narrowly.
- *
- * The only node it flags today is the "Remove" control on a merchant row and
- * on the wizard's merchant list: `--color-danger` (#e05548) on `--color-surface`
- * (#0f1e30) measures 4.46:1, just under the 4.5:1 AA threshold for normal
- * text. That is a design-token decision (the danger red is used across the
- * whole product), not something this suite should silently pin, so it is
- * recorded as a follow-up for the design pass instead of failing every run.
- * Every other serious/critical rule stays on.
+ * Every rule runs, `color-contrast` included: small danger text now uses the
+ * `--color-danger-text` token (#e8695c) rather than `--color-danger`
+ * (#e05548, 4.45:1 on `--color-surface` — just under the 4.5:1 AA threshold),
+ * which was the one real failing pair.
  */
-const DISABLED_RULES = ["color-contrast"];
+const DISABLED_RULES: string[] = [];
+
+/**
+ * Long enough for Tailwind's 150 ms transitions to settle before axe samples
+ * a colour. A step chip caught mid-transition (amber background fading out
+ * under seaglass text) reports a contrast ratio no user ever sees.
+ */
+const TRANSITION_SETTLE_MS = 1_000;
 
 async function audit(page: Page) {
   const results = await new AxeBuilder({ page })
@@ -71,6 +73,8 @@ test.describe("accessibility", () => {
     await connectWallet(page);
     await page.getByRole("button", { name: "+ New card" }).click();
     await expect(page.getByRole("heading", { name: "New card" })).toBeVisible();
+    // The step chips animate on arrival; sample colours only once they have.
+    await page.waitForTimeout(TRANSITION_SETTLE_MS);
 
     expect(await audit(page)).toEqual([]);
   });

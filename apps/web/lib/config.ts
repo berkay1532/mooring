@@ -8,6 +8,12 @@ export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
  * would throw "Missing NEXT_PUBLIC_…" on load in a production build while
  * working perfectly in `next dev`. The name is therefore passed alongside
  * the value, only so the error message can still say which one is missing.
+ *
+ * Two guards keep it that way: `test/unit/config.test.ts` asserts on this
+ * file's source text (under vitest both forms behave identically, so no
+ * behavioural test can catch the regression), and the Playwright suite builds
+ * and serves the app for real, which is how the bug was found in the first
+ * place.
  */
 function required(name: string, value: string | undefined): string {
   if (!value) throw new Error(`Missing ${name} — copy apps/web/.env.example to .env.local`);
