@@ -38,3 +38,5 @@ scripts/agent/.env
 **/dist
 **/.env
 !**/.env.example
+**/.next/
+**/*.tsbuildinfo

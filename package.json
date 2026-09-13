@@ -2,7 +2,7 @@
   "name": "mooring-workspace",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "examples/*", "scripts/agent"],
+  "workspaces": ["packages/*", "examples/*", "scripts/agent", "apps/*"],
   "scripts": {
     "build": "npm run build -w @mooring/x402-client && npm run build -w @mooring/contracts-ts && npm run build -w @mooring/cli && npm run build --workspaces --if-present",
     "typecheck": "npm run build -w @mooring/x402-client && npm run typecheck --workspaces --if-present",
