@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Toast } from "../../components/ui/Toast";
@@ -34,5 +35,35 @@ describe("Toast", () => {
     unmount();
     vi.advanceTimersByTime(2000);
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("minor 1: does not restart the timer when the parent re-renders with a fresh inline onDismiss", () => {
+    const dismissed = vi.fn();
+    function Harness() {
+      const [count, setCount] = useState(0);
+      return (
+        <div>
+          <button type="button" onClick={() => setCount((c) => c + 1)}>
+            bump ({count})
+          </button>
+          {/* A new closure every render — the shape every real caller uses. */}
+          <Toast message="Card frozen" duration={1000} onDismiss={() => dismissed()} />
+        </div>
+      );
+    }
+    render(<Harness />);
+
+    act(() => {
+      vi.advanceTimersByTime(800);
+    });
+    act(() => {
+      screen.getByRole("button").click();
+    });
+    expect(dismissed).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(dismissed).toHaveBeenCalledTimes(1);
   });
 });

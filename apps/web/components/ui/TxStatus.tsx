@@ -83,6 +83,8 @@ const STEP_STATUS_CLASS: Record<StepStatus, string> = {
   pending: "border-text-hi/10 text-text-lo",
 };
 
+const BOX_ANATOMY_CLASS = "flex items-center gap-3.5 rounded-[14px] border bg-bg-raised px-4.5 py-3.5";
+
 /**
  * The one shared write-transaction status component (spec §3.4 / mockup
  * `2026-09-13-wizard-and-tx.html`): a status box (spinner while in flight,
@@ -109,16 +111,16 @@ export function TxStatus({ state, hash, error, explorerUrl, onNext, className }:
   return (
     <div data-state={state} role="status" aria-live="polite" className={className}>
       {showBox ? (
-        <div className={`flex items-start gap-3.5 rounded-2xl border bg-bg-raised px-4.5 py-3.5 ${boxToneClass}`}>
+        <div className={`${BOX_ANATOMY_CLASS} ${boxToneClass}`}>
           {inFlight ? (
             <span
               aria-hidden
-              className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-amber/25 border-t-amber"
+              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-amber/25 border-t-amber"
             />
           ) : (
             <span
               aria-hidden
-              className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${state === "failed" ? "bg-danger" : "bg-seaglass"}`}
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${state === "failed" ? "bg-danger" : "bg-seaglass"}`}
             />
           )}
           <div className="min-w-0">
@@ -172,7 +174,7 @@ export function TxStatus({ state, hash, error, explorerUrl, onNext, className }:
                 key={step.key}
                 data-step={step.key}
                 data-step-status={status}
-                className={`flex-1 border-t-2 pt-2.5 text-center font-mono text-[11px] uppercase tracking-[0.08em] ${STEP_STATUS_CLASS[status]}`}
+                className={`flex-1 border-t-2 pt-2.5 text-center font-body text-[11px] ${STEP_STATUS_CLASS[status]}`}
               >
                 {status === "done" ? "✓ " : ""}
                 {step.label}

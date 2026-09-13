@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
+import { isTopDialog, popDialog, pushDialog } from "./dialogStack";
+
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -18,16 +20,22 @@ const FOCUSABLE_SELECTOR =
  * A centered confirmation dialog (Edit policy, Rotate signer, typed Cancel
  * confirmation). Same Escape / focus-trap / scroll-lock / focus-restore
  * behaviour as {@link Sheet}, laid out as a centered card instead of a
- * side panel.
+ * side panel — including keying the open/close effect on `[open]` only
+ * (not `onClose`, see {@link Sheet}'s doc comment) and only reacting to
+ * Escape while this is the top-most open dialog (`dialogStack`), so a
+ * `Modal` stacked on a `Sheet` doesn't close both at once.
  */
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
 
+    const dialogToken = pushDialog();
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -38,8 +46,9 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        if (!isTopDialog(dialogToken)) return;
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === "Tab") {
@@ -62,8 +71,9 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
       previouslyFocused.current?.focus?.();
+      popDialog(dialogToken);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export type ToastTone = "default" | "success" | "danger";
 
@@ -19,12 +19,24 @@ const TONE_CLASS: Record<ToastTone, string> = {
   danger: "border-danger/40 text-danger",
 };
 
-/** A bottom-right, auto-dismissing notice (spec §4 `Toast`). The parent controls presence by mounting/unmounting it. */
+/**
+ * A bottom-right, auto-dismissing notice (spec §4 `Toast`). The parent
+ * controls presence by mounting/unmounting it.
+ *
+ * The dismiss timer depends only on `[duration]`, not `onDismiss` — an
+ * inline `onDismiss={() => setOpen(false)}` (the common call shape) gets a
+ * new identity on every parent re-render, which would restart the clock
+ * each time and could leave the toast on screen indefinitely on a page with
+ * other ticking state. The latest `onDismiss` is read from a ref instead.
+ */
 export function Toast({ message, tone = "default", duration = 4000, onDismiss, className }: ToastProps) {
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
   useEffect(() => {
-    const timer = window.setTimeout(onDismiss, duration);
+    const timer = window.setTimeout(() => onDismissRef.current(), duration);
     return () => window.clearTimeout(timer);
-  }, [onDismiss, duration]);
+  }, [duration]);
 
   return (
     <div

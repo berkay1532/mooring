@@ -27,7 +27,10 @@ export function Field({
 }: FieldProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
-  const hintId = hint ? `${inputId}-hint` : undefined;
+  // The hint <p> only renders when there is no error (the error replaces
+  // it below), so `hintId` must follow that same condition — otherwise
+  // `aria-describedby` names an id that is never in the DOM.
+  const hintId = hint && !error ? `${inputId}-hint` : undefined;
   const errorId = error ? `${inputId}-error` : undefined;
   const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
 

@@ -38,6 +38,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  */
 export function GalleryClient() {
   const [toggleValue, setToggleValue] = useState<"hour" | "day" | "week" | "custom">("day");
+  const [tabValue, setTabValue] = useState<"wallet" | "address">("wallet");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [toastOpen, setToastOpen] = useState(false);
@@ -87,17 +88,33 @@ export function GalleryClient() {
       </Section>
 
       <Section title="Toggle">
-        <Toggle
-          aria-label="Period unit"
-          value={toggleValue}
-          onChange={setToggleValue}
-          options={[
-            { value: "hour", label: "hour" },
-            { value: "day", label: "day" },
-            { value: "week", label: "week" },
-            { value: "custom", label: "custom" },
-          ]}
-        />
+        <div>
+          <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-lo">pill (default)</p>
+          <Toggle
+            aria-label="Period unit"
+            value={toggleValue}
+            onChange={setToggleValue}
+            options={[
+              { value: "hour", label: "hour" },
+              { value: "day", label: "day" },
+              { value: "week", label: "week" },
+              { value: "custom", label: "custom" },
+            ]}
+          />
+        </div>
+        <div>
+          <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-text-lo">segment (wizard/fund tabs)</p>
+          <Toggle
+            shape="segment"
+            aria-label="Funding source"
+            value={tabValue}
+            onChange={setTabValue}
+            options={[
+              { value: "wallet", label: "From my wallet" },
+              { value: "address", label: "Show address" },
+            ]}
+          />
+        </div>
       </Section>
 
       <Section title="Sheet / Modal / Toast">
@@ -147,7 +164,7 @@ export function GalleryClient() {
             address="CAJPWJRJPFIY6XYYQIVCC3XLYFYQVNJIJ6XVPTUY4EBLNQ3CFN2AHCJ"
             signer="GDHDJL3RT6S3OABSHLOEOCBH4BMMAKLVOR5FPEHXG5ZW2DDJDRRJJSM7"
             balance={11n * BASE}
-            spent={40n * BASE}
+            spent={10n * BASE}
             periodAmount={50n * BASE}
             expiry={NOW + 29 * 86_400}
             allowCount={1}

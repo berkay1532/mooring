@@ -89,4 +89,42 @@ describe("Sheet", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(document.activeElement).toBe(opener);
   });
+
+  it("B1: keeps focus on a controlled input while the parent re-renders with a fresh inline onClose", () => {
+    function Harness() {
+      const [text, setText] = useState("");
+      return (
+        // `onClose={() => {}}` is a new closure on every Harness render — the
+        // exact shape every real caller uses (`onClose={() => setOpen(false)}`).
+        <Sheet open onClose={() => {}} title="Fund card">
+          <button type="button">segment</button>
+          <input aria-label="Amount" value={text} onChange={(event) => setText(event.target.value)} />
+        </Sheet>
+      );
+    }
+    render(<Harness />);
+    const input = screen.getByLabelText("Amount");
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.change(input, { target: { value: "2" } });
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "20" } });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("does not restore body overflow on a re-render that keeps the sheet open (inline onClose)", () => {
+    function Harness() {
+      const [text, setText] = useState("");
+      return (
+        <Sheet open onClose={() => {}} title="Fund card">
+          <input aria-label="Amount" value={text} onChange={(event) => setText(event.target.value)} />
+        </Sheet>
+      );
+    }
+    render(<Harness />);
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5" } });
+    expect(document.body.style.overflow).toBe("hidden");
+  });
 });

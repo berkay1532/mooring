@@ -56,31 +56,44 @@ const STATUS_TONE: Record<MooringCardState, string> = {
 /** Pointer tilt is capped at 4 degrees of rotation on each axis (spec §5). */
 const MAX_TILT_DEG = 4;
 
+/** Amber normally; frozen swaps the ambient ring/glow tint to seaglass (spec §5: "desaturated, seaglass glow"). */
+function ringRgb(state: MooringCardState): string {
+  return state === "frozen" ? "127,184,168" : "242,180,74";
+}
+
 /**
- * The mockup's layered "physical object" shadow stack. Expired/cancelled
- * cards drop the amber ring and ambient glow entirely ("dimmed, no glow");
- * a draft card (not yet created on-chain) gets a dashed border instead of a
- * shadow ring; everything else carries the ambient amber ring, brightened
- * to the "selected" alpha when `selected` is true.
+ * The mockup's layered "physical object" shadow stack, split per size:
+ * `carousel` carries the full stack (inset top/bottom highlight, the 2/12/40px
+ * drop shadows, and the ambient ring+glow); `preview` uses the lighter stack
+ * from the wizard mockup (no inset-bottom, no 2px layer, no glow, ring at
+ * `.2` alpha — not the carousel's `.25`/`.5`). Expired/cancelled/draft cards
+ * drop the ring and glow entirely ("dimmed, no glow" / a dashed border
+ * instead of a shadow ring). The ring/glow tint follows {@link ringRgb}.
  */
 function cardShadow(size: MooringCardSize, state: MooringCardState, selected: boolean): string {
   if (size === "thumb") {
     return "0 4px 10px rgba(0,0,0,.4)";
   }
 
-  const layers = [
-    "inset 0 1px 0 rgba(242,238,228,.14)",
-    "inset 0 -1px 0 rgba(0,0,0,.5)",
-    size === "carousel" ? "0 2px 4px rgba(0,0,0,.35)" : null,
-    "0 12px 24px rgba(0,0,0,.45)",
-    "0 40px 80px rgba(0,0,0,.55)",
-  ].filter((layer): layer is string => layer !== null);
+  const rgb = ringRgb(state);
+  const noGlow = state === "expired" || state === "cancelled" || state === "draft";
 
-  if (state === "expired" || state === "cancelled" || state === "draft") {
+  if (size === "preview") {
+    const layers = ["inset 0 1px 0 rgba(242,238,228,.14)", "0 12px 24px rgba(0,0,0,.45)", "0 40px 80px rgba(0,0,0,.55)"];
+    if (noGlow) return layers.join(", ");
+    layers.push(`0 0 0 1px rgba(${rgb},.2)`);
     return layers.join(", ");
   }
 
-  layers.push(selected ? "0 0 0 1px rgba(242,180,74,.5)" : "0 0 0 1px rgba(242,180,74,.25)", "0 0 60px rgba(242,180,74,.12)");
+  const layers = [
+    "inset 0 1px 0 rgba(242,238,228,.14)",
+    "inset 0 -1px 0 rgba(0,0,0,.5)",
+    "0 2px 4px rgba(0,0,0,.35)",
+    "0 12px 24px rgba(0,0,0,.45)",
+    "0 40px 80px rgba(0,0,0,.55)",
+  ];
+  if (noGlow) return layers.join(", ");
+  layers.push(selected ? `0 0 0 1px rgba(${rgb},.5)` : `0 0 0 1px rgba(${rgb},.25)`, `0 0 60px rgba(${rgb},.12)`);
   return layers.join(", ");
 }
 
@@ -114,6 +127,11 @@ export function MooringCard({
   // Recomputed on every render rather than cached in state: `matchMedia`
   // reads are cheap, and this keeps the check trivially testable by
   // stubbing `window.matchMedia` before render (no need to flush effects).
+  // Only gates whether the pointer handlers are attached — never the
+  // `transform`/`transformStyle` inline styles themselves (see `baseStyle`
+  // below), so SSR (no `window`, `reducedMotion` = false) and a
+  // reduced-motion client always agree on the rendered style attribute and
+  // React never warns about a hydration mismatch.
   const reducedMotion =
     typeof window !== "undefined" && typeof window.matchMedia === "function"
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -122,6 +140,16 @@ export function MooringCard({
 
   const now = nowUnix ?? Math.floor(Date.now() / 1000);
   const expiresText = expiry === undefined ? "—" : formatCountdown(expiry, now);
+
+  // Budget semantics (spec + controller ruling): the line shows what's left
+  // this period (`periodAmount - spent`, clamped at 0), not what's spent —
+  // "40.00 / 50.00" reads as "40 left of a 50 budget". The bar still fills
+  // with the *spent* fraction (10 spent of 50 -> a 20% bar).
+  const remaining = useMemo(() => {
+    if (periodAmount === undefined) return undefined;
+    const r = periodAmount - (spent ?? 0n);
+    return r < 0n ? 0n : r;
+  }, [spent, periodAmount]);
 
   const budgetPct = useMemo(() => {
     if (periodAmount === undefined || periodAmount <= 0n) return 0;
@@ -135,8 +163,8 @@ export function MooringCard({
     const rect = el.getBoundingClientRect();
     const width = rect.width || 1;
     const height = rect.height || 1;
-    const relX = (event.clientX - rect.left) / width - 0.5;
-    const relY = (event.clientY - rect.top) / height - 0.5;
+    const relX = clamp((event.clientX - rect.left) / width - 0.5, -0.5, 0.5);
+    const relY = clamp((event.clientY - rect.top) / height - 0.5, -0.5, 0.5);
     el.style.setProperty("--tilt-x", `${(-relY * MAX_TILT_DEG * 2).toFixed(2)}deg`);
     el.style.setProperty("--tilt-y", `${(relX * MAX_TILT_DEG * 2).toFixed(2)}deg`);
   }
@@ -159,9 +187,15 @@ export function MooringCard({
     boxShadow: cardShadow(size, state, selected),
     opacity: dimmed ? 0.55 : 1,
     filter: desaturated ? "saturate(0.35) brightness(0.85)" : undefined,
-    transform: tiltEnabled ? "rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))" : undefined,
+    // Constant across renders/environments (depends only on `size`, a prop —
+    // never on `reducedMotion`, which differs between SSR and a
+    // reduced-motion client): keeps hydration stable. `perspective()` makes
+    // rotateX/rotateY read as a tilt rather than a skew when this card
+    // isn't inside a carousel stage that already supplies one (the wizard's
+    // standalone `preview`).
+    transform: isFullFace ? "perspective(1200px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))" : undefined,
     transition: "transform 150ms ease-out",
-    transformStyle: tiltEnabled ? "preserve-3d" : undefined,
+    transformStyle: isFullFace ? "preserve-3d" : undefined,
   };
 
   const rootAttrs = {
@@ -173,7 +207,12 @@ export function MooringCard({
 
   if (!isFullFace) {
     return (
-      <div {...rootAttrs} className={`relative shrink-0 overflow-hidden ${className ?? ""}`} style={baseStyle}>
+      <div
+        {...rootAttrs}
+        role="img"
+        className={`relative shrink-0 overflow-hidden ${className ?? ""}`}
+        style={baseStyle}
+      >
         <span
           aria-hidden
           className="absolute right-[5px] top-[5px] h-[6px] w-[9px] rounded-[2px]"
@@ -201,30 +240,45 @@ export function MooringCard({
           background: dimmed ? "none" : `radial-gradient(ellipse at center, ${glowTone}, transparent 60%)`,
         }}
       />
+      {/* Diagonal sheen — mockup `.card3::after` */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(115deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 60%, rgba(242,180,74,.06) 100%)",
+        }}
+      />
       <span
         aria-hidden
         className="absolute right-6 top-6 h-[26px] w-[38px] rounded-[7px]"
-        style={{ background: "linear-gradient(135deg, #f7d089, #c98a2a)" }}
+        style={{
+          background: "linear-gradient(135deg, #f7d089, #c98a2a)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,.5), 0 2px 4px rgba(0,0,0,.4)",
+        }}
       />
 
       <div className="font-display text-xl tracking-[0.08em] text-text-hi">MOORING</div>
-      <div data-testid="status" className={`mt-2 font-mono text-[11px] uppercase tracking-[0.16em] ${STATUS_TONE[state]}`}>
+      <div data-testid="status" className={`font-mono text-[11px] uppercase tracking-[0.16em] ${STATUS_TONE[state]}`}>
         {STATUS_TEXT[state]}
       </div>
 
-      <div className="mt-8 font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">balance</div>
+      <div className="mt-[34px] font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">balance</div>
       <div data-testid="balance" className={`font-display leading-none text-text-hi ${balanceSizeClass}`}>
-        {balance === undefined ? "—" : formatUsdc(balance)} <span className="font-body text-[15px] text-text-lo">USDC</span>
+        {balance === undefined ? "—" : formatUsdc(balance)} <span className="font-display text-[15px] text-text-lo">USDC</span>
       </div>
 
-      <div className="mt-4 flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">
-        <span data-testid="budget-spent">
-          {periodAmount === undefined ? "no budget set" : `${formatUsdc(spent ?? 0n)} / ${formatUsdc(periodAmount)}`}
+      <div className="mt-[18px] flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">
+        <span data-testid="budget-remaining">
+          {periodAmount === undefined ? "no budget set" : `${formatUsdc(remaining ?? 0n)} / ${formatUsdc(periodAmount)}`}
         </span>
         <span data-testid="budget-expiry">expires {expiresText}</span>
       </div>
+      {periodAmount !== undefined ? (
+        <div className="mt-0.5 font-body text-[10px] normal-case tracking-normal text-text-lo/70">left this period</div>
+      ) : null}
       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-text-hi/[0.08]">
-        <div className="h-full rounded-full bg-seaglass" style={{ width: `${budgetPct}%` }} />
+        <div data-testid="budget-bar-fill" className="h-full rounded-full bg-seaglass" style={{ width: `${budgetPct}%` }} />
       </div>
 
       <div className="mt-4 flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">
@@ -243,4 +297,8 @@ export function MooringCard({
       </div>
     </div>
   );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
