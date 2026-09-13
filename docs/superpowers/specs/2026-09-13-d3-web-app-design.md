@@ -24,6 +24,7 @@ Two keys, two roles:
 | New card | 3-step wizard (Policy → Agent & merchants → Confirm) with a live preview card that updates as the form changes. |
 | Writes | One shared transaction-status component for every write: Prepared → Signature → Submitted → Confirmed. |
 | Funding | Sheet with two tabs: "From my wallet" (amount, quick picks, Freighter signs a USDC transfer to the card) and "Show address" (QR + copyable C… address). |
+| Card name | **On-chain label.** The card contract gains a bounded `label` (≤ 32 chars) set at creation (constructor argument) and changeable by the owner via `set_label` (an owner transaction with a sub-cent network fee, stated in the UI). `info()` returns it; the CLI shows it. Requires a card contract update and a new factory deployment (the D1 model: immutable code, versioned factory). |
 
 ## 3. Screens and flows (v1 scope)
 
@@ -36,18 +37,19 @@ Two keys, two roles:
 - **Header bar**: MOORING wordmark, links "My cards", "Docs", wallet badge (`GCJJ…KKBD · testnet`, click → copy / disconnect).
 - **Title row**: "My cards · N cards · total X USDC · spent today Y", and a "Cards / List" toggle.
 - **Carousel** (cards view): selected card centered, larger, ringed in amber, raised (`translateZ`); neighbours smaller, rotated in perspective, dimmed; far ones fade. Arrows, dots, keyboard ← →, swipe on touch. Last slot: dashed "+ new card".
-- **Card face** (all sizes): wordmark, status (● active / ❄ frozen / ○ expired / cancelled), balance (big serif), today's budget `spent / period_amount` with a seaglass bar, expiry countdown, allowlist count, short address, and the **card name** (owner-chosen, stored locally in the browser, never on-chain).
+- **Card face** (all sizes): wordmark, status (● active / ❄ frozen / ○ expired / cancelled), balance (big serif), today's budget `spent / period_amount` with a seaglass bar, expiry countdown, allowlist count, short address, and the **card label** (on-chain, owner-chosen at creation, renamable via `set_label`).
 - **Details** for the selected card: stat row (balance, remaining today, per tx, expires) + primary actions (Fund, Freeze/Unfreeze, Withdraw); two columns: Policy (period budget, per-tx cap, expiry, "period resets in 14 h 20 m", Edit) and Merchants (list, add, remove) + Agent (signer public key, Rotate signer); Danger zone: Cancel card (sweeps balance to the owner).
 - **List view**: table with mini card thumbnail, name, short address, status pill, balance, today's bar, per tx, expiry, "Open ›". Search box (name/address), status filter, "+ New card". Rows open the same details (list view keeps the details panel below the table for the selected row).
 - **Empty state**: one large, dimmed card illustration and "Create your first card".
 
 ### 3.3 New card (`/cards/new`)
-- Step 1 **Policy**: card name (local), period budget with unit picker (hour / day / week / custom seconds), per-tx cap (must be ≤ budget), expiry (presets 7 / 30 / 90 days or a date). Live preview card on the left.
+- Step 1 **Policy**: card label (≤ 32 chars, on-chain), period budget with unit picker (hour / day / week / custom seconds), per-tx cap (must be ≤ budget), expiry (presets 7 / 30 / 90 days or a date). Live preview card on the left.
 - Step 2 **Agent & merchants**: agent public key (validated as a G… ed25519 strkey; green tick), optional initial merchants (G… or C… addresses, max 32, deduplicated). Hint: `mooring keygen`.
 - Step 3 **Confirm**: summary, plain-language note ("The card is a Soroban account tied to your wallet; funds stay under your control"), "Create with Freighter".
 - After confirmation the app navigates to `/cards` with the new card selected and opens the Fund sheet.
 
 ### 3.4 Owner operations (on the details panel)
+- `set_label` (Rename; explains that renaming is an on-chain transaction with a small network fee).
 - `set_policy` (Edit policy modal, same validation as the wizard; explains that current-period spend is kept and the period restarts now).
 - `add_merchant` / `remove_merchant`.
 - `set_signer` (rotate agent key; second confirmation explaining the old key stops working immediately).
@@ -57,7 +59,12 @@ Two keys, two roles:
 - Fund: "From my wallet" builds a USDC SAC `transfer(owner → card, amount)` for Freighter; "Show address" shows QR + address.
 
 ### 3.5 Out of scope (v1)
-Activity history (needs an indexer), merchant side, light theme, multi-wallet kit, cross-device card names, mainnet.
+Activity history (needs an indexer), merchant side, light theme, multi-wallet kit, mainnet.
+
+## 3.6 Contract change: on-chain label (prerequisite task)
+- `contracts/card`: add `label: String` (≤ 32 bytes, validated, `InvalidLabel` error) to the constructor and to `CardInfo`; add owner entrypoint `set_label(label)` with event `LabelChanged { label }`; `__check_auth` untouched (no events, no extra reads beyond the instance entry it already loads).
+- `contracts/factory`: `create_card` takes `label` and passes it to the constructor; a **new factory** is deployed (new card WASM hash); `deployed.testnet.json`, `docs/testnet.md`, the CLI (`status` shows the label) and `@mooring/x402-client` (`CardInfo.label`, `readCardInfo`) are updated. Existing testnet cards from the old factory are not migrated (testnet only).
+- Fee check: re-run the 1-merchant and 32-merchant simulations after the change and record them; the label must keep the 32-merchant case under the observed OZ ceiling (≥ 51 175 stroops).
 
 ## 4. Architecture
 
@@ -80,7 +87,7 @@ apps/web/
                                discoverCards(owner), buildTransfer(), error translation
     wallet/                    Freighter: connect, network, sign; context + hook
     format/                    usdc(), duration(), countdown(), shortAddress()
-    names/                     card display names in localStorage (keyed by card address)
+    prefs/                     selected card + view mode in localStorage
     query/                     React Query client + hooks (useCard, useCards, useMerchants)
   test/                        vitest (lib/*), Playwright (flows with a mocked Freighter)
 packages/contracts-ts/         generated TS bindings for card + factory (`stellar contract bindings typescript`),
@@ -125,12 +132,12 @@ packages/contracts-ts/         generated TS bindings for card + factory (`stella
 
 - No secrets in the browser: agent keys are public only; the owner's key never leaves Freighter. No server-side component holds keys.
 - No analytics or third-party scripts in v1; fonts self-hosted through `next/font`.
-- Card names and the "selected card" live in `localStorage` only.
+- Only UI preferences (selected card, view mode) live in `localStorage`; card labels are on-chain.
 - All transaction XDR shown in a "details" disclosure before signing (what contract, what function, what amount).
 
 ## 8. Testing and verification
 
-- **Unit (vitest)**: `lib/format`, `lib/names`, salt/address derivation (must match the factory's test vectors from `contracts/factory/src/test.rs`), error translation, policy validation, `discoverCards` with a mocked RPC.
+- **Unit (vitest)**: `lib/format`, `lib/prefs`, salt/address derivation (must match the factory's test vectors from `contracts/factory/src/test.rs`), error translation, policy validation, `discoverCards` with a mocked RPC.
 - **Component**: MooringCard states, TxStatus transitions, wizard validation (React Testing Library).
 - **E2E (Playwright)**: connect with a mocked Freighter (window.freighterApi stub), empty state, wizard to the confirm step, list/carousel toggle, error notices. Runs in CI.
 - **Manual testnet checklist** (documented in `docs/testnet.md`, with screenshots as evidence): create a card through the app, fund it from Freighter, edit policy, add/remove merchant, freeze/unfreeze, withdraw, cancel; then pay it with `mooring pay` to show the budget move live.
@@ -145,4 +152,3 @@ packages/contracts-ts/         generated TS bindings for card + factory (`stella
 
 - Wallets Kit adapter (post-v1).
 - Activity history and the indexer (v1.1).
-- Card-name sync across devices (needs a backend or on-chain metadata; deferred).
