@@ -34,7 +34,7 @@ export function WithdrawModal({ open, onClose, address, info, owner, onDone }: W
     if (open) setAmount("");
   }, [open]);
 
-  const balanceQuery = useUsdcBalance(owner);
+  const balanceQuery = useUsdcBalance(owner, { enabled: open });
   const trustline = trustlineStatus(balanceQuery.error, balanceQuery.data !== undefined, balanceQuery.isLoading);
 
   const parsed = parseUsdc(amount.trim());

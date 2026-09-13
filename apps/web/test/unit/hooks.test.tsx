@@ -627,6 +627,22 @@ describe("useCardInfo", () => {
   });
 });
 
+describe("useUsdcBalance", () => {
+  it("does not read (or poll) while its dialog is closed", async () => {
+    const { useUsdcBalance } = await import("../../lib/query/hooks");
+    const { result } = renderHook(() => useUsdcBalance(OWNER, { enabled: false }), { wrapper });
+
+    const call = queryOptionCalls.find(
+      (c) => JSON.stringify(c.queryKey) === JSON.stringify(keys.balance(OWNER)),
+    );
+    expect(call?.enabled).toBe(false);
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+    expect((call!.refetchInterval as () => number | false)()).toBe(false);
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(result.current.data).toBeUndefined();
+  });
+});
+
 describe("useMerchants", () => {
   it("reads a card's merchant allowlist", async () => {
     readMerchantsMock.mockResolvedValue(["CMERCHANT1", "CMERCHANT2"]);

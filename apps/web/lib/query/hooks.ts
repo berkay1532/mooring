@@ -78,16 +78,25 @@ export function useCardInfo(address: string | null | undefined): UseQueryResult<
  * trustline, so a query `error` mentioning a trustline *is* the missing
  * trustline). A card's own balance is not read here: it already arrives
  * inside `useCardInfo`'s `info()`.
+ *
+ * `enabled` is how the callers stop it polling when nobody is looking: every
+ * consumer is a modal or sheet that stays mounted while closed, so without it
+ * a closed Fund/Withdraw/Cancel dialog would keep reading the owner's balance
+ * every 10 s for as long as the dashboard is open.
  */
-export function useUsdcBalance(address: string | null | undefined): UseQueryResult<bigint> {
+export function useUsdcBalance(
+  address: string | null | undefined,
+  opts: { enabled?: boolean } = {},
+): UseQueryResult<bigint> {
+  const enabled = (opts.enabled ?? true) && address != null;
   return useQuery({
     queryKey: keys.balance(address ?? ""),
-    enabled: address != null,
+    enabled,
     queryFn: () => readBalance(address as string),
     // A failed trustline probe must not be retried four times before the
     // Fund sheet can explain itself.
     retry: false,
-    refetchInterval: () => (isTabVisible() ? 10_000 : false),
+    refetchInterval: () => (enabled && isTabVisible() ? 10_000 : false),
   });
 }
 

@@ -30,7 +30,7 @@ export function CancelModal({ open, onClose, address, info, onDone }: OpModalPro
   // Cancel sweeps the balance to the owner in the same transaction, so it
   // needs the owner's USDC trustline exactly as withdraw does (spec §3.4) —
   // same probe, same explanation, rather than only saying so in prose.
-  const balanceQuery = useUsdcBalance(info.owner);
+  const balanceQuery = useUsdcBalance(info.owner, { enabled: open });
   const trustline = trustlineStatus(balanceQuery.error, balanceQuery.data !== undefined, balanceQuery.isLoading);
   const blocked = trustline === "missing" && info.balance > 0n;
 

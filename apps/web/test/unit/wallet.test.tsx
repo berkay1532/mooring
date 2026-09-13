@@ -348,6 +348,35 @@ describe("mockAdapter and window.__mooringMock", () => {
   });
 });
 
+describe("WalletProvider lifecycle", () => {
+  it("never starts the change watcher if the provider unmounts mid-first-refresh", async () => {
+    let resolveAvailable!: (value: boolean) => void;
+    const onChange = vi.fn(() => () => {});
+    const adapter = makeAdapter({
+      isAvailable: () =>
+        new Promise<boolean>((resolve) => {
+          resolveAvailable = resolve;
+        }),
+      getAddress: async () => MOCK_ADDRESS,
+      onChange,
+    });
+
+    const { unmount } = render(
+      <WalletProvider adapter={adapter}>
+        <p>anything</p>
+      </WalletProvider>,
+    );
+
+    // Unmount while `isAvailable()` is still pending, then let it answer.
+    unmount();
+    resolveAvailable(true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 describe("useWallet status derivation end-to-end via the mock adapter", () => {
   afterEach(async () => {
     const { __resetMockAdapter } = await import("../../lib/wallet/mock");

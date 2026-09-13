@@ -49,7 +49,7 @@ export function FundSheet({ open, onClose, address, info, owner, onDone }: FundS
     }
   }, [open]);
 
-  const walletBalance = useUsdcBalance(owner);
+  const walletBalance = useUsdcBalance(owner, { enabled: open });
   const trustline = trustlineStatus(walletBalance.error, walletBalance.data !== undefined, walletBalance.isLoading);
   const available = walletBalance.data;
 

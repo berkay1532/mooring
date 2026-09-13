@@ -6,7 +6,12 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./errors": { "types": "./dist/denial.d.ts", "import": "./dist/denial.js" }
+  },
+  "//exports": "./errors is the card error table on its own, so a consumer that only translates contract errors (the web app) does not pull the payment client, its scheme and the @x402/* packages into its bundle.",
+  "sideEffects": false,
   "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",

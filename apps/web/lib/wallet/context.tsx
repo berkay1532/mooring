@@ -5,7 +5,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { config } from "../config";
 import type { Wallet } from "../chain/card";
 import { freighterAdapter } from "./freighter";
-import { mockAdapter } from "./mock";
 import { toWallet, type WalletAdapter } from "./types";
 
 export type WalletStatus = "unavailable" | "disconnected" | "wrong-network" | "connected";
@@ -33,8 +32,46 @@ export interface WalletContextValue {
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
-function defaultAdapter(): WalletAdapter {
-  return config.walletMode === "mock" ? mockAdapter : freighterAdapter;
+/**
+ * A stand-in for the brief moment a `mock` build is still loading its
+ * adapter chunk. Never reachable in a shipping (`freighter`) build, where
+ * `freighterAdapter` is the synchronous default.
+ */
+const PENDING_ADAPTER: WalletAdapter = {
+  id: "freighter",
+  async isAvailable() {
+    return false;
+  },
+  async connect() {
+    throw new Error("The wallet adapter is still loading");
+  },
+  async disconnect() {},
+  async getAddress() {
+    return null;
+  },
+  async getNetworkPassphrase() {
+    return null;
+  },
+  async signTransaction(xdr) {
+    return xdr;
+  },
+};
+
+/**
+ * The mock wallet is behind a dynamic import guarded by the *literal*
+ * `process.env.NEXT_PUBLIC_WALLET` read that Next inlines at build time: in a
+ * `freighter` build the condition is statically false, so webpack drops the
+ * branch and `lib/wallet/mock.ts` never reaches a production chunk (verified
+ * in CI by grepping the built chunks for `__mooringMock`). A misconfigured
+ * deploy therefore cannot serve a fake wallet that "connects" to a fixed
+ * address unless the build itself was made with `NEXT_PUBLIC_WALLET=mock`.
+ */
+async function loadDefaultAdapter(): Promise<WalletAdapter> {
+  if (process.env.NEXT_PUBLIC_WALLET === "mock") {
+    const { mockAdapter } = await import("./mock");
+    return mockAdapter;
+  }
+  return freighterAdapter;
 }
 
 export function WalletProvider({
@@ -45,7 +82,23 @@ export function WalletProvider({
   /** Overrides the config-selected adapter — used by tests to inject a fake. */
   adapter?: WalletAdapter;
 }) {
-  const resolvedAdapter = useMemo(() => adapter ?? defaultAdapter(), [adapter]);
+  // `freighter` (the shipping configuration) resolves synchronously; only a
+  // `mock` build waits a tick for its dynamically imported adapter.
+  const [loadedAdapter, setLoadedAdapter] = useState<WalletAdapter | null>(() =>
+    config.walletMode === "mock" ? null : freighterAdapter,
+  );
+  const resolvedAdapter = useMemo(() => adapter ?? loadedAdapter, [adapter, loadedAdapter]);
+
+  useEffect(() => {
+    if (adapter || loadedAdapter) return;
+    let cancelled = false;
+    void loadDefaultAdapter().then((loaded) => {
+      if (!cancelled) setLoadedAdapter(() => loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [adapter, loadedAdapter]);
 
   // `available` starts `null` (unknown, still checking) rather than a
   // boolean so the initial render never claims "unavailable" before the
@@ -68,7 +121,7 @@ export function WalletProvider({
   }, []);
 
   const startWatching = useCallback(() => {
-    if (unsubscribeRef.current || !resolvedAdapter.onChange) return;
+    if (unsubscribeRef.current || !resolvedAdapter?.onChange) return;
     unsubscribeRef.current = resolvedAdapter.onChange((s) => {
       setAddress(s.address);
       setNetworkPassphrase(s.networkPassphrase);
@@ -80,9 +133,16 @@ export function WalletProvider({
     });
   }, [resolvedAdapter]);
 
+  // False once the provider has unmounted (or the adapter changed), so a
+  // `refresh()` that is still awaiting its first `isAvailable()` cannot start
+  // a watcher — or write state — after the cleanup has already run.
+  const activeRef = useRef(true);
+
   const refresh = useCallback(async () => {
+    if (!resolvedAdapter) return;
     try {
       const isAvailable = await resolvedAdapter.isAvailable();
+      if (!activeRef.current) return;
       setAvailable(isAvailable);
       if (!isAvailable) {
         setAddress(null);
@@ -95,6 +155,7 @@ export function WalletProvider({
         resolvedAdapter.getAddress(),
         resolvedAdapter.getNetworkPassphrase(),
       ]);
+      if (!activeRef.current) return;
       setAddress(addr);
       setNetworkPassphrase(passphrase);
     } catch {
@@ -103,18 +164,23 @@ export function WalletProvider({
       // rather than throwing through render — `ready` still flips in
       // `finally` below so the gate stops showing its loading state.
     } finally {
-      setReady(true);
+      if (activeRef.current) setReady(true);
     }
   }, [resolvedAdapter, startWatching, stopWatching]);
 
   useEffect(() => {
+    activeRef.current = true;
     void refresh();
-    return () => stopWatching();
+    return () => {
+      activeRef.current = false;
+      stopWatching();
+    };
     // `stopWatching` is stable (empty deps); only `refresh` identity matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
 
   const connect = useCallback(async () => {
+    if (!resolvedAdapter) throw new Error("The wallet adapter is still loading");
     const { address: addr } = await resolvedAdapter.connect();
     const passphrase = await resolvedAdapter.getNetworkPassphrase();
     setAvailable(true);
@@ -126,6 +192,7 @@ export function WalletProvider({
 
   const disconnect = useCallback(async () => {
     stopWatching();
+    if (!resolvedAdapter) return;
     await resolvedAdapter.disconnect();
     setAddress(null);
     setNetworkPassphrase(null);
@@ -139,12 +206,21 @@ export function WalletProvider({
   }, [available, address, networkPassphrase]);
 
   const wallet = useMemo(
-    () => (address ? toWallet(resolvedAdapter, address) : null),
+    () => (address && resolvedAdapter ? toWallet(resolvedAdapter, address) : null),
     [resolvedAdapter, address],
   );
 
   const value: WalletContextValue = useMemo(
-    () => ({ status, ready, address, networkPassphrase, connect, disconnect, adapter: resolvedAdapter, wallet }),
+    () => ({
+      status,
+      ready,
+      address,
+      networkPassphrase,
+      connect,
+      disconnect,
+      adapter: resolvedAdapter ?? PENDING_ADAPTER,
+      wallet,
+    }),
     [status, ready, address, networkPassphrase, connect, disconnect, resolvedAdapter, wallet],
   );
 
