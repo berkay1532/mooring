@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint clean
+.PHONY: build test fmt lint clean bindings
 
 build:
 	cargo build -p mooring-card --target wasm32v1-none --release
@@ -21,3 +21,6 @@ lint:
 
 clean:
 	cargo clean
+
+bindings: build
+	packages/contracts-ts/scripts/generate.sh

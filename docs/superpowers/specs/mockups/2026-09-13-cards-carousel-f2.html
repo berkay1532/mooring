@@ -1,0 +1,154 @@
+<h2>F2 · Ortalı, 3B kart; ve liste görünümü</h2>
+<p class="subtitle">Seçili kart sayfanın ortasında, perspektifli komşular arkaya çekiliyor; çok katmanlı gölge ve kenar ışığıyla fiziksel nesne hissi. Altta 10+ kart için liste görünümü.</p>
+
+<style>
+  .mk { background:#050b14; color:#93a3b5; font-family: Manrope, system-ui, sans-serif; border-radius:16px; border:1px solid rgba(242,238,228,.08); font-size:14px; line-height:1.45; max-width:1100px; margin:0 auto; overflow:hidden; position:relative; }
+  .mk .ser { font-family: "Instrument Serif", Georgia, serif; color:#f2eee4; font-weight:400; }
+  .mk .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; letter-spacing:.16em; font-size:11px; color:#93a3b5; text-transform:uppercase; }
+  .mk .addr { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size:12px; letter-spacing:0; text-transform:none; color:#f2eee4; }
+  .mk .surf { background:#0f1e30; border:1px solid rgba(242,238,228,.07); border-radius:14px; padding:18px 20px; }
+  .mk .amber { color:#f2b44a; } .mk .sea { color:#7fb8a8; } .mk .dan { color:#e05548; }
+  .mk .btn { display:inline-block; padding:10px 18px; border-radius:999px; background:#f2b44a; color:#050b14; font-weight:700; font-size:13px; }
+  .mk .ghost { display:inline-block; padding:10px 18px; border-radius:999px; border:1px solid rgba(242,238,228,.18); color:#f2eee4; font-size:13px; }
+  .mk .topbar { display:flex; justify-content:space-between; align-items:center; padding:16px 32px; border-bottom:1px solid rgba(242,238,228,.07); background:rgba(10,21,34,.6); }
+  .mk .topbar .links span { margin-left:22px; color:#93a3b5; } .mk .topbar .links .on { color:#f2eee4; border-bottom:2px solid #f2b44a; padding-bottom:4px; }
+  .mk .topbar .wallet { display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px; border:1px solid rgba(242,238,228,.14); }
+  .mk .body { padding:26px 32px 30px; }
+  .mk .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:10px; }
+  .mk .toggle { display:inline-flex; border:1px solid rgba(242,238,228,.14); border-radius:999px; overflow:hidden; } .mk .toggle span { padding:6px 14px; font-size:12px; } .mk .toggle .on { background:#0f1e30; color:#f2eee4; }
+
+  /* stage */
+  .mk .stage { position:relative; height:330px; perspective:1400px; display:flex; align-items:center; justify-content:center; }
+  .mk .stage::before { content:""; position:absolute; left:20%; right:20%; bottom:26px; height:70px; background:radial-gradient(ellipse at center, rgba(242,180,74,.16), transparent 65%); filter:blur(14px); }
+  .mk .card3 { position:absolute; width:420px; height:250px; border-radius:20px; padding:22px 26px; overflow:hidden;
+    background:linear-gradient(135deg,#17304a 0%,#0e1d30 55%,#0a1522 100%);
+    border:1px solid rgba(242,238,228,.16);
+    box-shadow:
+      inset 0 1px 0 rgba(242,238,228,.14),
+      inset 0 -1px 0 rgba(0,0,0,.5),
+      0 2px 4px rgba(0,0,0,.35),
+      0 12px 24px rgba(0,0,0,.45),
+      0 40px 80px rgba(0,0,0,.55),
+      0 0 0 1px rgba(242,180,74,.25),
+      0 0 60px rgba(242,180,74,.12);
+    transform-style:preserve-3d; }
+  .mk .card3::after { content:""; position:absolute; inset:0; background:linear-gradient(115deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 60%, rgba(242,180,74,.06) 100%); pointer-events:none; }
+  .mk .card3 .glow { position:absolute; left:-10%; right:-10%; bottom:-70%; height:90%; background:radial-gradient(ellipse at center, rgba(242,180,74,.26), transparent 60%); pointer-events:none; }
+  .mk .card3 .chip { position:absolute; right:24px; top:24px; width:38px; height:26px; border-radius:7px; background:linear-gradient(135deg, #f7d089, #c98a2a); box-shadow:inset 0 1px 0 rgba(255,255,255,.5), 0 2px 4px rgba(0,0,0,.4); }
+  .mk .card3.l { transform:translateX(-360px) translateZ(-160px) rotateY(28deg) scale(.86); opacity:.55; filter:saturate(.35) brightness(.8); box-shadow:0 20px 40px rgba(0,0,0,.5); }
+  .mk .card3.r { transform:translateX(360px) translateZ(-160px) rotateY(-28deg) scale(.86); opacity:.55; filter:brightness(.8); box-shadow:0 20px 40px rgba(0,0,0,.5); }
+  .mk .card3.rr { transform:translateX(640px) translateZ(-300px) rotateY(-34deg) scale(.7); opacity:.25; }
+  .mk .card3.sel { transform:translateZ(60px); z-index:3; }
+  .mk .arrow { position:absolute; top:50%; transform:translateY(-50%); width:36px; height:36px; border-radius:50%; border:1px solid rgba(242,238,228,.14); display:flex; align-items:center; justify-content:center; color:#f2eee4; background:rgba(10,21,34,.6); z-index:5; }
+  .mk .dots { display:flex; gap:6px; justify-content:center; margin-top:2px; } .mk .dots i { width:6px; height:6px; border-radius:50%; background:rgba(242,238,228,.18); } .mk .dots i.on { background:#f2b44a; width:20px; border-radius:3px; }
+  .mk .bar { height:8px; border-radius:999px; background:rgba(242,238,228,.08); overflow:hidden; } .mk .bar i { display:block; height:100%; background:#7fb8a8; }
+  .mk .row { display:flex; gap:20px; } .mk .col { flex:1; min-width:0; }
+  .mk hr { border:0; height:1px; background:linear-gradient(90deg,transparent,rgba(242,180,74,.35),transparent); margin:22px 0; }
+  .mk .kv { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid rgba(242,238,228,.06); } .mk .kv b { color:#f2eee4; font-weight:500; }
+  .mk .stat { display:flex; gap:28px; } .mk .stat div b { display:block; font-family:"Instrument Serif", Georgia, serif; color:#f2eee4; font-size:24px; font-weight:400; margin-top:2px; }
+
+  /* list view */
+  .mk table { width:100%; border-collapse:collapse; margin-top:12px; }
+  .mk th { text-align:left; font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:#93a3b5; padding:8px 12px; border-bottom:1px solid rgba(242,238,228,.08); font-weight:400; }
+  .mk td { padding:12px; border-bottom:1px solid rgba(242,238,228,.05); color:#f2eee4; vertical-align:middle; }
+  .mk tr.on td { background:rgba(242,180,74,.06); }
+  .mk .mini { width:44px; height:28px; border-radius:6px; background:linear-gradient(135deg,#17304a,#0a1522); border:1px solid rgba(242,238,228,.16); box-shadow:0 4px 10px rgba(0,0,0,.4); display:inline-block; vertical-align:middle; margin-right:10px; position:relative; }
+  .mk .mini::after { content:""; position:absolute; right:5px; top:5px; width:9px; height:6px; border-radius:2px; background:#f2b44a; }
+  .mk .mini.frozen { filter:saturate(.3); }
+  .mk .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; }
+  .mk .pill.act { background:rgba(127,184,168,.15); color:#7fb8a8; } .mk .pill.frz { background:rgba(147,163,181,.15); color:#93a3b5; } .mk .pill.exp { background:rgba(224,85,72,.15); color:#e05548; }
+  .mk .minibar { width:110px; height:5px; border-radius:999px; background:rgba(242,238,228,.08); display:inline-block; vertical-align:middle; margin-right:8px; overflow:hidden; } .mk .minibar i { display:block; height:100%; background:#7fb8a8; }
+  .pick { max-width:1100px; margin:14px auto 40px; }
+</style>
+
+<!-- ===================== CAROUSEL ===================== -->
+<div class="mk">
+  <div class="topbar">
+    <div style="display:flex;align-items:center"><span class="ser" style="font-size:20px;letter-spacing:.06em">MOORING</span><span class="links"><span class="on">Kartlarım</span><span>Docs</span></span></div>
+    <div class="wallet"><span style="width:8px;height:8px;border-radius:50%;background:#7fb8a8;display:inline-block"></span><span class="addr">GCJJ…KKBD</span><span class="mono" style="letter-spacing:.08em">testnet</span></div>
+  </div>
+  <div class="body">
+    <div class="head">
+      <div><div class="ser" style="font-size:28px">Kartlarım</div><div style="font-size:13px;margin-top:2px">3 kart · toplam 133.40 USDC · bugün 12.60 harcandı</div></div>
+      <div class="toggle"><span class="on">Kartlar</span><span>Liste</span></div>
+    </div>
+
+    <div class="stage">
+      <div class="arrow" style="left:0">‹</div>
+      <div class="card3 l">
+        <div class="glow"></div><div class="chip"></div>
+        <div class="ser" style="font-size:19px;letter-spacing:.08em">MOORING</div>
+        <div class="mono" style="color:#7fb8a8">❄ frozen</div>
+        <div class="mono" style="margin-top:30px">balance</div>
+        <div class="ser" style="font-size:36px;line-height:1">2.40</div>
+        <div class="mono" style="margin-top:22px">research-bot · CB7Q…M2KA</div>
+      </div>
+      <div class="card3 sel">
+        <div class="glow"></div><div class="chip"></div>
+        <div class="ser" style="font-size:20px;letter-spacing:.08em">MOORING</div>
+        <div class="mono sea">● active</div>
+        <div class="mono" style="margin-top:34px">balance</div>
+        <div class="ser" style="font-size:44px;line-height:1">11.00 <span style="font-size:15px;color:#93a3b5">USDC</span></div>
+        <div class="mono" style="margin-top:18px;display:flex;justify-content:space-between"><span>today 40.00 / 50.00</span><span>expires 29d</span></div>
+        <div class="bar" style="margin-top:6px"><i style="width:20%"></i></div>
+        <div class="mono" style="margin-top:16px;display:flex;justify-content:space-between"><span>inference-agent</span><span class="addr" style="font-size:11px">CAJPWJ…AHCJ</span></div>
+      </div>
+      <div class="card3 r">
+        <div class="glow"></div><div class="chip"></div>
+        <div class="ser" style="font-size:19px;letter-spacing:.08em">MOORING</div>
+        <div class="mono sea">● active</div>
+        <div class="mono" style="margin-top:30px">balance</div>
+        <div class="ser" style="font-size:36px;line-height:1">120.00</div>
+        <div class="mono" style="margin-top:22px">ops-agent · CDX1…9QWE</div>
+      </div>
+      <div class="card3 rr" style="background:transparent;border:1px dashed rgba(242,238,228,.3);box-shadow:none;display:flex;align-items:center;justify-content:center"><span class="ser" style="font-size:40px">+</span></div>
+      <div class="arrow" style="right:0">›</div>
+    </div>
+    <div class="dots"><i></i><i class="on"></i><i></i><i></i></div>
+
+    <hr>
+    <div class="head" style="margin-bottom:18px">
+      <div class="stat">
+        <div><span class="mono">balance</span><b>11.00</b></div>
+        <div><span class="mono">remaining today</span><b>40.00</b></div>
+        <div><span class="mono">per tx</span><b>10.00</b></div>
+        <div><span class="mono">expires</span><b>29d</b></div>
+      </div>
+      <div style="display:flex;gap:10px"><span class="btn">Fonla</span><span class="ghost">Dondur</span><span class="ghost">Withdraw</span></div>
+    </div>
+    <div class="row">
+      <div class="col"><div class="surf"><div style="display:flex;justify-content:space-between;align-items:center"><span class="mono">Politika</span><span class="ghost" style="padding:6px 12px;font-size:12px">Düzenle</span></div><div class="kv"><span>Dönem bütçesi</span><b>50 USDC / gün</b></div><div class="kv"><span>İşlem başı üst limit</span><b>10 USDC</b></div><div class="kv"><span>Son kullanma</span><b>12 Eki 2026 · 29 gün</b></div><div class="kv"><span>Dönem sıfırlanır</span><b>14 sa 20 dk sonra</b></div></div></div>
+      <div class="col"><div class="surf"><div style="display:flex;justify-content:space-between;align-items:center"><span class="mono">Merchant'lar · 1 / 32</span><span class="ghost" style="padding:6px 12px;font-size:12px">+ Ekle</span></div><div class="kv"><span class="addr">GAW3KSJBGKNW…I524NXLOIG</span><b class="dan" style="font-size:12px">Kaldır</b></div></div><div class="surf" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="mono">Ajan</span><span class="ghost" style="padding:6px 12px;font-size:12px">Signer değiştir</span></div><div class="kv"><span>Signer public key</span><b class="addr">GDHDJL3RT6S3…DRRJJSM7</b></div></div></div>
+    </div>
+    <div class="mono dan" style="margin-top:18px">Tehlikeli bölge · <span style="text-decoration:underline">kartı iptal et ve bakiyeyi cüzdana gönder</span></div>
+  </div>
+</div>
+
+<h3 style="max-width:1100px;margin:34px auto 10px">Liste görünümü (aynı ekran, sağ üstteki geçişle)</h3>
+<div class="mk">
+  <div class="body" style="padding-top:22px">
+    <div class="head">
+      <div><div class="ser" style="font-size:28px">Kartlarım</div><div style="font-size:13px;margin-top:2px">12 kart · toplam 1 284.10 USDC · bugün 61.30 harcandı</div></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span class="ghost" style="padding:6px 14px;font-size:12px">⌕ ara</span>
+        <span class="ghost" style="padding:6px 14px;font-size:12px">Durum ▾</span>
+        <div class="toggle"><span>Kartlar</span><span class="on">Liste</span></div>
+        <span class="btn" style="padding:8px 14px">+ Yeni kart</span>
+      </div>
+    </div>
+    <table>
+      <tr><th>Kart</th><th>Durum</th><th>Bakiye</th><th>Bugün</th><th>Per tx</th><th>Süre</th><th></th></tr>
+      <tr class="on"><td><span class="mini"></span>inference-agent <span class="addr" style="color:#93a3b5;margin-left:6px">CAJP…AHCJ</span></td><td><span class="pill act">active</span></td><td>11.00</td><td><span class="minibar"><i style="width:20%"></i></span>40 / 50</td><td>10</td><td>29 gün</td><td class="amber">Aç ›</td></tr>
+      <tr><td><span class="mini frozen"></span>research-bot <span class="addr" style="color:#93a3b5;margin-left:6px">CB7Q…M2KA</span></td><td><span class="pill frz">frozen</span></td><td>2.40</td><td><span class="minibar"><i style="width:0%"></i></span>5 / 5</td><td>1</td><td>12 gün</td><td class="amber">Aç ›</td></tr>
+      <tr><td><span class="mini"></span>ops-agent <span class="addr" style="color:#93a3b5;margin-left:6px">CDX1…9QWE</span></td><td><span class="pill act">active</span></td><td>120.00</td><td><span class="minibar"><i style="width:63%"></i></span>37 / 100</td><td>25</td><td>88 gün</td><td class="amber">Aç ›</td></tr>
+      <tr><td><span class="mini"></span>scraper-01 <span class="addr" style="color:#93a3b5;margin-left:6px">CQ2M…7HFA</span></td><td><span class="pill exp">expired</span></td><td>0.80</td><td><span class="minibar"><i style="width:0%"></i></span>—</td><td>2</td><td>—</td><td class="amber">Aç ›</td></tr>
+      <tr><td><span class="mini"></span>billing-agent <span class="addr" style="color:#93a3b5;margin-left:6px">CH8L…Z3QP</span></td><td><span class="pill act">active</span></td><td>640.00</td><td><span class="minibar"><i style="width:12%"></i></span>440 / 500</td><td>50</td><td>200 gün</td><td class="amber">Aç ›</td></tr>
+      <tr><td colspan="7" style="color:#93a3b5;text-align:center;font-size:12px">… 7 kart daha</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="options pick">
+  <div class="option" data-choice="f2" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>F2'yi onayla</h3><p>Ortalı 3B kart sahnesi + liste görünümü. Tasarım yönü kilitlenir; kalan ekranlar (yeni kart sihirbazı, fonlama, bağlan) bu dille çizilir.</p></div></div>
+  <div class="option" data-choice="f2-tweak" onclick="toggleSelect(this)"><div class="letter">~</div><div class="content"><h3>Değişiklik var</h3><p>Terminalde yaz.</p></div></div>
+</div>

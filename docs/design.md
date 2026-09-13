@@ -3,7 +3,9 @@
 > Mooring is a **production product**, not a demo. The SCF sprint delivers a production-quality
 > v1 on testnet; mainnet follows a security audit. See "Product roadmap" below.
 
-Status: **D1 and D2 delivered (see `docs/testnet.md`); D3 next.** Agreed via brainstorming
+Status: **D1 and D2 delivered (see `docs/testnet.md`); D3 in progress — on-chain labels
+landed, the web app is built and in review (`docs/web-app.md`), its testnet checklist and
+deployment pending.** Agreed via brainstorming
 (2026-08); W1 spike **resolved 2026-09-08** — see `docs/spike-w1-auth-mechanism.md`. The x402
 integration is documented in `docs/x402-integration.md`.
 
@@ -63,8 +65,11 @@ x402 services per request within limits the network enforces.
 4. **Web app** (Stellar-native, Freighter / Wallets Kit connect):
    - *Card panel* — create / fund card, live budget & balance, freeze / unfreeze / cancel /
      withdraw, allowlist, policy edit, signer rotation. (SCF sprint scope.)
-   - *Agent key management* — generate an agent keypair in the browser, show it once, produce a
-     ready `.env` for the agent; rotate via `set_signer`. (SCF sprint scope.)
+   - *Agent key* — the owner pastes the agent's **public** key; the app never generates, stores
+     or sees an agent secret (`mooring keygen` in the CLI produces the keypair on the owner's own
+     machine). Rotate via `set_signer`. (SCF sprint scope; the browser-side keypair generation
+     originally sketched here was dropped in the D3 design review — see
+     `docs/superpowers/specs/2026-09-13-d3-web-app-design.md` §2.)
    - *Activity history* — payments and owner actions per card, backed by Mooring's own indexer
      (RPC keeps events ~7 days; policy rejections happen at simulation and leave no on-chain
      trace, so the agent client reports them to the indexer). (Post-sprint.)

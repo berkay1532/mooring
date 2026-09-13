@@ -74,10 +74,14 @@ D1/D2 addresses earlier in the same file.
 - **W1 (done):** facilitator/settlement spike + card contract core + TDD tests + testnet deploy.
 - **W2 (done):** x402 server + settlement wiring (card as payer) + e2e integration test.
 - **W3 (done):** `@mooring/x402-client` npm package + `mooring` CLI + allowlist.
-- **W4:** web app (card panel + agent keys) + docs + evidence package.
+- **W4 (in progress):** web app built (`apps/web` — card panel, wizard, owner ops; 244 unit
+  tests + 19 Playwright flows in CI), documented (`docs/web-app.md`), deployed to Vercel
+  (https://mooring-web.vercel.app) and up for review in PR #4; the manual testnet checklist
+  (hashes + screenshots) is pending — it needs the owner's Freighter with the owner key.
 
 **D1 and D2 are delivered** (D1 in PR #1, D2 in PR #2) — evidence in `docs/testnet.md`, the
-integration guide in `docs/x402-integration.md`. **D3 is next.**
+integration guide in `docs/x402-integration.md`. **D3-A (on-chain label) is delivered; D3-B (the
+web app) is built and awaiting its PR, testnet checklist and deployment.**
 
 ### Post-sprint roadmap (not in the 30-day SOW)
 v1.1: indexer + activity history, hosted example merchant API. v2: Soroban Audit Bank audit,

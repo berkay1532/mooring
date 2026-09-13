@@ -302,3 +302,26 @@ Settlement transaction
 
 Fees are still sponsored by the facilitator (a third distinct OZ signer account), and the payer
 recorded in the settlement is the card contract.
+
+## D3 — web app (2026-09-13)
+
+The owner-facing web app (`apps/web`, `@mooring/web`) drives the same deployment v2 factory and
+card contracts as the sections above: `NEXT_PUBLIC_FACTORY_ADDRESS` is
+`CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE` and `NEXT_PUBLIC_USDC_SAC` is
+`CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`. Cards created from the app use the
+factory's sequential owner-bound salts, so they are discovered automatically; the card above
+(`CBOOOQDW…UH5W`) was created from the CLI with a random salt and is imported with "Add existing
+card".
+
+| Item | Value |
+|---|---|
+| Deployed URL | https://mooring-web.vercel.app (Vercel project `mooring-web`, deployed 2026-09-14; steps in `docs/web-app.md`) |
+| Automated coverage | 230 vitest unit/component tests + 19 Playwright flows, both in the `web` CI job; neither touches testnet |
+| Manual testnet checklist | `docs/web-app.md` → "Manual testnet checklist" |
+
+**On-chain evidence for D3 is `pending`.** The checklist (create a card `inference-agent-2`, fund
+1 USDC, edit policy, add and remove a merchant, rotate the signer, freeze/unfreeze, pay it with
+`mooring pay`, withdraw 0.5 USDC, cancel) has to be run with the real Freighter extension holding
+the owner key, which only the repository owner can do. Every transaction hash and screenshot from
+that run belongs in the table in `docs/web-app.md`; this section then points at the results.
+Nothing has been simulated or estimated to fill the gap.
