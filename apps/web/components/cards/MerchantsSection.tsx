@@ -26,6 +26,13 @@ export interface MerchantsSectionProps {
   address: string;
   merchants: readonly string[];
   loading?: boolean;
+  /**
+   * The panel's own write gate — another action on this card is in flight,
+   * the card is cancelled, or its `info()` read is failing ("writes are
+   * paused"). The allowlist obeys the same rule as every other control, or
+   * the panel would promise something it does not keep.
+   */
+  disabled?: boolean;
   onDone: (message: string) => void;
 }
 
@@ -38,7 +45,7 @@ function isValidMerchant(value: string): boolean {
  * removing are both owner transactions, so each renders the shared
  * {@link TxStatus} in place and participates in the per-card busy lock.
  */
-export function MerchantsSection({ address, merchants, loading, onDone }: MerchantsSectionProps) {
+export function MerchantsSection({ address, merchants, loading, disabled, onDone }: MerchantsSectionProps) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -61,7 +68,7 @@ export function MerchantsSection({ address, merchants, loading, onDone }: Mercha
   const full = merchants.length >= MAX_MERCHANTS;
   const duplicate = merchants.includes(draft.trim());
   const draftValid = isValidMerchant(draft.trim()) && !duplicate;
-  const busy = add.locked || remove.locked;
+  const busy = Boolean(disabled) || add.locked || remove.locked;
   const op = add.state !== "idle" ? add : remove;
 
   return (
@@ -119,7 +126,7 @@ export function MerchantsSection({ address, merchants, loading, onDone }: Mercha
               className={SMALL_BUTTON_CLASS}
               onClick={() => void add.run(draft.trim())}
               loading={add.mine}
-              disabled={!draftValid || busy}
+              disabled={!draftValid || busy || full}
             >
               Add merchant
             </Button>

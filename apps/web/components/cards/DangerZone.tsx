@@ -10,7 +10,7 @@ export interface DangerZoneProps {
 }
 
 /**
- * The single danger line under the details panel (mockup's "Tehlikeli bölge"
+ * The single danger line under the details panel (the mockup's danger-zone
  * row). Cancelling is permanent and sweeps the balance back to the owner, so
  * it never sits next to the ordinary actions.
  */

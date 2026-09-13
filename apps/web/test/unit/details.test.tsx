@@ -42,8 +42,12 @@ function info(over: Partial<CardInfo> = {}): CardInfo {
 // --- mocked data + action hooks -------------------------------------------
 
 let cardInfo: CardInfo = info();
+let infoError: unknown = null;
 let merchants: string[] = [MERCHANT];
-let walletBalance: { data?: bigint; error: unknown } = { data: 1_842_000_000n, error: null };
+let walletBalance: { data?: bigint; error: unknown; pending?: boolean } = {
+  data: 1_842_000_000n,
+  error: null,
+};
 
 const runCalls: Array<{ args: unknown }> = [];
 
@@ -72,9 +76,14 @@ function fakeUseContractAction(_build: unknown, opts: { onConfirmed?: (hash: str
 let confirmImmediately = false;
 
 vi.mock("@/lib/query/hooks", () => ({
-  useCardInfo: () => ({ data: cardInfo, isLoading: false, error: null }),
+  useCardInfo: () => ({ data: cardInfo, isLoading: false, error: infoError }),
   useMerchants: () => ({ data: merchants, isLoading: false, error: null }),
-  useUsdcBalance: () => ({ data: walletBalance.data, isLoading: false, error: walletBalance.error }),
+  useUsdcBalance: () => ({
+    data: walletBalance.data,
+    isLoading: walletBalance.pending ?? false,
+    isPending: walletBalance.pending ?? false,
+    error: walletBalance.error,
+  }),
   useContractAction: (build: unknown, opts: never) => fakeUseContractAction(build, opts),
 }));
 
@@ -92,6 +101,7 @@ vi.mock("@/lib/prefs", async (importOriginal) => {
 
 beforeEach(() => {
   cardInfo = info();
+  infoError = null;
   merchants = [MERCHANT];
   walletBalance = { data: 1_842_000_000n, error: null };
   runCalls.length = 0;
@@ -151,6 +161,31 @@ describe("CardDetails", () => {
     details();
     expect(screen.getByText(/1 \/ 32/)).toBeInTheDocument();
     expect(screen.getByText(MERCHANT)).toBeInTheDocument();
+  });
+
+  it("pauses merchant writes too when the panel says writes are paused", () => {
+    infoError = new Error("rpc unreachable");
+    details();
+    expect(screen.getByText(/writes are paused/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^\+ add$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /remove merchant/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Fund" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /rename/i })).toBeDisabled();
+  });
+
+  it("pauses merchant writes on a cancelled card", () => {
+    cardInfo = info({ state: 2 });
+    details();
+    expect(screen.getByRole("button", { name: /^\+ add$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /remove merchant/i })).toBeDisabled();
+  });
+
+  it("copies the card address from the details header", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    details();
+    fireEvent.click(screen.getByRole("button", { name: /copy card address/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(CARD));
   });
 });
 
@@ -226,6 +261,13 @@ describe("WithdrawModal", () => {
 
     fireEvent.change(input, { target: { value: "11.0000001" } });
     expect(screen.getByRole("button", { name: /^withdraw$/i })).toBeEnabled();
+  });
+
+  it("says nothing about the trustline while the balance read is still pending", () => {
+    walletBalance = { data: undefined, error: null, pending: true };
+    withdrawModal();
+    expect(screen.queryByText(/could not read your wallet/i)).toBeNull();
+    expect(screen.queryByText(/USDC trustline/i)).toBeNull();
   });
 
   it("explains a missing USDC trustline instead of letting the write fail", () => {

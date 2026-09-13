@@ -63,6 +63,18 @@ function CardDetailsInner({ address, owner, nowUnix, fundSignal, onToast, onRemo
   const [panel, setPanel] = useState<OpenPanel>(null);
   const { busy } = useCardBusy();
 
+  const [copied, setCopied] = useState(false);
+  async function copyAddress() {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access can be unavailable (permissions, older browsers) —
+      // the address stays on screen and selectable, so this is a soft failure.
+    }
+  }
+
   const [locallyAdded, setLocallyAdded] = useState(false);
   useEffect(() => setLocallyAdded(getAddedCards(owner).includes(address)), [owner, address]);
 
@@ -113,9 +125,15 @@ function CardDetailsInner({ address, owner, nowUnix, fundSignal, onToast, onRemo
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h2 className="font-display text-2xl text-text-hi">{info.label}</h2>
         <Pill tone={state}>{state}</Pill>
-        <span className="font-mono text-xs text-text-lo" title={address}>
-          {shortAddress(address)}
-        </span>
+        <button
+          type="button"
+          onClick={() => void copyAddress()}
+          title={address}
+          aria-label={copied ? "Card address copied" : `Copy card address ${address}`}
+          className="rounded font-mono text-xs text-text-lo transition hover:text-text-hi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+        >
+          {copied ? "Copied" : shortAddress(address)}
+        </button>
         <Button variant="ghost" className="px-3 py-1.5 text-xs" onClick={() => setPanel("rename")} disabled={disabled}>
           Rename
         </Button>
@@ -172,6 +190,7 @@ function CardDetailsInner({ address, owner, nowUnix, fundSignal, onToast, onRemo
             address={address}
             merchants={merchantsQuery.data ?? []}
             loading={merchantsQuery.isLoading}
+            disabled={disabled}
             onDone={onToast}
           />
           <AgentSection info={info} onRotate={() => setPanel("signer")} disabled={disabled} />

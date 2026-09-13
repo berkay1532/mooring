@@ -18,6 +18,7 @@ const NOW = 1_800_000_000;
 const A = "CAJPWJRJPFIY6XYYQIVCC3XLYFYQVNJIJ6XVPTUY4EBLNQ3CFN2AHCJ";
 const B = "CB7QKSJBGKNWX3TOWQYRT5UQ4KXWQ4M5X5VZXHBYRPLEN24TCVVTM2KA";
 const C = "CDX1KSJBGKNWX3TOWQYRT5UQ4KXWQ4M5X5VZXHBYRPLEN24TCVV9QWE";
+const D = "CQ2MKSJBGKNWX3TOWQYRT5UQ4KXWQ4M5X5VZXHBYRPLEN24TCVV7HFA";
 
 function info(label: string, over: Partial<CardInfo> = {}): CardInfo {
   return {
@@ -49,6 +50,18 @@ const ITEMS: CardSummary[] = [
   summary(B, "inference-agent"),
   summary(C, "ops-agent", { balance: 120n * BASE }),
 ];
+
+/**
+ * jsdom has no `PointerEvent` constructor, so `fireEvent.pointerDown(el, {
+ * clientX })` falls back to a plain `Event` that drops the coordinate. A
+ * native `MouseEvent` typed `"pointerdown"` carries it through — listeners
+ * fire by event type, not constructor class.
+ */
+function firePointer(el: HTMLElement, type: string, clientX: number) {
+  // Dispatched through `fireEvent` (not `el.dispatchEvent`) so the React
+  // state update it causes is flushed inside `act`.
+  fireEvent(el, new MouseEvent(type, { clientX, bubbles: true, cancelable: true }));
+}
 
 /** A stateful harness: the carousel is controlled, so selection lives here. */
 function Harness({ items = ITEMS, initial = B }: { items?: CardSummary[]; initial?: string }) {
@@ -95,14 +108,15 @@ describe("CardCarousel", () => {
     expect(right.style.transform).toContain("rotateY(-28deg)");
   });
 
-  it("moves the selection with the arrow keys", () => {
+  it("moves the selection with the arrow keys while the stage has focus", () => {
     const { container } = render(<Harness />);
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    const stage = screen.getByRole("region");
+    fireEvent.keyDown(stage, { key: "ArrowRight" });
     expect(container.querySelector('[data-selected="true"]')).toHaveAttribute(
       "aria-label",
       expect.stringContaining("ops-agent"),
     );
-    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    fireEvent.keyDown(stage, { key: "ArrowLeft" });
     expect(container.querySelector('[data-selected="true"]')).toHaveAttribute(
       "aria-label",
       expect.stringContaining("inference-agent"),
@@ -130,22 +144,44 @@ describe("CardCarousel", () => {
 
     push.mockReset();
     // Walk right past the last card onto the "+ new card" slot, then Enter.
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    fireEvent.keyDown(document.body, { key: "Enter" });
+    const stage = screen.getByRole("region");
+    fireEvent.keyDown(stage, { key: "ArrowRight" });
+    fireEvent.keyDown(stage, { key: "ArrowRight" });
+    fireEvent.keyDown(stage, { key: "Enter" });
     expect(push).toHaveBeenCalledWith("/cards/new");
   });
 
-  it("ignores arrow keys while typing in a field", () => {
+  it("ignores arrow keys pressed outside the stage", () => {
     const { container } = render(<Harness />);
     const input = document.createElement("input");
     document.body.appendChild(input);
     fireEvent.keyDown(input, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
     expect(container.querySelector('[data-selected="true"]')).toHaveAttribute(
       "aria-label",
       expect.stringContaining("inference-agent"),
     );
     input.remove();
+  });
+
+  it("does not undo a mouse swipe with the click that follows it", () => {
+    const { container } = render(<Harness />);
+    const stage = screen.getByRole("region");
+    const card = container.querySelector('[data-slide-offset="0"] button') as HTMLElement;
+
+    firePointer(stage, "pointerdown", 400);
+    firePointer(stage, "pointerup", 200);
+    expect(container.querySelector('[data-selected="true"]')).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("ops-agent"),
+    );
+
+    // The browser now fires the synthetic click on the card that was pressed.
+    fireEvent.click(card);
+    expect(container.querySelector('[data-selected="true"]')).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("ops-agent"),
+    );
   });
 
   it("drops the 3D transforms under prefers-reduced-motion", () => {
@@ -181,6 +217,28 @@ describe("CardList", () => {
     expect(within(rows[1]).getByText("inference-agent")).toBeInTheDocument();
     expect(within(rows[1]).getByText("11.00")).toBeInTheDocument();
     expect(within(rows[0]).getByText("frozen")).toBeInTheDocument();
+  });
+
+  it("shows the period column as remaining / budget, like the card face", () => {
+    render(<ListHarness />);
+    const rows = screen.getAllByRole("row").slice(1);
+    // 10 spent of a 50 budget: 40 left, and the bar fills with the spent 20%.
+    expect(within(rows[1]).getByText("40.00 / 50.00")).toBeInTheDocument();
+    expect(screen.getByText("Left this period")).toBeInTheDocument();
+    const bar = rows[1].querySelector("span > span[style]") as HTMLElement;
+    expect(bar.style.width).toBe("20%");
+  });
+
+  it("shows an unreadable card neutrally and keeps it under a status filter", () => {
+    const items = [...ITEMS, { address: D, info: undefined, error: new Error("rpc"), loading: false }];
+    render(<ListHarness items={items} />);
+    expect(screen.getByText("unreadable")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Status filter"), { target: { value: "frozen" } });
+    const rows = screen.getAllByRole("row").slice(1);
+    // The frozen card plus the unreadable one, which has no status to filter on.
+    expect(rows).toHaveLength(2);
+    expect(within(rows[1]).getByText("unreadable")).toBeInTheDocument();
   });
 
   it("filters by the search box (label or address)", () => {

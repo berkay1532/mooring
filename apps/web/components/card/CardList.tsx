@@ -47,10 +47,10 @@ export function CardList({ items, selected, onSelect, nowUnix }: CardListProps) 
     const q = query.trim().toLowerCase();
     return items.filter((item) => {
       if (q && !`${item.info?.label ?? ""} ${item.address}`.toLowerCase().includes(q)) return false;
-      if (status !== "all") {
-        if (!item.info) return false;
-        if (faceState(item.info, now) !== status) return false;
-      }
+      // A card whose info() has not resolved has no status to filter on.
+      // It stays visible rather than silently disappearing — an unreadable
+      // card is exactly the one an owner needs to see.
+      if (status !== "all" && item.info && faceState(item.info, now) !== status) return false;
       return true;
     });
   }, [items, query, status, now]);
@@ -93,7 +93,7 @@ export function CardList({ items, selected, onSelect, nowUnix }: CardListProps) 
               <th className={TH_CLASS}>Card</th>
               <th className={TH_CLASS}>Status</th>
               <th className={TH_CLASS}>Balance</th>
-              <th className={TH_CLASS}>This period</th>
+              <th className={TH_CLASS}>Left this period</th>
               <th className={TH_CLASS}>Per tx</th>
               <th className={TH_CLASS}>Expires</th>
               <th className={TH_CLASS}>
@@ -104,11 +104,22 @@ export function CardList({ items, selected, onSelect, nowUnix }: CardListProps) 
           <tbody>
             {rows.map((item) => {
               const info = item.info;
-              const state = info ? faceState(info, now) : "active";
+              // No info yet (still loading, or the read failed): the face
+              // stays neutral — never a green "active" pill for a card that
+              // could be frozen or cancelled.
+              const face = info ? faceState(info, now) : null;
               const spentPct =
                 info && info.policy.period_amount > 0n
                   ? Math.min(100, Number((info.period.spent * 10_000n) / info.policy.period_amount) / 100)
                   : 0;
+              // Remaining / budget, exactly as the card face reads it
+              // (Task 6 ruling): the text is what is LEFT, the bar fills
+              // with the spent fraction.
+              const remaining = info
+                ? info.policy.period_amount - info.period.spent > 0n
+                  ? info.policy.period_amount - info.period.spent
+                  : 0n
+                : null;
               const isSelected = item.address === selected;
               return (
                 <tr
@@ -118,13 +129,19 @@ export function CardList({ items, selected, onSelect, nowUnix }: CardListProps) 
                 >
                   <td className={TD_CLASS}>
                     <span className="mr-2.5 inline-block align-middle">
-                      <MooringCard size="thumb" state={state} label={info?.label ?? item.address} />
+                      <MooringCard size="thumb" state={face ?? "draft"} label={info?.label ?? item.address} />
                     </span>
                     {info?.label ?? "…"}
                     <span className="ml-1.5 font-mono text-xs text-text-lo">{shortAddress(item.address)}</span>
                   </td>
                   <td className={TD_CLASS}>
-                    <Pill tone={state}>{state}</Pill>
+                    {face ? (
+                      <Pill tone={face}>{face}</Pill>
+                    ) : (
+                      <span className="font-body text-[11px] text-text-lo">
+                        {item.error ? "unreadable" : "loading…"}
+                      </span>
+                    )}
                   </td>
                   <td className={TD_CLASS} title={info ? `${formatUsdc(info.balance, { full: true })} USDC` : undefined}>
                     {info ? formatUsdc(info.balance) : "—"}
@@ -133,8 +150,15 @@ export function CardList({ items, selected, onSelect, nowUnix }: CardListProps) 
                     <span className="mr-2 inline-block h-[5px] w-[110px] overflow-hidden rounded-full bg-text-hi/[0.08] align-middle">
                       <span className="block h-full rounded-full bg-seaglass" style={{ width: `${spentPct}%` }} />
                     </span>
-                    <span className="font-mono text-xs">
-                      {info ? `${formatUsdc(info.period.spent)} / ${formatUsdc(info.policy.period_amount)}` : "—"}
+                    <span
+                      className="font-mono text-xs"
+                      title={
+                        info
+                          ? `${formatUsdc(remaining as bigint, { full: true })} left of ${formatUsdc(info.policy.period_amount, { full: true })} USDC`
+                          : undefined
+                      }
+                    >
+                      {info ? `${formatUsdc(remaining as bigint)} / ${formatUsdc(info.policy.period_amount)}` : "—"}
                     </span>
                   </td>
                   <td className={TD_CLASS}>{info ? formatUsdc(info.policy.max_per_tx) : "—"}</td>
