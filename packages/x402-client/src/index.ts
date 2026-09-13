@@ -1,6 +1,7 @@
 export { signCardAuthEntries } from "./signer.js";
 export {
   CARD_ERROR_CODES,
+  CARD_ERRORS,
   CardPolicyDenied,
   PaymentError,
   cardDenialFromEvents,

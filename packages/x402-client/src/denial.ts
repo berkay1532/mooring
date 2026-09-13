@@ -27,6 +27,30 @@ export const CARD_ERROR_CODES: Record<number, DenialReason> = {
   8: "over_budget",
 };
 
+/**
+ * Every contract error the card can raise (`CardError`, codes 1..13), with a
+ * short user-facing sentence for each. This is the full table: unlike
+ * `CARD_ERROR_CODES` (1..8, payment denials only), it also covers the owner
+ * operations the web app surfaces (`set_policy`, `set_label`, allowlist
+ * management, freeze/cancel/withdraw) so their errors can be shown directly
+ * without a separate mapping.
+ */
+export const CARD_ERRORS: Record<number, string> = {
+  1: "The signature is not valid for this card.",
+  2: "This action is not the one payment the card's agent key is allowed to sign.",
+  3: "This card is frozen.",
+  4: "This card has been cancelled.",
+  5: "This card has expired.",
+  6: "This merchant is not on the card's allowlist.",
+  7: "This payment is over the card's per-transaction cap.",
+  8: "This would put the card over its budget for the current period.",
+  9: "The amount must be a positive number.",
+  10: "The card's merchant allowlist is full.",
+  11: "That policy is not valid (check the budget, cap and expiry values).",
+  12: "This action is not allowed in the card's current state.",
+  13: "That label is not valid (it must be 1 to 32 bytes).",
+};
+
 const CONTRACT_ERROR = /Error\(Contract, #(\d+)\)/;
 
 /** Parses a Soroban `Error(Contract, #N)` from an error/diagnostic string. */

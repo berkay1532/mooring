@@ -125,7 +125,8 @@ card.
 | `createMooringFetch(opts)` | a `fetch` that pays from the card and rejects with `CardPolicyDenied` or `PaymentError`, never a bare `402`; builds a fresh client per call, so it is safe to share |
 | `createMooringClient(opts)` | the underlying `x402Client`. **Single-flight per instance** — x402's hooks carry no request identity, so build one per payment. Used directly it is stock x402: it throws generic errors and returns bare `402`s, and only `onDenial` / `onPaymentError` carry the typed reason |
 | `getSettlement(res)` | decodes `PAYMENT-RESPONSE`; `null` when absent or undecodable (a settlement you cannot read is not a failed payment) |
-| `CardPolicyDenied`, `DenialReason`, `DenialStage`, `CARD_ERROR_CODES`, `classifyContractError`, `cardDenialFromEvents` | typed denials |
+| `CardPolicyDenied`, `DenialReason`, `DenialStage`, `CARD_ERROR_CODES`, `classifyContractError`, `cardDenialFromEvents` | typed denials (payment-path codes 1-8) |
+| `CARD_ERRORS` | the full contract error table (codes 1-13, including owner-operation errors like `InvalidLabel`) mapped to short user-facing sentences |
 | `PaymentError` | every failure that is *not* the card's policy (`rejected` / `unconfirmed`) |
 | `reconcileSettlement(rpcUrl, network, hash)` | asks the ledger what became of a settlement transaction |
 | `precheck(info, merchants, terms, now)` | the local policy mirror, on its own |
