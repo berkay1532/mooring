@@ -3,11 +3,12 @@
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import type { AssembledTransaction } from "@stellar/stellar-sdk/contract";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 
 import type { Wallet } from "../chain/card";
 import { translateError, type TranslatedError } from "../chain/errors";
 import { explorerTxUrl, getRpcServer } from "../chain/rpc";
+import { config } from "../config";
 import { useWallet } from "../wallet/context";
 
 /**
@@ -30,7 +31,7 @@ export type BuiltTransaction = AssembledTransaction<unknown> | Transaction;
 export interface ContractActionOptions<TArgs> {
   /** Query keys to invalidate once the transaction is confirmed on-chain. */
   invalidates: (args: TArgs) => QueryKey[];
-  /** Called once, after invalidation, when the transaction is confirmed. */
+  /** Called once, after invalidation, when the transaction is confirmed. Skipped if the component has unmounted by then. */
   onConfirmed?: (hash: string) => void;
 }
 
@@ -49,8 +50,19 @@ export interface ContractActionResult<TArgs> {
 const POLL_INTERVAL_MS = 1_000;
 const MAX_POLL_ATTEMPTS = 60;
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * A `setTimeout`-based delay whose pending timer is recorded in `timeoutRef`
+ * so an unmount cleanup can `clearTimeout` it (see the `useEffect` in
+ * `useContractAction`) — otherwise the poll loop would keep a timer alive
+ * for up to a minute after the component using it is gone.
+ */
+function delay(ms: number, timeoutRef: MutableRefObject<ReturnType<typeof setTimeout> | null>): Promise<void> {
+  return new Promise((resolve) => {
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null;
+      resolve();
+    }, ms);
+  });
 }
 
 /**
@@ -109,7 +121,7 @@ export function useContractAction<TArgs>(
   build: (args: TArgs, wallet: Wallet) => Promise<BuiltTransaction>,
   opts: ContractActionOptions<TArgs>,
 ): ContractActionResult<TArgs> {
-  const { wallet, networkPassphrase } = useWallet();
+  const { wallet } = useWallet();
   const queryClient = useQueryClient();
 
   const [state, setState] = useState<ActionState>("idle");
@@ -117,13 +129,29 @@ export function useContractAction<TArgs>(
   const [error, setError] = useState<TranslatedError | null>(null);
 
   const inFlightRef = useRef(false);
+
+  // `mountedRef` gates every `setState` call; `cancelledRef` additionally
+  // breaks the poll loop and skips `onConfirmed`. Both are set in the effect
+  // *body* (not just its cleanup): under React StrictMode (`next dev`),
+  // effects run setup -> cleanup -> setup on mount, so a flag only ever
+  // written by the cleanup would be left permanently `false` after the
+  // second setup — every `run()` would then silently bail out before
+  // `wallet.signTransaction` (see the Task 7 review, B1).
   const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  const cancelledRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    cancelledRef.current = false;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+      cancelledRef.current = true;
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Keep the latest `opts`/`build` without making `run`'s identity depend on
   // callers passing stable references (`invalidates`/`onConfirmed` are
@@ -152,14 +180,24 @@ export function useContractAction<TArgs>(
 
       try {
         if (!wallet) {
-          fail(translateError(new Error("Connect a wallet to continue.")));
+          fail({ title: "Connect a wallet", next: "Connect Freighter to continue." });
           return;
         }
-        const passphrase = networkPassphrase ?? "";
+        // The route guard (spec §4.3) blocks every write route unless the
+        // wallet's network already matches `config.networkPassphrase`, so
+        // signing and re-parsing against `config`'s own value (rather than
+        // the wallet-reported one, which can be `null` if `getNetworkDetails`
+        // failed) is always the correct network here.
+        const passphrase = config.networkPassphrase;
 
         // --- preparing: simulate/assemble ---------------------------------
         const tx = await buildRef.current(args, wallet);
-        if (isAssembledTransaction(tx)) {
+        if (isAssembledTransaction(tx) && !tx.simulation) {
+          // The generated bindings already simulate by default
+          // (`AssembledTransaction.build`'s `options.simulate` defaults to
+          // `true`), so only re-simulate when the caller opted out of that
+          // (or handed in a transaction that was never simulated) — avoids
+          // a redundant `simulateTransaction` round trip on every write.
           await tx.simulate();
         }
         if (!mountedRef.current) return;
@@ -189,12 +227,25 @@ export function useContractAction<TArgs>(
           fail(translateError(new Error(describeSendError(sent))));
           return;
         }
+        if (sent.status === "TRY_AGAIN_LATER") {
+          // Not queued at all (unlike `PENDING`/`DUPLICATE`) — polling would
+          // just see `NOT_FOUND` for a minute and report a misleading
+          // "not confirmed yet" against a transaction that never existed.
+          fail({
+            title: "The network is busy",
+            detail: "The transaction could not be queued right now.",
+            next: "Try again in a moment.",
+          });
+          return;
+        }
 
         // --- poll getTransaction, up to 60s ---------------------------------
         let confirmed = false;
         let sawFailure = false;
         for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
-          await delay(POLL_INTERVAL_MS);
+          if (cancelledRef.current) break;
+          await delay(POLL_INTERVAL_MS, timeoutRef);
+          if (cancelledRef.current) break;
           const got = await rpc.getTransaction(sent.hash);
           if (got.status === "SUCCESS") {
             confirmed = true;
@@ -210,6 +261,7 @@ export function useContractAction<TArgs>(
 
         if (sawFailure) return;
         if (!confirmed) {
+          if (cancelledRef.current) return; // unmounted mid-poll — nothing left to report
           fail({
             title: "Not confirmed yet",
             detail: "The transaction is still pending after 60 seconds.",
@@ -223,14 +275,14 @@ export function useContractAction<TArgs>(
         for (const key of optsRef.current.invalidates(args)) {
           void queryClient.invalidateQueries({ queryKey: key });
         }
-        optsRef.current.onConfirmed?.(sent.hash);
+        if (mountedRef.current) optsRef.current.onConfirmed?.(sent.hash);
       } catch (err) {
         fail(translateError(err));
       } finally {
         inFlightRef.current = false;
       }
     },
-    [wallet, networkPassphrase, queryClient, fail],
+    [wallet, queryClient, fail],
   );
 
   const reset = useCallback(() => {

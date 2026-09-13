@@ -328,6 +328,101 @@ describe("useContractAction", () => {
     expect(result.current.hash).toBeNull();
     expect(result.current.error).toBeNull();
   });
+
+  it("wallet === null fails immediately with a typed 'connect a wallet' error", async () => {
+    walletValue = { wallet: null, networkPassphrase: null };
+    const build = vi.fn(async () => makeAssembledTx());
+
+    const { result } = renderHook(() => useContractAction(build, { invalidates: () => [] }), { wrapper });
+
+    await act(async () => {
+      await result.current.run({});
+    });
+
+    expect(result.current.state).toBe("failed");
+    expect(result.current.error).toEqual({
+      title: "Connect a wallet",
+      next: "Connect Freighter to continue.",
+    });
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it("a sendTransaction TRY_AGAIN_LATER status fails fast, without polling", async () => {
+    const signTransaction = vi.fn(async () => ({ signedTxXdr: realTxXdr() }));
+    walletValue = { wallet: makeWallet(signTransaction), networkPassphrase: PASSPHRASE };
+    sendTransaction.mockResolvedValueOnce({
+      status: "TRY_AGAIN_LATER",
+      hash: "deadbeef",
+      latestLedger: 1,
+      latestLedgerCloseTime: 1,
+    });
+    const build = vi.fn(async () => makeAssembledTx());
+
+    const { result } = renderHook(() => useContractAction(build, { invalidates: () => [] }), { wrapper });
+
+    await act(async () => {
+      await result.current.run({});
+    });
+
+    expect(result.current.state).toBe("failed");
+    expect(result.current.hash).toBe("deadbeef");
+    expect(result.current.error?.title).toMatch(/busy/i);
+    expect(getTransaction).not.toHaveBeenCalled();
+  });
+
+  it("a getTransaction FAILED status fails with a translated error", async () => {
+    vi.useFakeTimers();
+    const signTransaction = vi.fn(async () => ({ signedTxXdr: realTxXdr() }));
+    walletValue = { wallet: makeWallet(signTransaction), networkPassphrase: PASSPHRASE };
+    sendTransaction.mockResolvedValueOnce({ status: "PENDING", hash: "deadbeef", latestLedger: 1, latestLedgerCloseTime: 1 });
+    getTransaction.mockResolvedValueOnce({ status: "FAILED", resultXdr: {} });
+    const build = vi.fn(async () => makeAssembledTx());
+
+    const { result } = renderHook(() => useContractAction(build, { invalidates: () => [] }), { wrapper });
+
+    act(() => {
+      void result.current.run({});
+    });
+    await advance(0);
+    await advance(1000);
+
+    expect(result.current.state).toBe("failed");
+    expect(result.current.hash).toBe("deadbeef");
+    expect(result.current.error).toBeTruthy();
+  });
+
+  it("unmount mid-flight: no onConfirmed after unmount, and no pending timers are left", async () => {
+    vi.useFakeTimers();
+    const signTransaction = vi.fn(async () => ({ signedTxXdr: realTxXdr() }));
+    walletValue = { wallet: makeWallet(signTransaction), networkPassphrase: PASSPHRASE };
+    sendTransaction.mockResolvedValue({ status: "PENDING", hash: "deadbeef", latestLedger: 1, latestLedgerCloseTime: 1 });
+    getTransaction.mockResolvedValue({ status: "NOT_FOUND" });
+    const build = vi.fn(async () => makeAssembledTx());
+    const onConfirmed = vi.fn();
+
+    const { result, unmount } = renderHook(() => useContractAction(build, { invalidates: () => [], onConfirmed }), {
+      wrapper,
+    });
+
+    act(() => {
+      void result.current.run({});
+    });
+    await advance(0); // reach "submitted", first poll timer scheduled
+    expect(result.current.state).toBe("submitted");
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0); // the pending poll timer was cleared
+
+    // Even if the network eventually would have said SUCCESS, nothing fires
+    // post-unmount: no new timer is scheduled, so this is a no-op advance.
+    getTransaction.mockResolvedValue({ status: "SUCCESS" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(onConfirmed).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 // --- useCards --------------------------------------------------------------
