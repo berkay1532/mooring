@@ -7,7 +7,8 @@ use soroban_sdk::auth::{
 use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::xdr::{self, WriteXdr};
 use soroban_sdk::{
-    symbol_short, token, vec, Address, Bytes, BytesN, Env, IntoVal, Symbol, TryFromVal, Val, Vec,
+    symbol_short, token, vec, Address, Bytes, BytesN, Env, IntoVal, String, Symbol, TryFromVal,
+    Val, Vec,
 };
 
 use super::{Fixture, USDC};
@@ -58,6 +59,7 @@ pub(super) fn setup_with_agent<'a>() -> (Fixture<'a>, Agent) {
             agent_pk.clone(),
             token.clone(),
             super::default_policy(),
+            String::from_str(&env, super::LABEL),
         ),
     );
     let client = crate::CardClient::new(&env, &card);

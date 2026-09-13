@@ -3,18 +3,20 @@
 mod allowlist;
 mod auth;
 mod constructor;
+mod label;
 mod owner;
 mod policy;
 mod update;
 
 use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::{token, Address, BytesN, Env};
+use soroban_sdk::{token, Address, BytesN, Env, String};
 
 use crate::{Card, CardClient, Policy};
 
 pub const T0: u64 = 1_000;
 pub const DAY: u64 = 86_400;
 pub const USDC: i128 = 10_000_000; // 1 USDC in 7-decimal base units
+pub const LABEL: &str = "inference-agent";
 
 pub struct Fixture<'a> {
     pub env: Env,
@@ -56,6 +58,7 @@ pub fn setup<'a>() -> Fixture<'a> {
             agent_pk.clone(),
             token.clone(),
             default_policy(),
+            String::from_str(&env, LABEL),
         ),
     );
     let client = CardClient::new(&env, &card);
