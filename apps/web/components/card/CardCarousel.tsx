@@ -2,7 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 
 import { MooringCard } from "@/components/card/MooringCard";
 import { faceState, signerStrkey, type CardSummary } from "@/components/cards/summary";
@@ -99,34 +103,41 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
 
   const openWizard = useCallback(() => router.push("/cards/new"), [router]);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
-      // A dialog (Sheet/Modal) owns the keyboard while it is open.
-      if (document.querySelector('[role="dialog"]')) return;
+  /**
+   * Arrow keys act only while focus is inside the stage (the handler is on
+   * the stage element, which is itself focusable): a listener on `window`
+   * would move the carousel while the owner is tabbing through the details
+   * panel far below it.
+   */
+  function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
 
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        goTo(index + 1);
-      } else if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        goTo(index - 1);
-      } else if (event.key === "Enter" && index === newSlot && tag !== "BUTTON" && tag !== "A") {
-        // Enter on a focused control belongs to that control, not the stage.
-        event.preventDefault();
-        openWizard();
-      }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      goTo(index + 1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      goTo(index - 1);
+    } else if (event.key === "Enter" && index === newSlot && tag !== "BUTTON" && tag !== "A") {
+      // Enter on a focused control belongs to that control, not the stage.
+      event.preventDefault();
+      openWizard();
     }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goTo, index, newSlot, openWizard]);
+  }
 
   // --- swipe ---------------------------------------------------------------
   const dragStart = useRef<number | null>(null);
+  // A mouse drag is followed by a synthetic `click` on the card that was
+  // pressed, whose handler would select that card again and undo the swipe
+  // (touch browsers suppress it past the tap slop; mice do not). This flag
+  // swallows exactly that one click.
+  const dragged = useRef(false);
+
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     dragStart.current = event.clientX;
+    dragged.current = false;
   }
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const start = dragStart.current;
@@ -134,7 +145,16 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
     if (start === null) return;
     const delta = event.clientX - start;
     if (Math.abs(delta) < 50) return;
+    dragged.current = true;
     goTo(index + (delta < 0 ? 1 : -1));
+  }
+
+  function selectSlide(target: number) {
+    if (dragged.current) {
+      dragged.current = false;
+      return;
+    }
+    goTo(target);
   }
 
   const now = nowUnix ?? Math.floor(Date.now() / 1000);
@@ -145,7 +165,9 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
         role="region"
         aria-roledescription="carousel"
         aria-label="Your cards"
-        className="relative flex h-[330px] items-center justify-center overflow-hidden [perspective:1400px]"
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        className="relative flex h-[330px] items-center justify-center overflow-hidden [perspective:1400px] focus-visible:outline-none"
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
       >
@@ -172,7 +194,7 @@ export function CardCarousel({ items, selected, onSelect, nowUnix }: CardCarouse
                 <button
                   type="button"
                   tabIndex={offset === 0 ? 0 : -1}
-                  onClick={() => goTo(i)}
+                  onClick={() => selectSlide(i)}
                   className="block rounded-[20px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-4 focus-visible:ring-offset-bg-deep"
                 >
                   <MooringCard

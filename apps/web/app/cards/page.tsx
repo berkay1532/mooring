@@ -76,15 +76,16 @@ function CardsScreen() {
     setSelectedCard((prev) => (prev && addresses.includes(prev) ? prev : addresses[0]));
   }, [addresses]);
 
-  // View mode is read once, after the card count is known: a stored choice
-  // always wins, and only a first-time visitor with a large dashboard is
-  // defaulted into the list.
-  const viewInitialized = useRef(false);
+  // View mode is read once per owner, after that owner's card count is
+  // known: their stored choice always wins, and only a first-time visitor
+  // with a large dashboard is defaulted into the list. Keyed by owner so
+  // switching wallet accounts re-reads that account's preference.
+  const viewInitializedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (viewInitialized.current || cardsQuery.isLoading) return;
-    viewInitialized.current = true;
-    setView(getViewMode(addresses.length >= LIST_VIEW_THRESHOLD ? "list" : "grid"));
-  }, [cardsQuery.isLoading, addresses.length]);
+    if (!owner || cardsQuery.isLoading || viewInitializedFor.current === owner) return;
+    viewInitializedFor.current = owner;
+    setView(getViewMode(owner, addresses.length >= LIST_VIEW_THRESHOLD ? "list" : "grid"));
+  }, [owner, cardsQuery.isLoading, addresses.length]);
 
   const select = useCallback(
     (address: string) => {
@@ -94,10 +95,13 @@ function CardsScreen() {
     [owner],
   );
 
-  const changeView = useCallback((next: ViewMode) => {
-    setView(next);
-    setViewMode(next);
-  }, []);
+  const changeView = useCallback(
+    (next: ViewMode) => {
+      setView(next);
+      if (owner) setViewMode(owner, next);
+    },
+    [owner],
+  );
 
   const handleRemoved = useCallback(
     (address: string) => {
@@ -108,7 +112,10 @@ function CardsScreen() {
       const rest = addresses.filter((a) => a !== address);
       const next = rest[0] ?? null;
       setSelectedCard(next);
-      if (next) setSelected(owner, next);
+      // `next` can be null (that was the last card) — `setSelected` then
+      // clears the stored key rather than leaving it pointing at a card
+      // this dashboard no longer lists.
+      setSelected(owner, next);
       void queryClient.invalidateQueries({ queryKey: keys.cards(owner) });
       setToast("Card removed from this browser");
     },

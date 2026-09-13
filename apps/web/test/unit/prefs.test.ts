@@ -61,10 +61,24 @@ describe("prefs", () => {
     expect(getSelected(OTHER_OWNER)).toBe(CARD_B);
   });
 
-  it("round-trips the view mode, defaulting to grid", () => {
-    expect(getViewMode()).toBe("grid");
-    setViewMode("list");
-    expect(getViewMode()).toBe("list");
+  it("clears the selected card when it is set to null", () => {
+    setSelected(OWNER, CARD_A);
+    setSelected(OWNER, null);
+    expect(getSelected(OWNER)).toBeUndefined();
+  });
+
+  it("round-trips the view mode, defaulting to grid, keyed by owner", () => {
+    expect(getViewMode(OWNER)).toBe("grid");
+    setViewMode(OWNER, "list");
+    expect(getViewMode(OWNER)).toBe("list");
+    // Another owner in the same browser keeps their own view.
+    expect(getViewMode(OTHER_OWNER)).toBe("grid");
+  });
+
+  it("uses the caller's fallback view mode only when nothing is stored", () => {
+    expect(getViewMode(OWNER, "list")).toBe("list");
+    setViewMode(OWNER, "grid");
+    expect(getViewMode(OWNER, "list")).toBe("grid");
   });
 
   it("falls back to defaults on invalid JSON in the added-cards list", () => {
@@ -87,10 +101,11 @@ describe("prefs", () => {
 
     expect(getAddedCards(OWNER)).toEqual([]);
     expect(getSelected(OWNER)).toBeUndefined();
-    expect(getViewMode()).toBe("grid");
+    expect(getViewMode(OWNER)).toBe("grid");
     expect(() => addCard(OWNER, CARD_A)).not.toThrow();
     expect(() => setSelected(OWNER, CARD_A)).not.toThrow();
-    expect(() => setViewMode("list")).not.toThrow();
+    expect(() => setSelected(OWNER, null)).not.toThrow();
+    expect(() => setViewMode(OWNER, "list")).not.toThrow();
 
     getItem.mockRestore();
     setItem.mockRestore();

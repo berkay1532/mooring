@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useCardOp, type OpModalProps } from "@/components/cards/busy";
+import { TRUSTLINE_MISSING_COPY, trustlineStatus } from "@/components/cards/trustline";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -10,6 +11,7 @@ import { TxStatus } from "@/components/ui/TxStatus";
 import { buildCancel } from "@/lib/chain/card";
 import { explorerTxUrl } from "@/lib/chain/rpc";
 import { formatUsdc } from "@/lib/format/usdc";
+import { useUsdcBalance } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
 
 const CONFIRM_WORD = "cancel";
@@ -24,6 +26,13 @@ export function CancelModal({ open, onClose, address, info, onDone }: OpModalPro
   useEffect(() => {
     if (open) setTyped("");
   }, [open]);
+
+  // Cancel sweeps the balance to the owner in the same transaction, so it
+  // needs the owner's USDC trustline exactly as withdraw does (spec §3.4) —
+  // same probe, same explanation, rather than only saying so in prose.
+  const balanceQuery = useUsdcBalance(info.owner);
+  const trustline = trustlineStatus(balanceQuery.error, balanceQuery.data !== undefined, balanceQuery.isLoading);
+  const blocked = trustline === "missing" && info.balance > 0n;
 
   const op = useCardOp<void>("cancel", (_args, wallet) => buildCancel(address, wallet), {
     invalidates: () => [keys.info(address), keys.cards(info.owner)],
@@ -53,6 +62,12 @@ export function CancelModal({ open, onClose, address, info, onDone }: OpModalPro
         placeholder={CONFIRM_WORD}
       />
 
+      {blocked ? (
+        <p className="mt-3 rounded-[14px] border border-amber/30 bg-bg-raised px-4 py-3 text-xs text-text-lo">
+          {TRUSTLINE_MISSING_COPY}
+        </p>
+      ) : null}
+
       <TxStatus
         className="mt-4"
         state={op.state}
@@ -65,7 +80,7 @@ export function CancelModal({ open, onClose, address, info, onDone }: OpModalPro
         <Button variant="ghost" onClick={onClose} disabled={op.mine}>
           Keep the card
         </Button>
-        <Button variant="danger" onClick={() => void op.run()} loading={op.mine} disabled={!confirmed || op.locked}>
+        <Button variant="danger" onClick={() => void op.run()} loading={op.mine} disabled={!confirmed || op.locked || blocked}>
           Cancel this card
         </Button>
       </div>

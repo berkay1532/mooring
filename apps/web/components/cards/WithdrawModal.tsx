@@ -35,7 +35,7 @@ export function WithdrawModal({ open, onClose, address, info, owner, onDone }: W
   }, [open]);
 
   const balanceQuery = useUsdcBalance(owner);
-  const trustline = trustlineStatus(balanceQuery.error, balanceQuery.data !== undefined);
+  const trustline = trustlineStatus(balanceQuery.error, balanceQuery.data !== undefined, balanceQuery.isLoading);
 
   const parsed = parseUsdc(amount.trim());
   const tooMuch = parsed !== null && parsed > info.balance;
@@ -89,7 +89,7 @@ export function WithdrawModal({ open, onClose, address, info, owner, onDone }: W
         </Button>
       </div>
 
-      {trustline !== "ok" ? (
+      {trustline === "missing" || trustline === "unknown" ? (
         <p className="mt-3 rounded-[14px] border border-amber/30 bg-bg-raised px-4 py-3 text-xs text-text-lo">
           {trustline === "missing" ? TRUSTLINE_MISSING_COPY : TRUSTLINE_UNKNOWN_COPY}
         </p>

@@ -41,18 +41,28 @@ export function faceState(info: CardInfo, nowUnix: number): CardFaceState {
   return "active";
 }
 
+/** How often the whole dashboard re-reads every card (see the note below). */
+const SUMMARY_REFETCH_MS = 30_000;
+
 /**
  * Reads `info()` for every address at once. Deliberately uses the same query
  * keys and the same `readInfo` fetcher as `useCardInfo`, so the carousel, the
  * list and the details panel share one cache entry per card and every write's
  * `invalidates(keys.info(address))` refreshes all three.
+ *
+ * Interval: 30 s here, against `useCardInfo`'s 10 s for the *selected* card.
+ * Each `readInfo` is one `simulateTransaction`, so an N-card dashboard at
+ * 10 s would sustain N/10 requests per second per open tab — enough to meet
+ * the public testnet RPC's rate limits on a large dashboard. The selected
+ * card still refreshes every 10 s because its own observer asks for that on
+ * the same key, and every write invalidates immediately either way.
  */
 export function useCardSummaries(addresses: readonly string[]): CardSummary[] {
   return useQueries({
     queries: addresses.map((address) => ({
       queryKey: keys.info(address),
       queryFn: () => readInfo(address),
-      refetchInterval: () => (isTabVisible() ? 10_000 : false),
+      refetchInterval: () => (isTabVisible() ? SUMMARY_REFETCH_MS : false),
     })),
     combine: (results) =>
       results.map((result, i) => ({

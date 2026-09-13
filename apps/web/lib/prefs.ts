@@ -12,7 +12,6 @@
 export type ViewMode = "grid" | "list";
 
 const DEFAULT_VIEW_MODE: ViewMode = "grid";
-const VIEW_MODE_KEY = "mooring:view-mode";
 
 function ownerKey(owner: string, suffix: string): string {
   return `mooring:${owner}:${suffix}`;
@@ -52,6 +51,14 @@ function writeString(key: string, value: string): void {
   }
 }
 
+function removeKey(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Storage unavailable — no-op.
+  }
+}
+
 /** The cards this owner has added to their dashboard. Defaults to `[]`. */
 export function getAddedCards(owner: string): string[] {
   const list = readJSON<unknown>(ownerKey(owner, "added"), []);
@@ -78,25 +85,38 @@ export function getSelected(owner: string): string | undefined {
   return readString(ownerKey(owner, "selected"));
 }
 
-/** Records `address` as `owner`'s selected card. */
-export function setSelected(owner: string, address: string): void {
-  writeString(ownerKey(owner, "selected"), address);
+/**
+ * Records `address` as `owner`'s selected card, or clears the stored
+ * selection when `address` is `null` — the cards screen clears it when the
+ * selected card is removed from the dashboard, so the next visit does not
+ * restore a card that is no longer listed.
+ */
+export function setSelected(owner: string, address: string | null): void {
+  const key = ownerKey(owner, "selected");
+  if (address === null) {
+    removeKey(key);
+    return;
+  }
+  writeString(key, address);
 }
 
 /**
- * The dashboard's card list view mode.
+ * The dashboard's card list view mode, keyed by owner like every other
+ * preference here: one browser profile switching between owner accounts
+ * should not carry a twelve-card owner's list view into a one-card owner's
+ * dashboard.
  *
- * `fallback` is what to use when the owner has never chosen one — the cards
+ * `fallback` is what to use when this owner has never chosen one — the cards
  * screen passes `"list"` once there are ten or more cards, so a large
  * dashboard opens in the view that can actually show it, while anyone who
  * has picked a view keeps theirs. Defaults to `"grid"`.
  */
-export function getViewMode(fallback: ViewMode = DEFAULT_VIEW_MODE): ViewMode {
-  const raw = readString(VIEW_MODE_KEY);
+export function getViewMode(owner: string, fallback: ViewMode = DEFAULT_VIEW_MODE): ViewMode {
+  const raw = readString(ownerKey(owner, "view"));
   return raw === "grid" || raw === "list" ? raw : fallback;
 }
 
-/** Sets the dashboard's card list view mode. */
-export function setViewMode(mode: ViewMode): void {
-  writeString(VIEW_MODE_KEY, mode);
+/** Sets `owner`'s card list view mode. */
+export function setViewMode(owner: string, mode: ViewMode): void {
+  writeString(ownerKey(owner, "view"), mode);
 }

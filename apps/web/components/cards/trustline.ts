@@ -9,13 +9,20 @@
  * failure (RPC down, malformed response) is reported as "couldn't check"
  * rather than being misattributed to a missing trustline.
  */
-export type TrustlineStatus = "ok" | "missing" | "unknown";
+export type TrustlineStatus = "ok" | "missing" | "unknown" | "pending";
 
-export function trustlineStatus(error: unknown, hasBalance: boolean): TrustlineStatus {
+/**
+ * `pending` is the first balance read still being in flight: the caller
+ * shows nothing at all then, rather than flashing "we could not read your
+ * balance" for the length of an RPC round trip.
+ */
+export function trustlineStatus(error: unknown, hasBalance: boolean, pending = false): TrustlineStatus {
   if (hasBalance) return "ok";
-  if (!error) return "unknown";
-  const message = error instanceof Error ? error.message : String(error);
-  return /trustline|trust line|not found for account|missing for account/i.test(message) ? "missing" : "unknown";
+  if (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return /trustline|trust line|not found for account|missing for account/i.test(message) ? "missing" : "unknown";
+  }
+  return pending ? "pending" : "unknown";
 }
 
 export const TRUSTLINE_MISSING_COPY =
