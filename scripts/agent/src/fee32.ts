@@ -13,11 +13,12 @@ import {
 import { signCardAuthEntries } from "./card-signer.js";
 
 /**
- * Measures the card payment `minResourceFee` when the merchant allowlist is
- * full (32 entries), on testnet. The allowlist is a bounded `Vec<Address>` in
+ * Measures the card payment `minResourceFee` twice on testnet: once against the
+ * card's untouched 1-merchant allowlist (the baseline) and once with the
+ * allowlist full (32 entries). The allowlist is a bounded `Vec<Address>` in
  * instance storage (see `contracts/card/src/allowlist.rs`), so a full list
  * makes `__check_auth` read and rewrite a larger instance entry than the
- * 1-merchant baseline measured for D1 (33 926 stroops).
+ * 1-merchant baseline.
  *
  * This script never submits the payment: it only builds, signs and
  * re-simulates it, exactly like `pay.ts`, then reads off `minResourceFee`
@@ -52,39 +53,35 @@ function invokeOwner(fn: string, merchant: string): void {
   );
 }
 
+/**
+ * Bumps the card's instance and code TTL (`bump()`, callable by anyone). Run
+ * once, immediately before the baseline measurement: `add_merchant` (used to
+ * grow the allowlist to 32 for the second measurement) also extends the
+ * instance TTL as a side effect of the write, so without this the baseline
+ * would be measured at whatever TTL the card happened to be at while the
+ * 32-merchant case is measured right after a TTL-extending write. Bumping
+ * first puts both measurements at the same TTL, so the only difference
+ * between them is the allowlist size, not incidental rent/TTL state.
+ */
+function invokeBump(): void {
+  execFileSync(
+    "stellar",
+    ["contract", "invoke", "--source-account", "mooring-owner", "--network", "testnet", "--id", d.card, "--", "bump"],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
 async function allowCount(): Promise<number> {
   const info = await readCardInfo(RPC_URL, NETWORK_PASSPHRASE, d.card);
   return info.allow_count;
 }
 
-console.log("card:", d.card);
-
-const startCount = await allowCount();
-if (startCount !== 1) {
-  throw new Error(
-    `refusing to run: allow_count is ${startCount}, expected 1 (a prior run may have left the allowlist dirty)`,
-  );
-}
-console.log("initial allow_count == 1, confirmed.");
-
-const addresses = Array.from({ length: MERCHANTS_TO_ADD }, () => Keypair.random().publicKey());
-let added = 0;
-const failedRemovals: string[] = [];
-
-try {
-  console.log(`adding ${MERCHANTS_TO_ADD} merchants...`);
-  for (let i = 0; i < addresses.length; i++) {
-    console.log(`  [add ${i + 1}/${MERCHANTS_TO_ADD}] ${addresses[i]}`);
-    invokeOwner("add_merchant", addresses[i]);
-    added++;
-  }
-
-  const grownCount = await allowCount();
-  if (grownCount !== 32) {
-    throw new Error(`expected allow_count 32 after adding, got ${grownCount}`);
-  }
-  console.log("allow_count == 32, confirmed.");
-
+/**
+ * Builds, signs and re-simulates a card payment (never submits it) and returns
+ * the simulation's `minResourceFee`. Used twice: once against the untouched
+ * 1-merchant allowlist (the baseline) and once at 32 merchants.
+ */
+async function measureMinResourceFee(): Promise<string> {
   const info = await readCardInfo(RPC_URL, NETWORK_PASSPHRASE, d.card);
   const amount = [info.remaining, info.policy.max_per_tx, info.balance, 60_000_000n]
     .reduce((a, b) => (b < a ? b : a));
@@ -106,8 +103,46 @@ try {
     );
   }
 
-  const sim = tx.simulation as rpc.Api.SimulateTransactionSuccessResponse;
-  console.log("minResourceFee (32-merchant allowlist, stroops):", sim.minResourceFee);
+  return (tx.simulation as rpc.Api.SimulateTransactionSuccessResponse).minResourceFee;
+}
+
+console.log("card:", d.card);
+
+const startCount = await allowCount();
+if (startCount !== 1) {
+  throw new Error(
+    `refusing to run: allow_count is ${startCount}, expected 1 (a prior run may have left the allowlist dirty)`,
+  );
+}
+console.log("initial allow_count == 1, confirmed.");
+
+console.log("bumping instance/code TTL before the baseline (see invokeBump doc comment)...");
+invokeBump();
+
+console.log("baseline (1 merchant) minResourceFee:", await measureMinResourceFee());
+
+const addresses = Array.from({ length: MERCHANTS_TO_ADD }, () => Keypair.random().publicKey());
+let added = 0;
+const failedRemovals: string[] = [];
+
+try {
+  console.log(`adding ${MERCHANTS_TO_ADD} merchants...`);
+  for (let i = 0; i < addresses.length; i++) {
+    console.log(`  [add ${i + 1}/${MERCHANTS_TO_ADD}] ${addresses[i]}`);
+    invokeOwner("add_merchant", addresses[i]);
+    added++;
+  }
+
+  const grownCount = await allowCount();
+  if (grownCount !== 32) {
+    throw new Error(`expected allow_count 32 after adding, got ${grownCount}`);
+  }
+  console.log("allow_count == 32, confirmed.");
+
+  console.log(
+    "minResourceFee (32-merchant allowlist, stroops):",
+    await measureMinResourceFee(),
+  );
   console.log(
     "(this script never submits — simulation only, the allowlist is restored in `finally`)",
   );

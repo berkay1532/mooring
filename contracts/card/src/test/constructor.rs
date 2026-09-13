@@ -1,8 +1,8 @@
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::testutils::Ledger as _;
-use soroban_sdk::{Address, BytesN, Env};
+use soroban_sdk::{Address, BytesN, Env, String};
 
-use super::{default_policy, fund_card, setup, DAY, T0, USDC};
+use super::{default_policy, fund_card, setup, DAY, LABEL, T0, USDC};
 use crate::{Card, CardInfo, Period, Policy, State};
 
 #[test]
@@ -36,7 +36,13 @@ fn register_with(env: &Env, policy: Policy) {
     let token = env.register_stellar_asset_contract_v2(admin).address();
     env.register(
         Card,
-        (owner, BytesN::from_array(env, &[1u8; 32]), token, policy),
+        (
+            owner,
+            BytesN::from_array(env, &[1u8; 32]),
+            token,
+            policy,
+            String::from_str(env, LABEL),
+        ),
     );
 }
 
@@ -139,6 +145,7 @@ fn info_snapshots_the_whole_card_state() {
             remaining: 46 * USDC,
             balance: 25 * USDC,
             allow_count: 1,
+            label: String::from_str(&f.env, LABEL),
         }
     );
 }

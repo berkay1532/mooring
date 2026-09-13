@@ -77,10 +77,12 @@ fi
 EXPIRY=$(( $(date +%s) + 30*86400 ))
 SALT=$(openssl rand -hex 32)
 POLICY="{\"period_amount\":\"500000000\",\"period_duration\":86400,\"max_per_tx\":\"100000000\",\"expiry\":$EXPIRY}"
+# The card's on-chain label (Soroban `String`); the CLI takes it as plain text.
+LABEL=${CARD_LABEL:-inference-agent}
 
 CARD=$(stellar contract invoke --source mooring-owner --network $NETWORK --id "$FACTORY" -- \
   create_card --owner mooring-owner --signer "$AGENT_PK_HEX" --token "$USDC_SAC" \
-  --policy "$POLICY" --salt "$SALT" | tr -d '"')
+  --policy "$POLICY" --label "$LABEL" --salt "$SALT" | tr -d '"')
 
 MERCHANT=$(stellar keys address mooring-merchant)
 stellar contract invoke --source mooring-owner --network $NETWORK --id "$CARD" -- \

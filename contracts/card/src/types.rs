@@ -1,4 +1,4 @@
-use soroban_sdk::{contracterror, contracttype, Address, BytesN};
+use soroban_sdk::{contracterror, contracttype, Address, BytesN, String};
 
 /// Lifecycle state of a card.
 #[contracttype]
@@ -33,7 +33,10 @@ pub struct Period {
 
 /// Everything a UI needs about a card in one call. `period` and `remaining`
 /// are materialized against the current ledger timestamp, so a pending period
-/// reset is already reflected (unlike the raw `period()` view).
+/// reset is already reflected (unlike the raw `period()` view). `label` is
+/// the owner-chosen display name (1..=32 bytes). The contract only bounds its
+/// length; it is opaque bytes with no content validation, so consumers must
+/// treat it as untrusted text (escape it when rendering).
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CardInfo {
@@ -46,6 +49,7 @@ pub struct CardInfo {
     pub remaining: i128,
     pub balance: i128,
     pub allow_count: u32,
+    pub label: String,
 }
 
 /// One ed25519 signature as encoded by stellar-sdk `authorizeEntry`.
@@ -66,6 +70,7 @@ pub enum DataKey {
     Period,
     State,
     Allowlist,
+    Label,
 }
 
 #[contracterror]
@@ -84,4 +89,5 @@ pub enum CardError {
     AllowlistFull = 10,
     InvalidPolicy = 11,
     InvalidState = 12,
+    InvalidLabel = 13,
 }

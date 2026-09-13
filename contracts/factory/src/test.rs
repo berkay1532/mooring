@@ -4,7 +4,7 @@ extern crate std;
 
 use soroban_sdk::testutils::{Address as _, Deployer as _, Events as _, Ledger as _};
 use soroban_sdk::xdr::ToXdr as _;
-use soroban_sdk::{vec, Address, Bytes, BytesN, Env, Event, IntoVal, Map, Symbol, Val};
+use soroban_sdk::{vec, Address, Bytes, BytesN, Env, Event, IntoVal, Map, String, Symbol, Val};
 
 use crate::{card, CardCreated, Factory, FactoryClient};
 
@@ -19,6 +19,10 @@ fn policy() -> card::Policy {
         max_per_tx: 10 * USDC,
         expiry: T0 + 30 * DAY,
     }
+}
+
+fn label(env: &Env) -> String {
+    String::from_str(env, "inference-agent")
 }
 
 #[test]
@@ -49,7 +53,7 @@ fn creates_card_with_deterministic_address_and_event() {
         )
         .deployed_address();
 
-    let card_addr = factory.create_card(&owner, &signer, &token, &policy(), &salt);
+    let card_addr = factory.create_card(&owner, &signer, &token, &policy(), &label(&env), &salt);
     assert_eq!(card_addr, expected);
 
     assert_eq!(
@@ -66,6 +70,7 @@ fn creates_card_with_deterministic_address_and_event() {
     assert_eq!(c.signer(), signer);
     assert_eq!(c.token(), token);
     assert_eq!(c.policy(), policy());
+    assert_eq!(c.label(), label(&env));
 }
 
 #[test]
@@ -81,8 +86,8 @@ fn same_salt_twice_fails() {
     let token = env.register_stellar_asset_contract_v2(admin).address();
     let signer = BytesN::from_array(&env, &[3u8; 32]);
     let salt = BytesN::from_array(&env, &[1u8; 32]);
-    factory.create_card(&owner, &signer, &token, &policy(), &salt);
-    factory.create_card(&owner, &signer, &token, &policy(), &salt);
+    factory.create_card(&owner, &signer, &token, &policy(), &label(&env), &salt);
+    factory.create_card(&owner, &signer, &token, &policy(), &label(&env), &salt);
 }
 
 #[test]
@@ -105,6 +110,7 @@ fn card_created_indexes_the_owner_as_a_topic() {
         &signer,
         &token,
         &policy(),
+        &label(&env),
         &BytesN::from_array(&env, &[7u8; 32]),
     );
 
@@ -145,6 +151,7 @@ fn create_card_requires_owner_auth() {
         &BytesN::from_array(&env, &[3u8; 32]),
         &token,
         &policy(),
+        &label(&env),
         &BytesN::from_array(&env, &[9u8; 32]),
     );
 }
@@ -168,6 +175,7 @@ fn the_same_user_salt_yields_different_cards_for_different_owners() {
         &signer,
         &token,
         &policy(),
+        &label(&env),
         &user_salt,
     );
     let b = factory.create_card(
@@ -175,6 +183,7 @@ fn the_same_user_salt_yields_different_cards_for_different_owners() {
         &signer,
         &token,
         &policy(),
+        &label(&env),
         &user_salt,
     );
     assert_ne!(a, b);
@@ -198,6 +207,7 @@ fn created_card_starts_with_instance_and_code_ttl_extended() {
         &BytesN::from_array(&env, &[3u8; 32]),
         &token,
         &policy(),
+        &label(&env),
         &BytesN::from_array(&env, &[5u8; 32]),
     );
 

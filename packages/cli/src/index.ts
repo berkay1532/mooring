@@ -91,6 +91,7 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
         deps.stdout(toJson({ info, merchants }));
         return;
       }
+      deps.stdout(`Label: ${info.label}`);
       deps.stdout(`Card: ${opts.card}`);
       deps.stdout(`Network: ${opts.network}`);
       deps.stdout("Info:");

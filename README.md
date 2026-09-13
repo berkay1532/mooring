@@ -28,18 +28,18 @@ third party ever holds them.
 
 Active development, **Stellar testnet only** — not audited, not on mainnet.
 
-**D1 (card contract) and D2 (x402 integration) are delivered; D3 (web app, docs,
-evidence package) is next.** D1 landed in PR #1; D2 lands in the pull request
-that carries this change.
+**D1 (card contract) and D2 (x402 integration) are delivered; D3 in progress —
+part 1: on-chain labels.** D1 landed in PR #1, D2 in PR #2.
 
 - **Card contract** (`contracts/card`) — implemented: `__check_auth` policy
   enforcement (periodic budget, per-tx cap, merchant allowlist, expiry,
-  frozen/cancelled), owner operations, `info()` view. Unit-tested.
+  frozen/cancelled), owner operations including the on-chain `label`
+  (`set_label`), `info()` view. Unit-tested.
 - **Factory** (`contracts/factory`) — implemented: deterministic
-  `create_card` with an owner-bound salt, `card_created` event.
-- **Testnet deployment** — `scripts/testnet/deploy.sh` deploys the factory and
-  one card; `scripts/agent` signs card authorization entries and submits
-  payments. See `docs/testnet.md`.
+  `create_card(label, …)` with an owner-bound salt, `card_created` event.
+- **Testnet deployment v2** — `scripts/testnet/deploy.sh` deploys the labelled
+  factory and card; `scripts/agent` signs card authorization entries and
+  submits payments. See `docs/testnet.md`.
 - **x402 integration** — implemented: `@mooring/x402-client` (the card pays
   x402-protected APIs, with a local policy pre-check and typed denials),
   the `mooring` CLI, and an example `@x402/express` merchant server. A card
@@ -75,7 +75,7 @@ npm ci && npm run build
 alias mooring="node $PWD/packages/cli/dist/index.js"
 
 mooring keygen --hex                        # a new agent keypair (--hex prints the signer bytes)
-mooring status --card C… --json             # policy, period, remaining budget, allowlist
+mooring status --card C… --json             # label, policy, period, remaining budget, allowlist
 AGENT_SECRET=S… mooring pay http://localhost:3001/weather --card C…
 ```
 

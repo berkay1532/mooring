@@ -2,16 +2,19 @@
 
 mod allowlist;
 mod auth;
+mod label;
 mod policy;
 mod types;
 
 #[cfg(test)]
 mod test;
 
+pub use label::MAX_LABEL_LEN;
 pub use types::*;
 
 use soroban_sdk::{
-    contract, contractevent, contractimpl, panic_with_error, token, Address, BytesN, Env, Vec,
+    contract, contractevent, contractimpl, panic_with_error, token, Address, BytesN, Env, String,
+    Vec,
 };
 
 /// Extend instance TTL when below ~1 day, up to ~30 days (5s ledgers).
@@ -53,6 +56,11 @@ pub struct PolicyChanged {
 #[contractevent(topics = ["signer_changed"])]
 pub struct SignerChanged {
     pub signer: BytesN<32>,
+}
+
+#[contractevent(topics = ["label_changed"])]
+pub struct LabelChanged {
+    pub label: String,
 }
 
 /// Cheapest liveness call: `Storage::instance().extend_ttl` resolves to the
@@ -109,10 +117,14 @@ impl Card {
         signer: BytesN<32>,
         token: Address,
         policy: Policy,
+        label: String,
     ) {
         let now = env.ledger().timestamp();
         if policy::validate(now, &policy).is_err() {
             panic_with_error!(&env, CardError::InvalidPolicy);
+        }
+        if label::validate(&label).is_err() {
+            panic_with_error!(&env, CardError::InvalidLabel);
         }
         let s = env.storage().instance();
         s.set(&DataKey::Owner, &owner);
@@ -128,6 +140,7 @@ impl Card {
         );
         s.set(&DataKey::State, &State::Active);
         s.set(&DataKey::Allowlist, &Vec::<Address>::new(&env));
+        s.set(&DataKey::Label, &label);
         extend_instance_and_code(&env);
     }
 
@@ -149,6 +162,10 @@ impl Card {
 
     pub fn state(env: Env) -> State {
         env.storage().instance().get(&DataKey::State).unwrap()
+    }
+
+    pub fn label(env: Env) -> String {
+        env.storage().instance().get(&DataKey::Label).unwrap()
     }
 
     /// Raw stored period (may be stale if a period boundary has passed).
@@ -218,6 +235,7 @@ impl Card {
             remaining,
             balance: Self::balance(env.clone()),
             allow_count: allowlist::get(&env).len(),
+            label: s.get(&DataKey::Label).unwrap(),
         }
     }
 
@@ -253,6 +271,16 @@ impl Card {
         env.storage().instance().set(&DataKey::Signer, &signer);
         SignerChanged { signer }.publish(&env);
         extend_instance_and_code(&env);
+    }
+
+    /// Owner: rename the card. Renaming is an on-chain transaction.
+    pub fn set_label(env: Env, label: String) -> Result<(), CardError> {
+        require_owner(&env);
+        label::validate(&label)?;
+        env.storage().instance().set(&DataKey::Label, &label);
+        LabelChanged { label }.publish(&env);
+        extend_instance_and_code(&env);
+        Ok(())
     }
 
     /// Owner: pause agent payments. Active → Frozen.

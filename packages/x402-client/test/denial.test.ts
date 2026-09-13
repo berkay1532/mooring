@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CARD_ERROR_CODES,
+  CARD_ERRORS,
   CardPolicyDenied,
   PaymentError,
   cardDenialFromEvents,
@@ -25,6 +26,22 @@ describe("classifyContractError", () => {
   });
   it("covers every documented denial code", () => {
     expect(Object.keys(CARD_ERROR_CODES).map(Number).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+describe("CARD_ERRORS", () => {
+  it("has a sentence for every contract error code 1..13", () => {
+    const codes = Object.keys(CARD_ERRORS).map(Number).sort((a, b) => a - b);
+    expect(codes).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    for (const code of codes) {
+      expect(typeof CARD_ERRORS[code]).toBe("string");
+      expect(CARD_ERRORS[code].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("does not narrow classifyContractError, which still maps only codes 1..8", () => {
+    expect(classifyContractError("Error(Contract, #13)")).toEqual({ code: 13, reason: "unknown" });
+    expect(classifyContractError("Error(Contract, #1)")).toEqual({ code: 1, reason: "bad_signature" });
   });
 });
 

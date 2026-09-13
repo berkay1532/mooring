@@ -190,7 +190,9 @@ Routes are declared as prices; `defaultRoutes` ships `GET /weather` at `$0.001` 
 something to refuse).
 
 For the merchant to be payable **by a given card**, its `payTo` address must also be on that
-card's allowlist (`add_merchant`, an owner operation).
+card's allowlist (`add_merchant`, one of the card's owner operations — alongside `remove_merchant`,
+`freeze`, `unfreeze`, `cancel`, `withdraw`, `set_policy`, `set_signer`, and `set_label` for the
+on-chain card label).
 
 ## Client setup
 
@@ -237,6 +239,12 @@ Options:
 x402's own USD-based spend controls are switched off (`spendControls: false`): the card enforces
 the limits on-chain, and a second, unrelated cap in the client would only get in the way.
 
+`readCardInfo` (also exported from `@mooring/x402-client`) returns the same `CardInfo` the
+pre-check reads: `owner`, `signer`, `token`, `label` (the card's on-chain, owner-settable label),
+`policy`, `state`, `period`, `remaining`, `balance`, `allow_count` — a plain read-only simulation,
+no signing or fees. The label is opaque bytes (1..=32); consumers must treat it as untrusted text
+(escape when rendering).
+
 ### From the CLI
 
 The CLI is not published to npm yet; run it from the workspace.
@@ -246,7 +254,7 @@ npm ci && npm run build
 alias mooring="node $PWD/packages/cli/dist/index.js"
 
 mooring keygen --hex                       # new agent keypair (--hex prints the BytesN<32> signer)
-mooring status --card C… --json            # on-chain policy, period, remaining budget, allowlist
+mooring status --card C… --json            # label, on-chain policy, period, remaining budget, allowlist
 AGENT_SECRET=S… mooring pay http://localhost:3001/weather --card C…
 ```
 

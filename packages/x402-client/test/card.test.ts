@@ -12,6 +12,7 @@ const raw = (over: Partial<RawCardInfo> = {}): RawCardInfo => ({
   owner: OWNER,
   signer: Buffer.alloc(32, 7),
   token: TOKEN,
+  label: "inference-agent",
   policy: {
     period_amount: 100_000_000n,
     period_duration: 86_400n,
@@ -48,6 +49,7 @@ describe("normalizeInfo", () => {
     expect(info.balance).toBe(110_000_000n);
     expect(typeof info.remaining).toBe("bigint");
     expect(typeof info.policy.expiry).toBe("bigint");
+    expect(info.label).toBe("inference-agent");
   });
 
   it("narrows every known state and forces allow_count to a number", () => {
@@ -70,6 +72,12 @@ describe("normalizeInfo", () => {
     const info = normalizeInfo(raw({ signer }));
     expect(info.signer).toBeInstanceOf(Uint8Array);
     expect([...info.signer]).toEqual([...signer]);
+  });
+
+  it("rejects a card info with no label (a pre-label factory card)", () => {
+    expect(() => normalizeInfo(raw({ label: undefined }))).toThrow(
+      /card info has no label/,
+    );
   });
 });
 

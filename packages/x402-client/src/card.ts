@@ -13,6 +13,7 @@ export interface CardInfo {
   owner: string;
   signer: Uint8Array;
   token: string;
+  label: string;
   policy: CardPolicy;
   state: CardState;
   period: { start: bigint; spent: bigint };
@@ -26,6 +27,7 @@ export type RawCardInfo = {
   owner: string;
   signer: Uint8Array;
   token: string;
+  label?: string;
   policy: CardPolicy;
   state: number;
   period: { start: bigint; spent: bigint };
@@ -66,16 +68,21 @@ async function simulateView<T>(
  * the `bigint` the contract declared, and is passed through untouched.
  *
  * @throws if `state` is not one of the contract's three variants.
+ * @throws if `label` is missing (a card deployed from a pre-label factory).
  */
 export function normalizeInfo(raw: RawCardInfo): CardInfo {
   const state = Number(raw.state);
   if (state !== 0 && state !== 1 && state !== 2) {
     throw new Error(`Unknown card state: ${raw.state}`);
   }
+  if (typeof raw.label !== "string") {
+    throw new Error("card info has no label (card deployed from a pre-label factory?)");
+  }
   return {
     owner: raw.owner,
     signer: new Uint8Array(raw.signer),
     token: raw.token,
+    label: raw.label,
     policy: raw.policy,
     state: state as CardState,
     period: raw.period,

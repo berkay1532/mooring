@@ -32,7 +32,8 @@ testnet; mainnet follows an audit. Never describe the web app or the client as a
 
 - **Card = a Soroban custom account instance** (its own address). It **holds USDC** (via SAC).
   The owner controls it (freeze / unfreeze / cancel / withdraw / set_policy / set_signer /
-  allowlist); an **agent key is the signer**. Card code is immutable; config is owner-mutable.
+  allowlist / set_label — an on-chain, owner-settable label); an **agent key is the signer**.
+  Card code is immutable; config is owner-mutable.
 - Policy enforced at the **authorization boundary**: **periodic budget** (resets each period, no carry-over) +
   **merchant allowlist** + **expiry** + **frozen/cancelled** state. No shadow ledger — the
   policy lives in the auth path.
@@ -49,6 +50,14 @@ Open measurement **closed**: card-paid transfers cost 33 926 stroops (1 merchant
 stroops (full 32-merchant allowlist), and OZ Channels settled one at `max_fee` 51 175 — so
 custom-account auth fits inside the real facilitator ceiling. Numbers and the reduction levers
 are recorded in the "Open measurement" section of `docs/spike-w1-auth-mechanism.md`.
+
+### Testnet deployment v2 (on-chain card label, 2026-09-13)
+D3-A added an owner-settable on-chain `label` to the card constructor and `set_label`, which
+required a new card WASM and a redeployed factory + card (existing cards cannot gain the field).
+The previous card's funds were migrated to the new one. Full addresses, migration tx hashes, and
+the re-measured fees (1-merchant and 32-merchant, with the label's storage cost isolated) are in
+`docs/testnet.md` under "Deployment v2 (on-chain label, 2026-09-13)"; that section supersedes the
+D1/D2 addresses earlier in the same file.
 
 ## Scope — 3 deliverables (see instawards/instaward-2-sow.md for the full SOW)
 

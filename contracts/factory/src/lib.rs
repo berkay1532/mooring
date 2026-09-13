@@ -2,7 +2,7 @@
 
 use soroban_sdk::xdr::ToXdr as _;
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, Address, Bytes, BytesN, Env,
+    contract, contractevent, contractimpl, contracttype, Address, Bytes, BytesN, Env, String,
 };
 
 #[cfg(test)]
@@ -56,6 +56,8 @@ impl Factory {
     /// is deterministic from `(factory, owner, salt)`. Binding it to the owner
     /// means a `salt` another user is about to use cannot be front-run, and it
     /// lets the app enumerate one owner's cards from a salt it chose.
+    /// `label` is the card's owner-chosen display name, passed straight to
+    /// the card constructor (1..=32 bytes, validated there).
     /// Emits `card_created`.
     pub fn create_card(
         env: Env,
@@ -63,6 +65,7 @@ impl Factory {
         signer: BytesN<32>,
         token: Address,
         policy: card::Policy,
+        label: String,
         salt: BytesN<32>,
     ) -> Address {
         owner.require_auth();
@@ -77,7 +80,7 @@ impl Factory {
         let card = env
             .deployer()
             .with_current_contract(deploy_salt)
-            .deploy_v2(wasm_hash, (owner.clone(), signer, token, policy));
+            .deploy_v2(wasm_hash, (owner.clone(), signer, token, policy, label));
         CardCreated {
             owner,
             card: card.clone(),

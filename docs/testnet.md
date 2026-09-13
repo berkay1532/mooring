@@ -2,6 +2,10 @@
 
 Network: Stellar testnet (`Test SDF Network ; September 2015`). Testnet resets quarterly; re-run `scripts/testnet/deploy.sh` after a reset.
 
+> **The live deployment is "Deployment v2 (on-chain label, 2026-09-13)" at the end of this
+> file.** The addresses in this section are the D1/D2 deployment, kept as the record of the
+> evidence collected against it; its card was cancelled and drained during the v2 migration.
+
 | Item | Value |
 |---|---|
 | Card WASM hash | `ab48afbc45a013257c7c4510ea74083a673c4108a7ed52ce6a8f1d77210f7f78` |
@@ -193,3 +197,108 @@ the transaction itself (round-robin over its signer pool), so neither figure is 
 card — the card's own cost is the `minResourceFee` measured further up (33 926 stroops at a
 1-merchant allowlist, 49 380 at the full 32), and both of these settlements sit comfortably above
 it.
+
+## Deployment v2 (on-chain label, 2026-09-13)
+
+The card contract now stores an owner-settable **label** (`String`, ≤ 32 bytes (UTF-8)), set by the
+constructor and therefore part of the card's WASM ABI. Existing cards cannot gain the field, so
+D3-A redeployed the WASM, the factory and the card, and migrated the previous card's funds. The
+deployment in the table at the top of this file is superseded by the one below; everything
+recorded above it stays as the D1/D2 record of the previous deployment.
+
+| Item | Value |
+|---|---|
+| Card WASM hash | `158b6acf3cde928e2c9c18c9e0f79fd29f7b847b7c73908c3972ef923c85d20f` |
+| Factory | `CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE` |
+| Card | `CBOOOQDW4YA7JHDW4ELMKRFUUBJFBOJZGB4IXZJTHSAGUE4TWKJXUH5W` |
+| Card label | `inference-agent` |
+| Token (USDC SAC) | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` |
+| Owner | `GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD` |
+| Agent (signer) | `GDHDJL3RT6S3OABSHLOEOCBH4BMMAKLVOR5FPEHXG5ZW2DDJDRRJJSM7` (unchanged) |
+| Merchant | `GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG` (unchanged) |
+| Funder | `GDJ33V6NOUCXMS2Q24FHSTXSTZDUANPCJXSCQHPZFUM7KWMJ5D2DMKBR` (unchanged) |
+
+Policy as deployed: 50 USDC / day, max 10 USDC per payment, expiry +30 days
+(`expiry` 1791858099). `scripts/testnet/deploy.sh` passes the label as
+`--label "$LABEL"` (`CARD_LABEL` overrides it; default `inference-agent`) — the `stellar` CLI
+takes a Soroban `String` argument as plain text, not JSON.
+
+| Deployment transaction | Hash |
+|---|---|
+| Card WASM upload | `0a8945c63a6e20185aceae312763ebd2fc8d7b8e52d3171c644f3aeba268cc53` |
+| Factory WASM upload | `83c5ea61aedf50f9736dc30b0aed29e3b8696ac782fb98824535ca3627b4bb82` |
+| Factory deploy (`__constructor`) | `6ebc37773d99c094cf8489d23b6a128ec59852895f10f5d66409e7bb91d63194` |
+| `create_card` (emits `card_created`) | `39cc9e2743f9a2866e7ce280774ec9c816d3220b281a7bb6f974e42b0cecca8e` |
+| `add_merchant` (the merchant above) | `25188135be3c04aedda53433d890cd3d9180bb4966aa389f252139c1a18a6918` |
+
+`node packages/cli/dist/index.js status --card CBOOOQDW…UH5W --json` on the new card reports
+`"label": "inference-agent"`, `state` 0 (Active), `remaining` `500000000`, `allow_count` 1.
+
+### Migration of the previous card
+
+`scripts/testnet/migrate-card.sh CAJPWJBF…AHCJ` moved the old card's whole balance into the new
+one. The owner had never held a USDC trustline (the card held the USDC, not the owner), and
+`cancel` sweeps the balance to the owner as a classic payment, so the script adds the trustline
+first when it is missing.
+
+| Step | Hash | Effect |
+|---|---|---|
+| Owner `change_trust` `USDC:GBBD47IF…FLA5` | `4c2ba4228933140e5ddd70cbc11c404649398c842240d0d7eaaec2820332f002` | owner can receive the sweep |
+| `cancel` on the old card `CAJPWJBF…AHCJ` | `05e2208f2bf5ddcc48bd1d6b30243f5fca67240c8624fe4ec7555a0f9c3916ac` | `state_changed` → 2 (Cancelled); `withdrawn` `109980000` to the owner |
+| SAC `transfer` owner → new card | `99314c4d4a7be2441cd9d733ebef4b5c4f564ab4824587dcb8f73f1f7e9aa2b8` | `109980000` (10.998 USDC) into `CBOOOQDW…UH5W` |
+
+After the migration the old card's USDC balance is `0` and it is permanently Cancelled; the new
+card's balance is `109980000`. The owner's USDC balance is back to `0.0000000` — the funds only
+passed through it.
+
+### Fee re-measurement with the label field
+
+`scripts/agent/src/fee32.ts` now prints a **baseline** (the card's untouched 1-merchant
+allowlist) before it grows the allowlist to 32, so both numbers come from the same run, the same
+card and the same ledger state. Measured 2026-09-13 on the v2 card (60 USDC transfer, built,
+signed and re-simulated, never submitted):
+
+| Allowlist size | minResourceFee, 2026-09-13 (v2, with label) | minResourceFee, 2026-09-09/12 (v1) |
+|---|---|---|
+| 1 merchant (baseline) | 33 996 stroops | 33 926 stroops |
+| 32 merchants (full) | 35 233 stroops | 49 380 stroops |
+
+The baseline moved by **+70 stroops**, which is the cost the label adds to the instance entry the
+payment path reads and rewrites — negligible, and the point of measuring it.
+
+The 32-merchant figure came out **14 147 stroops lower than the v1 measurement**, i.e. the
+allowlist spread is 1 237 stroops here against 15 454 on the v1 card. That drop is not explained
+by the label change and was not chased down in this task: both runs maxed the instance TTL via
+`add_merchant` immediately beforehand, so it is not TTL rent. The v1 card itself is now cancelled,
+but the old factory (`CCPVVXXD…F4RL`, still live) can still mint a fresh v1 card to re-measure
+against — that re-measurement is tracked as a follow-up, not done here. **The conservative number
+to quote is therefore still the v1 worst case, 49 380 stroops**, which remains below every fee OZ
+Channels has been observed to accept (see the D2 section above). Re-measure when the allowlist or
+the payment-path storage changes; if the 32-merchant figure stays near 35 000 on a card that has
+been live for some days, the v1 number was an artifact of that card's state rather than of
+allowlist size.
+
+### D3-A e2e re-run against the new card
+
+`npm run e2e` (`packages/x402-client/e2e/testnet.e2e.ts`) once, unchanged scenarios, against the
+v2 card. `reset-policy.sh` was not needed (`remaining` was the full `500000000`). The run reported
+`"failures": []`.
+
+| Scenario | Outcome |
+|---|---|
+| `GET /weather` ($0.001) paid from the card | HTTP 200 `{"city":"Istanbul","temp":24,"conditions":"Clear"}`; settlement `{success: true, transaction: 5695eb07…5315, network: stellar:testnet, payer: CBOOOQDW…UH5W}` |
+| Card budget after the payment | `spent` 0 → `10000`, `remaining` `499990000`, balance `109970000` |
+| `GET /premium` ($20, above `max_per_tx`) | `CardPolicyDenied` reason `over_per_tx_cap`, stage `precheck` |
+| Unlisted merchant, pre-check disabled | `CardPolicyDenied` reason `not_allowlisted`, stage `simulate`, contract error #6 |
+| The same unlisted-merchant payload, presented to the facilitator | OZ Channels `/verify` → `{"isValid": false, "invalidReason": "invalid_exact_stellar_payload_simulation_failed", "payer": "CBOOOQDW…UH5W"}` |
+
+Settlement transaction
+`5695eb0755e4f9eb44d5c23fc139f69a826d657b2c34df5cc259d4a9fe0c5315`, on Horizon:
+
+```json
+{ "successful": true, "ledger": 4648605, "max_fee": "34198", "fee_charged": "24018",
+  "source_account": "GBHOPQWSCUNFVDYZIYK7VWPWGBH5SRGDSGRUEZDMQKM44TGMDS5I6R6I" }
+```
+
+Fees are still sponsored by the facilitator (a third distinct OZ signer account), and the payer
+recorded in the settlement is the card contract.
