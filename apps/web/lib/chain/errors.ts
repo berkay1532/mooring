@@ -10,8 +10,14 @@ export interface TranslatedError {
 
 const CONTRACT_ERROR_RE = /Error\(Contract,\s*#(\d+)\)/;
 const AUTH_ERROR_RE = /Error\(Auth,/;
-/** Present on SAC/token diagnostics but not on the card's own error text. */
-const TOKEN_HINT_RE = /token/i;
+/**
+ * The SAC's own `BalanceError` (#10) diagnostic text — `soroban-env-host`'s
+ * `stellar_asset_contract::balance` raises this exact phrase (also, on a
+ * zero balance, "zero balance is not sufficient to spend", which this regex
+ * still matches). The card never emits this text, only the token contract
+ * does, so it is what actually "names the token contract" in the diagnostic.
+ */
+const SAC_BALANCE_RE = /balance is not sufficient to spend/i;
 
 function messageOf(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -44,8 +50,12 @@ function codeOf(err: unknown): number | undefined {
  * Never throws: every input shape (Error, plain object, string, number,
  * null/undefined) is handled explicitly and falls back to a generic message
  * rather than raising.
+ *
+ * `opts.token`, when given (the USDC SAC address), lets the `#10` collision
+ * below be resolved by contract identity — `contract:<token>, topics:[error,
+ * Error(Contract, #10)]` — rather than only by the SAC's diagnostic phrase.
  */
-export function translateError(err: unknown): TranslatedError {
+export function translateError(err: unknown, opts?: { token?: string }): TranslatedError {
   const message = messageOf(err);
   const code = codeOf(err);
   const mentionsFreighter = /freighter/i.test(message);
@@ -96,9 +106,14 @@ export function translateError(err: unknown): TranslatedError {
     // The card and the USDC token contract both use small integer error
     // codes, and #10 collides: on the card it means "allowlist full", but a
     // SAC `transfer` also raises #10 for an insufficient balance. Only the
-    // diagnostic text tells them apart — a token-contract failure names the
-    // token, the card's own denial never does.
-    if (errCode === 10 && TOKEN_HINT_RE.test(message)) {
+    // diagnostic text (or, with `opts.token`, contract identity) tells them
+    // apart — the card's own denial never carries the SAC's balance phrase.
+    const isSacBalanceFailure =
+      errCode === 10 &&
+      (SAC_BALANCE_RE.test(message) ||
+        (opts?.token !== undefined &&
+          message.includes(`contract:${opts.token}, topics:[error, Error(Contract, #10)]`)));
+    if (isSacBalanceFailure) {
       return {
         title: "Insufficient USDC balance",
         detail: "The card does not hold enough USDC to cover this payment.",

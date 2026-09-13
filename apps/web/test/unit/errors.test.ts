@@ -39,13 +39,44 @@ describe("translateError", () => {
     const t = translateError(new Error("wrong network: expected TESTNET, got PUBLIC"));
     expect(t.title).toMatch(/network/i);
   });
-  it("recognizes SAC insufficient balance diagnostics naming the token contract", () => {
+  it("recognizes the SAC's own insufficient-balance diagnostic (#10) over the card's allowlist-full sentence", () => {
+    // The real shape of a Soroban RPC simulation failure diagnostic, as
+    // rendered by soroban-env-host and captured verbatim in
+    // packages/x402-client/test/scheme.test.ts (same fn_call/error event
+    // pair, here with the SAC's BalanceError #10 and its exact phrase).
+    const usdc = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
+    const card = "CBOOOQDW4YA7JHDW4ELMKRFUUBJFBOJZGB4IXZJTHSAGUE4TWKJXUH5W";
+    const merchant = "CDMERCHANTEXAMPLE0000000000000000000000000000000000000";
     const t = translateError(
       new Error(
-        "HostError: Error(Contract, #10): contract call failed: token contract CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA balance is not sufficient",
+        [
+          "HostError: Error(Contract, #10)",
+          "",
+          "Event log (newest first):",
+          `   0: [Diagnostic Event] contract:${usdc}, topics:[error, Error(Contract, #10)], ` +
+            `data:["balance is not sufficient to spend", 500000, 1000000]`,
+          `   1: [Diagnostic Event] topics:[fn_call, ${usdc}, transfer], ` +
+            `data:[${card}, ${merchant}, 1000000]`,
+        ].join("\n"),
       ),
     );
-    expect(t.title).toMatch(/insufficient|balance/i);
+    expect(t.title).toMatch(/insufficient/i);
+    expect(t.title).not.toMatch(/allowlist/i);
+    expect(t.code).toBe(10);
+  });
+  it("still maps a bare #10 with no SAC balance phrase to the card's allowlist-full sentence", () => {
+    const t = translateError(new Error("HostError: Error(Contract, #10)"));
+    expect(t.code).toBe(10);
+    expect(t.title).toMatch(/allowlist/i);
+  });
+  it("resolves the #10 collision by contract identity when the token address is given", () => {
+    const usdc = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
+    // No SAC balance phrase in the text at all — identity alone must resolve it.
+    const t = translateError(
+      new Error(`HostError: Error(Contract, #10): contract:${usdc}, topics:[error, Error(Contract, #10)]`),
+      { token: usdc },
+    );
+    expect(t.title).toMatch(/insufficient/i);
   });
   it("never throws on non-Error inputs", () => {
     expect(() => translateError(undefined)).not.toThrow();

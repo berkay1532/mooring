@@ -21,6 +21,14 @@ const USER_INPUT_RE = /^\d+(\.\d{1,7})?$/;
  *
  * - Default: 2 decimal places (`"11.00"`).
  * - `{ full: true }`: full 7-decimal precision (`"10.9980000"`).
+ *
+ * `base` as a string must be a plain base-unit integer (optionally signed,
+ * e.g. `"109980000"` or `"-1"`) — the same shape `BigInt()` accepts for an
+ * integer; it is not a decimal USDC amount (use `parseUsdc` for that), and a
+ * non-integer string (`"1.5"`) or non-numeric string (`"abc"`) throws, same
+ * as `BigInt()` does. On-chain balances are never negative, but a rounded
+ * negative value that lands on zero (`-1n` at 2 decimals) is shown as
+ * `"0.00"`, not `"-0.00"` — there is no such thing as a negative zero here.
  */
 export function formatUsdc(base: bigint | string, opts?: { full?: boolean }): string {
   const value = typeof base === "bigint" ? base : BigInt(base);
@@ -36,7 +44,7 @@ export function formatUsdc(base: bigint | string, opts?: { full?: boolean }): st
   const fraction = scaled % divisor;
   const fractionStr = fraction.toString().padStart(places, "0");
 
-  const sign = negative ? "-" : "";
+  const sign = negative && scaled !== 0n ? "-" : "";
   return `${sign}${whole.toString()}.${fractionStr}`;
 }
 

@@ -47,6 +47,13 @@ describe("usdc", () => {
   it("parses very large values without losing precision", () => {
     expect(parseUsdc("12345678901.1234567")).toBe(123456789011234567n);
   });
+  it("drops the sign when a negative value rounds to zero", () => {
+    // -1n is -0.0000001 USDC; rounded to 2 decimals that's "0.00", not
+    // "-0.00" — there is no negative zero for a balance.
+    expect(formatUsdc(-1n)).toBe("0.00");
+    // A negative value that rounds to something nonzero keeps its sign.
+    expect(formatUsdc(-109_980_000n)).toBe("-11.00");
+  });
 });
 
 describe("time", () => {
@@ -66,6 +73,18 @@ describe("time", () => {
   });
   it("treats an exact-now countdown as now", () => {
     expect(formatCountdown(1_000_000, 1_000_000)).toBe("now");
+  });
+  it("returns a placeholder for a non-finite duration instead of a broken string", () => {
+    expect(formatDuration(NaN)).toBe("—");
+    expect(formatDuration(Infinity)).toBe("—");
+    expect(formatDuration(-Infinity)).toBe("—");
+  });
+  it("clamps a non-finite or sub-second countdown to now", () => {
+    expect(formatCountdown(NaN, 1_000_000)).toBe("now");
+    expect(formatCountdown(1_000_000, NaN)).toBe("now");
+    expect(formatCountdown(Infinity, 1_000_000)).toBe("now");
+    // Less than a second remaining reads as "now", not "0 s".
+    expect(formatCountdown(1_000_000.5, 1_000_000)).toBe("now");
   });
 });
 
