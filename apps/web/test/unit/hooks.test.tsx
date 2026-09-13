@@ -62,6 +62,8 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   };
 });
 
+import { CARD_ERRORS } from "@mooring/x402-client";
+
 import { addCard } from "../../lib/prefs";
 import { config } from "../../lib/config";
 import { contractInstanceKey, deriveCardAddress, saltBytes } from "../../lib/chain/derive";
@@ -110,10 +112,29 @@ function makeWallet(signTransaction: Wallet["signTransaction"]): Wallet {
 }
 
 /** A fake `AssembledTransaction`: duck-typed (has `.simulate`/`.built`), not
- * a real instance — the real class makes network calls during simulation. */
+ * a real instance — the real class makes network calls during simulation.
+ * Its `.simulate()` sets a successful `simulation` (matching the real SDK,
+ * which always populates `tx.simulation` — see `makeAssembledTxWithSimulation`
+ * for a pre-simulated tx, e.g. one whose simulation already failed). */
 function makeAssembledTx(): AssembledTransaction<unknown> {
+  const fake: { built: { toXDR: () => string }; simulation?: unknown; simulate: ReturnType<typeof vi.fn> } = {
+    built: { toXDR: () => "unsigned-blob" },
+    simulate: vi.fn(async function (this: typeof fake) {
+      this.simulation = { transactionData: {} }; // a successful, non-restore simulation
+      return this;
+    }),
+  };
+  return fake as unknown as AssembledTransaction<unknown>;
+}
+
+/** A fake `AssembledTransaction` that arrives already simulated (as every
+ * bindings `Client` method does by default) with the given `simulation` —
+ * used to exercise a failed or restore-needed simulation, which the hook
+ * must catch in `preparing`, before `signing`. */
+function makeAssembledTxWithSimulation(simulation: Record<string, unknown>): AssembledTransaction<unknown> {
   const fake = {
     built: { toXDR: () => "unsigned-blob" },
+    simulation,
     simulate: vi.fn(async function (this: unknown) {
       return this;
     }),
@@ -422,6 +443,50 @@ describe("useContractAction", () => {
     });
     expect(onConfirmed).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a failed simulation fails at preparing — before signing — mapped through CARD_ERRORS", async () => {
+    const signTransaction = vi.fn(async () => ({ signedTxXdr: realTxXdr() }));
+    walletValue = { wallet: makeWallet(signTransaction), networkPassphrase: PASSPHRASE };
+    // Neither `build()` nor `tx.simulate()` throws on a failed simulation in
+    // the real SDK — the error lands in `tx.simulation`, and `tx.built`
+    // stays the raw, unassembled transaction. This fake arrives already in
+    // that state, as every bindings `Client` method would.
+    const simTx = makeAssembledTxWithSimulation({ error: "HostError: Error(Contract, #3)", events: [] });
+    const build = vi.fn(async () => simTx);
+
+    const { result } = renderHook(() => useContractAction(build, { invalidates: () => [] }), { wrapper });
+
+    await act(async () => {
+      await result.current.run({});
+    });
+
+    expect(result.current.state).toBe("failed");
+    expect(result.current.error?.code).toBe(3);
+    expect(result.current.error?.title).toBe(CARD_ERRORS[3]);
+    expect(vi.mocked(simTx.simulate)).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("a restore-preamble simulation also fails at preparing, before signing", async () => {
+    const signTransaction = vi.fn(async () => ({ signedTxXdr: realTxXdr() }));
+    walletValue = { wallet: makeWallet(signTransaction), networkPassphrase: PASSPHRASE };
+    const simTx = makeAssembledTxWithSimulation({
+      transactionData: {},
+      restorePreamble: { transactionData: {} },
+    });
+    const build = vi.fn(async () => simTx);
+
+    const { result } = renderHook(() => useContractAction(build, { invalidates: () => [] }), { wrapper });
+
+    await act(async () => {
+      await result.current.run({});
+    });
+
+    expect(result.current.state).toBe("failed");
+    expect(result.current.error?.title).toMatch(/restored/i);
+    expect(signTransaction).not.toHaveBeenCalled();
   });
 });
 

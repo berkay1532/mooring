@@ -90,6 +90,17 @@ export function translateError(err: unknown, opts?: { token?: string }): Transla
     };
   }
 
+  // A simulation reported the card's ledger entry needs restoring (its
+  // state has expired) before it can be invoked — `useContractAction`
+  // throws this exact sentence when `Api.isSimulationRestore` is true,
+  // ahead of asking the owner to sign anything (spec §6's "archived" case).
+  if (/needs to be restored/i.test(message)) {
+    return {
+      title: "Card needs to be restored",
+      detail: "This card's on-chain state has expired and needs to be restored before it can be used.",
+    };
+  }
+
   // Wallet connected to the wrong Stellar network.
   if (/wrong network|network mismatch|switch.*network/i.test(message)) {
     return {

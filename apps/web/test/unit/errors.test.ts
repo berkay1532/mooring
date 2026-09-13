@@ -78,6 +78,10 @@ describe("translateError", () => {
     );
     expect(t.title).toMatch(/insufficient/i);
   });
+  it("maps a simulation-restore message to a dedicated title", () => {
+    const t = translateError(new Error("This card's state needs to be restored before it can be used."));
+    expect(t.title).toMatch(/restored/i);
+  });
   it("never throws on non-Error inputs", () => {
     expect(() => translateError(undefined)).not.toThrow();
     expect(() => translateError(null)).not.toThrow();

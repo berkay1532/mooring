@@ -3,6 +3,7 @@
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import type { AssembledTransaction } from "@stellar/stellar-sdk/contract";
+import { Api } from "@stellar/stellar-sdk/rpc";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 
 import type { Wallet } from "../chain/card";
@@ -52,16 +53,28 @@ const MAX_POLL_ATTEMPTS = 60;
 
 /**
  * A `setTimeout`-based delay whose pending timer is recorded in `timeoutRef`
- * so an unmount cleanup can `clearTimeout` it (see the `useEffect` in
- * `useContractAction`) — otherwise the poll loop would keep a timer alive
- * for up to a minute after the component using it is gone.
+ * and whose `resolve` is recorded in `resolveRef`, so an unmount cleanup can
+ * both `clearTimeout` the timer (see the `useEffect` in `useContractAction`
+ * — otherwise the poll loop would keep a timer alive for up to a minute
+ * after the component using it is gone) *and* settle the promise itself.
+ * Without the latter, `clearTimeout` alone leaves this `await` — and so the
+ * whole `run()` promise, and `inFlightRef` — pending forever after unmount;
+ * settling it here lets the poll loop reach its `cancelledRef` check and
+ * return, so `run()`'s `finally` resets `inFlightRef`.
  */
-function delay(ms: number, timeoutRef: MutableRefObject<ReturnType<typeof setTimeout> | null>): Promise<void> {
+function delay(
+  ms: number,
+  timeoutRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  resolveRef: MutableRefObject<(() => void) | null>,
+): Promise<void> {
   return new Promise((resolve) => {
-    timeoutRef.current = setTimeout(() => {
+    const settle = () => {
       timeoutRef.current = null;
+      resolveRef.current = null;
       resolve();
-    }, ms);
+    };
+    resolveRef.current = settle;
+    timeoutRef.current = setTimeout(settle, ms);
   });
 }
 
@@ -140,6 +153,7 @@ export function useContractAction<TArgs>(
   const mountedRef = useRef(true);
   const cancelledRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resolveRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     mountedRef.current = true;
     cancelledRef.current = false;
@@ -150,6 +164,10 @@ export function useContractAction<TArgs>(
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
+      // Settle any delay() the poll loop is currently awaiting, so a
+      // cleared timer doesn't leave `run()` (and `inFlightRef`) pending
+      // forever — see `delay`'s doc comment.
+      resolveRef.current?.();
     };
   }, []);
 
@@ -192,13 +210,31 @@ export function useContractAction<TArgs>(
 
         // --- preparing: simulate/assemble ---------------------------------
         const tx = await buildRef.current(args, wallet);
-        if (isAssembledTransaction(tx) && !tx.simulation) {
-          // The generated bindings already simulate by default
-          // (`AssembledTransaction.build`'s `options.simulate` defaults to
-          // `true`), so only re-simulate when the caller opted out of that
-          // (or handed in a transaction that was never simulated) — avoids
-          // a redundant `simulateTransaction` round trip on every write.
-          await tx.simulate();
+        if (isAssembledTransaction(tx)) {
+          if (!tx.simulation) {
+            // The generated bindings already simulate by default
+            // (`AssembledTransaction.build`'s `options.simulate` defaults to
+            // `true`), so only re-simulate when the caller opted out of that
+            // (or handed in a transaction that was never simulated) — avoids
+            // a redundant `simulateTransaction` round trip on every write.
+            await tx.simulate();
+          }
+          // Neither `build()`/`simulate()` throws on a *failed* simulation —
+          // the SDK stores the error response in `tx.simulation` and leaves
+          // `tx.built` as the raw, unassembled transaction (no footprint, no
+          // resource fee, no auth). Without this check the hook would send
+          // that doomed transaction on to `signing`, so "already simulated"
+          // must mean "simulated successfully", not merely "has a
+          // `tx.simulation`". `sim.error` carries the same
+          // `HostError: Error(Contract, #N)` text (plus diagnostic events)
+          // that `translateError` already maps through `CARD_ERRORS`.
+          const sim = tx.simulation!;
+          if (Api.isSimulationError(sim)) {
+            throw new Error(sim.error);
+          }
+          if (Api.isSimulationRestore(sim)) {
+            throw new Error("This card's state needs to be restored before it can be used.");
+          }
         }
         if (!mountedRef.current) return;
 
@@ -244,7 +280,7 @@ export function useContractAction<TArgs>(
         let sawFailure = false;
         for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
           if (cancelledRef.current) break;
-          await delay(POLL_INTERVAL_MS, timeoutRef);
+          await delay(POLL_INTERVAL_MS, timeoutRef, resolveRef);
           if (cancelledRef.current) break;
           const got = await rpc.getTransaction(sent.hash);
           if (got.status === "SUCCESS") {
