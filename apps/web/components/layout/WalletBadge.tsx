@@ -35,7 +35,7 @@ export function WalletBadge() {
         type="button"
         onClick={() => void handleCopy()}
         className={`font-mono text-xs text-text-hi ${AMBER_FOCUS_RING}`}
-        aria-label={copied ? "Address copied" : `Copy card address ${address}`}
+        aria-label={copied ? "Address copied" : `Copy wallet address ${address}`}
       >
         {copied ? "Copied" : shortAddress(address)}
       </button>

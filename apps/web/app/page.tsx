@@ -19,5 +19,5 @@ export default function ConnectPage() {
 
   if (wallet.status === "connected") return null;
 
-  return <GateContent status={wallet.status} connect={wallet.connect} />;
+  return <GateContent status={wallet.status} ready={wallet.ready} connect={wallet.connect} />;
 }

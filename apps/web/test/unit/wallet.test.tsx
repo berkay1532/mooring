@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NetworkGuard } from "../../components/layout/NetworkGuard";
@@ -80,6 +80,28 @@ describe("NetworkGuard / Connect screen", () => {
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noreferrer");
     expect(screen.queryByRole("button", { name: /connect freighter/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show the Connect button (or any affordance) until isAvailable() has answered", async () => {
+    let resolveAvailable: (v: boolean) => void = () => {};
+    const pending = new Promise<boolean>((resolve) => {
+      resolveAvailable = resolve;
+    });
+    const adapter = makeAdapter({
+      isAvailable: () => pending,
+      getAddress: async () => null,
+    });
+    renderGuard(adapter);
+
+    // Still loading: only the wordmark, no button, no install link, no paragraph.
+    expect(screen.getByText("MOORING")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /connect freighter/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /install freighter/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/mooring gives an ai agent/i)).not.toBeInTheDocument();
+
+    resolveAvailable(true);
+
+    expect(await screen.findByRole("button", { name: /connect freighter/i })).toBeInTheDocument();
   });
 });
 
@@ -190,6 +212,46 @@ describe("freighterAdapter", () => {
     const { freighterAdapter } = await import("../../lib/wallet/freighter");
     await expect(freighterAdapter.getNetworkPassphrase()).rejects.toMatchObject({ code: -5 });
   });
+
+  it("onChange constructs WatchWalletChanges(3000), calls .watch, and .stop()s on unsubscribe", async () => {
+    const watchFn = vi.fn();
+    const stopFn = vi.fn();
+    const instances: number[] = [];
+    class FakeWatchWalletChanges {
+      constructor(timeout?: number) {
+        instances.push(timeout ?? -1);
+      }
+      watch = watchFn;
+      stop = stopFn;
+    }
+    vi.resetModules();
+    vi.doMock("@stellar/freighter-api", () => ({
+      isConnected: vi.fn(),
+      isAllowed: vi.fn(),
+      setAllowed: vi.fn(),
+      requestAccess: vi.fn(),
+      getAddress: vi.fn(),
+      getNetworkDetails: vi.fn(),
+      signTransaction: vi.fn(),
+      WatchWalletChanges: FakeWatchWalletChanges,
+    }));
+
+    const { freighterAdapter } = await import("../../lib/wallet/freighter");
+    const cb = vi.fn();
+    const unsubscribe = freighterAdapter.onChange?.(cb);
+
+    // The `WatchWalletChanges` construction happens inside the `.then()` of
+    // `onChange`'s internal dynamic import, itself an async function with
+    // its own `await` — wait rather than guess how many microtask ticks
+    // that chain needs to settle.
+    await waitFor(() => expect(watchFn).toHaveBeenCalledTimes(1));
+
+    expect(instances).toEqual([3000]);
+    expect(stopFn).not.toHaveBeenCalled();
+
+    unsubscribe?.();
+    expect(stopFn).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("mockAdapter and window.__mooringMock", () => {
@@ -245,6 +307,44 @@ describe("mockAdapter and window.__mooringMock", () => {
     unsubscribe?.();
 
     expect(seen).toEqual([{ address: MOCK_ADDRESS, networkPassphrase: TESTNET_PASSPHRASE }, { address: null, networkPassphrase: null }]);
+  });
+
+  it("window.__mooringMock.set() switches mode at runtime and notifies subscribers immediately", async () => {
+    const { mockAdapter } = await import("../../lib/wallet/mock");
+
+    // Trigger `ensureControl()` so `window.__mooringMock.set` exists.
+    await mockAdapter.isAvailable();
+    await mockAdapter.connect();
+
+    const seen: Array<{ address: string | null; networkPassphrase: string | null }> = [];
+    const unsubscribe = mockAdapter.onChange?.((s) => seen.push(s));
+
+    window.__mooringMock?.set?.("wrong-network");
+
+    expect(seen).toEqual([{ address: MOCK_ADDRESS, networkPassphrase: OTHER_PASSPHRASE }]);
+    await expect(mockAdapter.getNetworkPassphrase()).resolves.toBe(OTHER_PASSPHRASE);
+
+    unsubscribe?.();
+  });
+
+  it("onChange's reported state agrees with getAddress()/getNetworkPassphrase() when forced unavailable mid-session", async () => {
+    const { mockAdapter } = await import("../../lib/wallet/mock");
+    await mockAdapter.connect();
+
+    const seen: Array<{ address: string | null; networkPassphrase: string | null }> = [];
+    const unsubscribe = mockAdapter.onChange?.((s) => seen.push(s));
+
+    // Overwrite wholesale (the plain-object Playwright form), then switch via
+    // `set()` once `ensureControl()` has patched it back in.
+    window.__mooringMock = { mode: "unavailable" };
+    await mockAdapter.isAvailable();
+    window.__mooringMock.set?.("unavailable");
+
+    await expect(mockAdapter.getAddress()).resolves.toBeNull();
+    await expect(mockAdapter.getNetworkPassphrase()).resolves.toBeNull();
+    expect(seen.at(-1)).toEqual({ address: null, networkPassphrase: null });
+
+    unsubscribe?.();
   });
 });
 

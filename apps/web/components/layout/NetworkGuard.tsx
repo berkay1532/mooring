@@ -11,26 +11,34 @@ const FREIGHTER_INSTALL_URL = "https://www.freighter.app/";
 const AMBER_FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2 focus-visible:ring-offset-bg-deep";
 
-type GateProps = Pick<WalletContextValue, "status" | "connect">;
+type GateProps = Pick<WalletContextValue, "status" | "ready" | "connect">;
 
 /**
  * The Connect screen's states (spec §3.1): not-installed, installed-but-not-
  * connected, and the blocking wrong-network notice. Shared by `app/page.tsx`
  * (the `/` route itself) and {@link NetworkGuard} (every other route), so
  * both present the same screen when the wallet isn't ready.
+ *
+ * While `!ready` (the adapter hasn't answered `isAvailable()` yet) this
+ * renders only the wordmark — no button, no install link, no paragraph.
+ * Showing a live "Connect Freighter" button before the first check resolves
+ * would let a user without Freighter click into a call that never settles
+ * (Freighter's `isAllowed()` has no timeout), and would flash the button in
+ * front of a returning, already-allowed user for the instant before the
+ * redirect to `/cards`.
  */
-export function GateContent({ status, connect }: GateProps) {
+export function GateContent({ status, ready, connect }: GateProps) {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-6 text-center">
       <h1 className="font-display text-4xl tracking-[0.04em] text-text-hi sm:text-5xl">MOORING</h1>
 
-      {status === "wrong-network" ? (
+      {!ready ? null : status === "wrong-network" ? (
         <p
           role="status"
           aria-live="polite"
           className="max-w-md rounded-full border border-danger/40 bg-danger/10 px-5 py-2 font-mono text-sm text-danger"
         >
-          Wrong network — switch your wallet to {networkLabel(config.networkPassphrase)} and reload.
+          Wrong network — switch your wallet to {networkLabel(config.networkPassphrase)}.
         </p>
       ) : (
         <>
@@ -68,7 +76,7 @@ export function GateContent({ status, connect }: GateProps) {
 export function NetworkGuard({ children }: { children: ReactNode }) {
   const wallet = useWallet();
   if (wallet.status !== "connected") {
-    return <GateContent status={wallet.status} connect={wallet.connect} />;
+    return <GateContent status={wallet.status} ready={wallet.ready} connect={wallet.connect} />;
   }
   return <>{children}</>;
 }

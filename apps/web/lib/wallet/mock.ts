@@ -8,22 +8,55 @@ const WRONG_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 
 export type MooringMockMode = "unavailable" | "wrong-network" | undefined;
 
+export interface MooringMockControl {
+  /**
+   * Read on every adapter call. Playwright's documented path sets this
+   * directly via `addInitScript(() => { window.__mooringMock = { mode: "unavailable" } })`
+   * before the page loads — that keeps working with or without `set`.
+   */
+  mode?: MooringMockMode;
+  /**
+   * Runtime switch: updates `mode` and immediately notifies `onChange`
+   * subscribers. Optional on the type so the plain-object form above still
+   * type-checks; `ensureControl()` always installs one.
+   */
+  set?(mode: MooringMockMode): void;
+}
+
 declare global {
   interface Window {
     /**
-     * A hook for Playwright (and this file's own unit tests) to force the
-     * mock adapter into a state that isn't reachable by normal use — set
-     * `window.__mooringMock = { mode: "unavailable" }` or
-     * `{ mode: "wrong-network" }` from the test before the page loads.
-     * Leaving it unset (or `mode` undefined) is the normal path.
+     * A hook to force the mock adapter into a state that isn't reachable by
+     * normal use: `unavailable` or `wrong-network`. Leaving it unset (or
+     * `mode` undefined) is the normal path.
      */
-    __mooringMock?: { mode?: MooringMockMode };
+    __mooringMock?: MooringMockControl;
   }
 }
 
-function mode(): MooringMockMode {
+/**
+ * Ensures `window.__mooringMock` has a working `set()`, without discarding a
+ * `mode` a test already assigned directly (`window.__mooringMock = { mode }`,
+ * with no `set` of its own). Called on every read so a control replaced
+ * wholesale after module load still gets `set` wired back in.
+ */
+function ensureControl(): MooringMockControl | undefined {
   if (typeof window === "undefined") return undefined;
-  return window.__mooringMock?.mode;
+  const existing = window.__mooringMock;
+  if (existing && typeof existing.set === "function") return existing;
+  const control: MooringMockControl = {
+    mode: existing?.mode,
+    set(next) {
+      control.mode = next;
+      emit();
+    },
+  };
+  window.__mooringMock = control;
+  return control;
+}
+
+function mode(): MooringMockMode {
+  return ensureControl()?.mode;
 }
 
 let connectedAddress: string | null = null;
@@ -32,6 +65,7 @@ type Listener = (s: { address: string | null; networkPassphrase: string | null }
 const listeners = new Set<Listener>();
 
 function currentState(): { address: string | null; networkPassphrase: string | null } {
+  if (mode() === "unavailable") return { address: null, networkPassphrase: null };
   return {
     address: connectedAddress,
     networkPassphrase: connectedAddress ? (mode() === "wrong-network" ? WRONG_PASSPHRASE : MOCK_PASSPHRASE) : null,
@@ -74,7 +108,7 @@ export const mockAdapter: WalletAdapter = {
   },
 
   async getNetworkPassphrase() {
-    if (!connectedAddress) return null;
+    if (!connectedAddress || mode() === "unavailable") return null;
     return mode() === "wrong-network" ? WRONG_PASSPHRASE : MOCK_PASSPHRASE;
   },
 

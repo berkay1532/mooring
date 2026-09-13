@@ -80,10 +80,9 @@ export const freighterAdapter: WalletAdapter = {
   async connect() {
     const api = await loadFreighter();
     if (!api) throw new Error(NOT_INSTALLED);
-    const { isAllowed } = unwrap(await api.isAllowed());
-    if (!isAllowed) {
-      unwrap(await api.setAllowed());
-    }
+    // `requestAccess()` (REQUEST_ACCESS) already grants access and returns
+    // the address in one call — it prompts only if not already allowed, so
+    // a separate `isAllowed()`/`setAllowed()` pair beforehand is redundant.
     const { address } = unwrap(await api.requestAccess());
     return { address };
   },
