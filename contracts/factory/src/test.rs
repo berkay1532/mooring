@@ -214,3 +214,51 @@ fn created_card_starts_with_instance_and_code_ttl_extended() {
     assert_eq!(env.deployer().get_contract_instance_ttl(&card), 518_400);
     assert_eq!(env.deployer().get_contract_code_ttl(&card), 518_400);
 }
+
+#[test]
+fn derivation_vector_matches_typescript() {
+    // Shared test vector with apps/web/test/unit/derive.test.ts's
+    // `deriveCardAddress`. The constant below was computed once by the TS
+    // implementation and pasted into both tests; this Rust side is the
+    // authority (it mirrors `create_card`'s own preimage construction), so
+    // if the two ever disagree, the TS implementation is the one to fix.
+    let env = Env::default();
+
+    // TS derives `networkId` as `hash(new TextEncoder().encode(passphrase))`;
+    // mirror that here rather than using a random/default network id.
+    let passphrase = "Test SDF Network ; September 2015";
+    let network_id = env
+        .crypto()
+        .sha256(&Bytes::from_slice(&env, passphrase.as_bytes()))
+        .to_array();
+    env.ledger().set_network_id(network_id);
+
+    let owner = Address::from_str(
+        &env,
+        "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD",
+    );
+    let factory = Address::from_str(
+        &env,
+        "CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE",
+    );
+    // saltBytes(1): 28 zero bytes followed by a big-endian u32 counter of 1.
+    let mut salt_bytes = [0u8; 32];
+    salt_bytes[31] = 1;
+    let salt = BytesN::from_array(&env, &salt_bytes);
+
+    // Mirrors `create_card`'s own preimage: sha256(owner_xdr || salt).
+    let mut preimage = owner.to_xdr(&env);
+    preimage.append(&Bytes::from_array(&env, &salt.to_array()));
+    let deploy_salt = env.crypto().sha256(&preimage).to_bytes();
+
+    let derived = env
+        .deployer()
+        .with_address(factory, deploy_salt)
+        .deployed_address();
+
+    let expected = Address::from_str(
+        &env,
+        "CBXHE6IOGUVDJEKAHPJGFXRPYSI7H6UFWQE2AYTE5HOSEOWFEXWJ6ULP",
+    );
+    assert_eq!(derived, expected);
+}
