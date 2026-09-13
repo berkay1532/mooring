@@ -53,6 +53,24 @@ fn label_of_exactly_32_bytes_is_accepted() {
 }
 
 #[test]
+fn multi_byte_label_of_exactly_32_bytes_is_accepted() {
+    // "ç" is 2 UTF-8 bytes, so 16 of them is exactly 32 bytes even though the
+    // string is only 16 *chars* -- the contract counts bytes, not chars.
+    let env = Env::default();
+    env.ledger().set_timestamp(T0);
+    register_with_label(&env, "çççççççççççççççç");
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #13)")]
+fn multi_byte_label_over_32_bytes_is_rejected() {
+    // 17 x "ç" is 34 bytes -- over the limit even though it is only 17 chars.
+    let env = Env::default();
+    env.ledger().set_timestamp(T0);
+    register_with_label(&env, "ççççççççççççççççç");
+}
+
+#[test]
 fn owner_can_rename_and_event_is_exact() {
     let f = setup();
     f.env.mock_all_auths();

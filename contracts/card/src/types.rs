@@ -34,7 +34,9 @@ pub struct Period {
 /// Everything a UI needs about a card in one call. `period` and `remaining`
 /// are materialized against the current ledger timestamp, so a pending period
 /// reset is already reflected (unlike the raw `period()` view). `label` is
-/// the owner-chosen display name (1..=32 bytes).
+/// the owner-chosen display name (1..=32 bytes). The contract only bounds its
+/// length; it is opaque bytes with no content validation, so consumers must
+/// treat it as untrusted text (escape it when rendering).
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CardInfo {
