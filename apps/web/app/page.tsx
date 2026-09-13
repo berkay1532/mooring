@@ -1,13 +1,23 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+import { GateContent } from "@/components/layout/NetworkGuard";
+import { useWallet } from "@/lib/wallet/context";
+
+/** The Connect screen (spec §3.1): the app's `/` route. */
 export default function ConnectPage() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-6 text-center">
-      <h1 className="font-display text-5xl text-text-hi">Mooring</h1>
-      <button
-        type="button"
-        className="rounded-full border border-amber/40 px-6 py-2 font-mono text-sm text-amber transition hover:bg-amber/10"
-      >
-        Connect
-      </button>
-    </main>
-  );
+  const router = useRouter();
+  const wallet = useWallet();
+
+  useEffect(() => {
+    if (wallet.status === "connected") {
+      router.replace("/cards");
+    }
+  }, [wallet.status, router]);
+
+  if (wallet.status === "connected") return null;
+
+  return <GateContent status={wallet.status} connect={wallet.connect} />;
 }

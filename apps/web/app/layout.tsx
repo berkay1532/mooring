@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Instrument_Serif, Manrope } from "next/font/google";
 import { GrainOverlay } from "@/components/layout/GrainOverlay";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
@@ -36,7 +37,7 @@ export default function RootLayout({
         className={`${instrumentSerif.variable} ${manrope.variable} ${plexMono.variable} bg-bg-deep text-text-lo font-body antialiased`}
       >
         <GrainOverlay />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
