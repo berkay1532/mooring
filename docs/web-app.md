@@ -195,8 +195,12 @@ simulated or estimated.
 3. The owner already holds the USDC trustline added during the v2 migration
    (`4c2ba4228933140e5ddd70cbc11c404649398c842240d0d7eaaec2820332f002`), which `withdraw` and
    `cancel` need. If a different account is used, add the trustline first.
-4. Fund the owner with testnet USDC if needed; the app's Fund sheet transfers from the owner's
-   wallet to the card.
+4. **The owner wallet must hold at least 1.5 USDC before the checklist's "Fund 1 USDC" step**
+   — the Fund sheet transfers from the owner's wallet to the card, and correctly refuses with
+   "Your wallet holds 0 USDC" otherwise. On 2026-09-13 the owner was topped up with 3 USDC from
+   the merchant test account (`mooring-merchant`, which holds the D2 payments).
+   Note: `mooring-funder` is drained, so `scripts/testnet/fund.sh` needs a Circle testnet faucet
+   top-up before it is used again.
 5. Run the app against the testnet config (locally with `npm run dev -w @mooring/web`, or the
    deployed URL once it exists).
 6. Take a screenshot at each step into `docs/screenshots/` using the filenames in the last
@@ -212,7 +216,7 @@ simulated or estimated.
 | Wizard step 2 — paste the agent public key, add one merchant | Green tick on the key; merchant listed, max 32, deduplicated | — | `pending` (`03-wizard-agent.png`) |
 | Wizard step 3 — "Create with Freighter" | `create_card` confirms; app returns to `/cards` with the new card selected | `pending` | `pending` (`04-card-created.png`) |
 | Merchant added after creation | One `add_merchant` transaction per merchant (see follow-ups) | `pending` | `pending` (`05-merchant-added.png`) |
-| Fund 1 USDC from the wallet | SAC `transfer` owner → card; card balance shows `1.00` | `pending` | `pending` (`06-funded.png`) |
+| Fund 1 USDC from the wallet (owner must hold ≥ 1.5 USDC — see prerequisite 4) | SAC `transfer` owner → card; card balance shows `1.00` | `pending` | `pending` (`06-funded.png`) |
 | Edit policy (budget 20 USDC / day) | `set_policy` confirms; current-period spend kept, period restarts now | `pending` | `pending` (`07-policy-edited.png`) |
 | Add a second merchant | `add_merchant`; allowlist count +1 | `pending` | `pending` (`08-merchant-add.png`) |
 | Remove that merchant | `remove_merchant`; allowlist count back down | `pending` | `pending` (`09-merchant-remove.png`) |

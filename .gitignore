@@ -38,7 +38,6 @@ scripts/agent/.env
 **/dist
 **/.env
 !**/.env.example
-**/.next/
 **/*.tsbuildinfo
 
 # Playwright (apps/web e2e)

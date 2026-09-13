@@ -3,10 +3,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(cd ../.. && pwd)
+# A private scratch directory per run: a fixed /tmp path is shared with every
+# other user and process on the machine, and would be reused (or hijacked)
+# across runs.
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/mooring-bindings.XXXXXX")
+trap 'rm -rf "$WORK"' EXIT
 for c in card factory; do
-  stellar contract bindings typescript --wasm "$ROOT/target/wasm32v1-none/release/mooring_$c.wasm" --output-dir "/tmp/mooring-bindings-$c" --overwrite >/dev/null
+  stellar contract bindings typescript --wasm "$ROOT/target/wasm32v1-none/release/mooring_$c.wasm" --output-dir "$WORK/$c" --overwrite >/dev/null
   mkdir -p "src/$c"
-  cp "/tmp/mooring-bindings-$c/src/index.ts" "src/$c/index.ts"
+  cp "$WORK/$c/src/index.ts" "src/$c/index.ts"
 done
 # The generator pins an old SDK; this package uses the workspace's exact version instead.
 echo "bindings regenerated: src/card/index.ts src/factory/index.ts"

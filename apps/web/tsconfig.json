@@ -22,5 +22,6 @@
     "**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "//exclude": "\"* 2.*\" excludes the conflict copies a syncing file manager (iCloud Drive) leaves behind — e.g. `.next/types/cache-life.d 2.ts`, which duplicates every identifier in the file it copied and breaks `tsc` on a developer machine. CI never sees them.",
+  "exclude": ["node_modules", "**/* 2.*", "**/* 3.*"]
 }
