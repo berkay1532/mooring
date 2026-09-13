@@ -21,7 +21,8 @@ x402 services per request within limits the network enforces.
 ## Components (all net-new Stellar code)
 1. **Card contract (Soroban / Rust)** — the core. Each card is a deployed instance with its own
    address, holding USDC.
-   - Storage: `owner`, `signer` (agent key), `token` (any SEP-41; USDC default), `period_amount`,
+   - Storage: `owner`, `signer` (agent key), `token` (any SEP-41; USDC default), `label`
+     (owner-settable, ≤ 32 bytes, validated), `period_amount`,
      `period_duration`, `period_start`, `spent_in_period`, `max_per_tx`, `expiry`,
      `state` (Active/Frozen/Cancelled), and the merchant allowlist as one bounded
      `Vec<Address>` (max 32) in **instance storage**, so it shares the instance TTL and is
@@ -29,7 +30,8 @@ x402 services per request within limits the network enforces.
      state with the current period and remaining budget already materialized.
    - Owner ops: `freeze`, `unfreeze`, `cancel` (freeze + sweep to owner), `withdraw`,
      `add_merchant`, `remove_merchant`, `set_policy` (budget / cap / duration / expiry),
-     `set_signer` (agent key rotation); anyone: `bump` (TTL). Funding = send USDC to the card address.
+     `set_signer` (agent key rotation), `set_label` (rename the card, event `LabelChanged`);
+     anyone: `bump` (TTL). Funding = send USDC to the card address.
      `set_policy` carries the spend of the period that applies at the change into a fresh
      period starting then, so changing `period_duration` never silently resets the budget.
    - Policy: periodic budget that **resets** each period (no carry-over), per-tx cap, expiry,
