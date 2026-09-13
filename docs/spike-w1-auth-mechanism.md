@@ -125,6 +125,12 @@ Measured 2026-09-09: minResourceFee = 33926 stroops → within the 50 000 defaul
 Measured 2026-09-12 with a 32-merchant allowlist: minResourceFee = 49380 stroops → within the
 50 000 default ceiling.
 
+Measured 2026-09-13 with the label field: 33996 / 35233 stroops (1-merchant baseline /
+32-merchant allowlist, on the redeployed v2 card). The label costs +70 stroops on the baseline.
+The 32-merchant figure is far below the 49 380 measured on the v1 card and the drop is not
+explained by the label change, so the worst case quoted below stays the conservative v1 number —
+see "Fee re-measurement with the label field" in `docs/testnet.md`.
+
 **The ceiling that actually applies is OZ's, and it is higher than 50 000.** OZ Channels testnet
 accepted and submitted a card payment at `max_fee` = 51 175 stroops on 2026-09-12 (settlement tx
 `bc1b78eb2c0f4112d47f8faed70f608429a383d38a24f67ddda72f64453ccbba`, `fee_charged` 38 773). The
