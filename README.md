@@ -29,7 +29,8 @@ third party ever holds them.
 Active development, **Stellar testnet only** — not audited, not on mainnet.
 
 **D1 (card contract) and D2 (x402 integration) are delivered; D3 in progress —
-part 1: on-chain labels.** D1 landed in PR #1, D2 in PR #2.
+part 1 (on-chain labels) landed, part 2 (the web app) is in review.** D1 landed in
+PR #1, D2 in PR #2.
 
 - **Card contract** (`contracts/card`) — implemented: `__check_auth` policy
   enforcement (periodic budget, per-tx cap, merchant allowlist, expiry,
@@ -45,7 +46,13 @@ part 1: on-chain labels.** D1 landed in PR #1, D2 in PR #2.
   the `mooring` CLI, and an example `@x402/express` merchant server. A card
   payment settled on testnet through the OpenZeppelin Channels facilitator;
   see `docs/x402-integration.md` and the D2 evidence in `docs/testnet.md`.
-- **Web app and evidence package** — next.
+- **Web app** (`apps/web`) — built: connect Freighter, create and fund cards, live
+  budget and balance, freeze / unfreeze / withdraw / cancel, rename, policy edit,
+  merchant allowlist, agent signer rotation. Covered by 230 unit tests and 19
+  Playwright flows in CI. The manual testnet checklist and the Vercel deployment
+  are pending the repository owner — see [`docs/web-app.md`](docs/web-app.md).
+  Deployed URL: `pending`.
+- **Evidence package** — next.
 
 ## Pay an API from a card
 
@@ -121,6 +128,8 @@ real testnet transactions; they are never run in CI.
 - `docs/spike-w1-auth-mechanism.md` — why the card authorizes a plain SAC `transfer`
 - `docs/x402-integration.md` — how a card pays an x402 API: flow, denial semantics, setup
 - `docs/testnet.md` — deployment, payment walkthrough and testnet evidence
+- `docs/web-app.md` — the web app: screens, architecture, configuration, deployment,
+  manual testnet checklist
 - `packages/x402-client/README.md` — the agent-side client package
 
 ## License

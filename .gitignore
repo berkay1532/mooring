@@ -45,3 +45,6 @@ scripts/agent/.env
 **/playwright-report/
 **/test-results/
 **/.playwright/
+
+# Vercel CLI link (project id / org id) -- never committed
+.vercel/
