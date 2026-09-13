@@ -83,10 +83,17 @@ export function setSelected(owner: string, address: string): void {
   writeString(ownerKey(owner, "selected"), address);
 }
 
-/** The dashboard's card list view mode. Defaults to `"grid"`. */
-export function getViewMode(): ViewMode {
+/**
+ * The dashboard's card list view mode.
+ *
+ * `fallback` is what to use when the owner has never chosen one — the cards
+ * screen passes `"list"` once there are ten or more cards, so a large
+ * dashboard opens in the view that can actually show it, while anyone who
+ * has picked a view keeps theirs. Defaults to `"grid"`.
+ */
+export function getViewMode(fallback: ViewMode = DEFAULT_VIEW_MODE): ViewMode {
   const raw = readString(VIEW_MODE_KEY);
-  return raw === "grid" || raw === "list" ? raw : DEFAULT_VIEW_MODE;
+  return raw === "grid" || raw === "list" ? raw : fallback;
 }
 
 /** Sets the dashboard's card list view mode. */

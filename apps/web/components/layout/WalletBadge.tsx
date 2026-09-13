@@ -40,7 +40,7 @@ export function WalletBadge() {
         {copied ? "Copied" : shortAddress(address)}
       </button>
       {network ? (
-        <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-lo">{network}</span>
+        <span className="font-mono text-[11px] lowercase tracking-[0.08em] text-text-lo">{network}</span>
       ) : null}
       <button
         type="button"
