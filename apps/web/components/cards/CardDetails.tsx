@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AgentSection } from "@/components/cards/AgentSection";
 import { CancelModal } from "@/components/cards/CancelModal";
@@ -32,9 +32,14 @@ export interface CardDetailsProps {
   /**
    * Bumped by the cards screen to ask for the Fund sheet — the `?fund=1`
    * deep link the new-card wizard lands on (see `components/cards/FundDeepLink`).
-   * Any change to a non-zero value opens the sheet.
+   * A non-zero value opens the sheet once and is then reported back through
+   * {@link CardDetailsProps.onFundOpened} so the screen can clear it: this
+   * panel is keyed by the selected card, so a signal left standing would
+   * re-open the sheet on every card the owner selects next.
    */
   fundSignal?: number;
+  /** Called once the Fund sheet has been opened for a {@link CardDetailsProps.fundSignal}. */
+  onFundOpened?: () => void;
   onToast: (message: string) => void;
   /** The owner dropped this (manually added) card from the dashboard. */
   onRemoved: (address: string) => void;
@@ -56,7 +61,15 @@ export function CardDetails(props: CardDetailsProps) {
   );
 }
 
-function CardDetailsInner({ address, owner, nowUnix, fundSignal, onToast, onRemoved }: CardDetailsProps) {
+function CardDetailsInner({
+  address,
+  owner,
+  nowUnix,
+  fundSignal,
+  onFundOpened,
+  onToast,
+  onRemoved,
+}: CardDetailsProps) {
   const now = nowUnix ?? Math.floor(Date.now() / 1000);
   const infoQuery = useCardInfo(address);
   const merchantsQuery = useMerchants(address);
@@ -78,8 +91,12 @@ function CardDetailsInner({ address, owner, nowUnix, fundSignal, onToast, onRemo
   const [locallyAdded, setLocallyAdded] = useState(false);
   useEffect(() => setLocallyAdded(getAddedCards(owner).includes(address)), [owner, address]);
 
+  const fundOpenedRef = useRef(onFundOpened);
+  fundOpenedRef.current = onFundOpened;
   useEffect(() => {
-    if (fundSignal) setPanel("fund");
+    if (!fundSignal) return;
+    setPanel("fund");
+    fundOpenedRef.current?.();
   }, [fundSignal]);
 
   const info = infoQuery.data;

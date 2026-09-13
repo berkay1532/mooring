@@ -5,8 +5,13 @@ export const STEP_TITLES = ["Policy", "Agent & merchants", "Confirm"] as const;
 export interface StepsProps {
   /** 0-based index of the step on screen. */
   current: number;
-  /** The furthest step reached so far — later chips stay disabled. */
-  maxReached: number;
+  /**
+   * Which chips can be clicked. A chip is enabled only when the step has
+   * been reached *and* every step before it is still valid — walking back
+   * and blanking a field must not leave a jump-forward chip that lands on a
+   * step with nothing to show. All false while a transaction is running.
+   */
+  enabled: readonly boolean[];
   onGo: (step: number) => void;
   className?: string;
 }
@@ -17,13 +22,13 @@ export interface StepsProps {
  * reached is disabled — a chip is a shortcut back, never a way to skip
  * validation.
  */
-export function Steps({ current, maxReached, onGo, className }: StepsProps) {
+export function Steps({ current, enabled, onGo, className }: StepsProps) {
   return (
     <nav aria-label="New card steps" className={`flex flex-wrap items-center gap-2.5 ${className ?? ""}`}>
       {STEP_TITLES.map((title, index) => {
         const done = index < current;
         const active = index === current;
-        const reachable = index <= maxReached;
+        const reachable = enabled[index] ?? false;
         const tone = active
           ? "border-amber bg-amber font-bold text-bg-deep"
           : done

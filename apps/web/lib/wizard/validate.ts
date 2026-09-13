@@ -29,6 +29,14 @@ export const MAX_MERCHANTS = 32;
  */
 export const MIN_CUSTOM_PERIOD_SECS = 60;
 
+/**
+ * Sanity ceiling on an amount, in whole USDC. `i128` reaches far past this,
+ * but a budget in the trillions is a typo, and without a bound the mistake
+ * only surfaces as an untranslated scval conversion error at signing time.
+ */
+export const MAX_AMOUNT_USDC = 1_000_000_000_000n;
+const MAX_AMOUNT_BASE = MAX_AMOUNT_USDC * 10_000_000n;
+
 export type PeriodUnit = "hour" | "day" | "week" | "custom";
 export type ExpiryPreset = "7" | "30" | "90" | "date";
 
@@ -107,18 +115,34 @@ function amountError(raw: string, what: string): string {
   return `Enter ${what} greater than 0.`;
 }
 
+/** `undefined` when the amount is within the app's supported range. */
+function tooLarge(value: bigint | null, what: string): string | undefined {
+  if (value === null || value <= MAX_AMOUNT_BASE) return undefined;
+  return `That ${what} is larger than this app supports (up to ${MAX_AMOUNT_USDC.toLocaleString("en-GB")} USDC).`;
+}
+
 /** Validates the policy fields and, when they all pass, the `Policy` to sign. */
 export function validatePolicy(input: PolicyInput): PolicyValidation {
   const errors: Record<string, string> = {};
 
   const budget = parseUsdc(input.budget.trim());
-  if (budget === null || budget <= 0n) errors.budget = amountError(input.budget, "a budget");
+  if (budget === null || budget <= 0n) {
+    errors.budget = amountError(input.budget, "a budget");
+  } else {
+    const over = tooLarge(budget, "budget");
+    if (over) errors.budget = over;
+  }
 
   const perTx = parseUsdc(input.perTx.trim());
   if (perTx === null || perTx <= 0n) {
     errors.perTx = amountError(input.perTx, "a cap");
-  } else if (budget !== null && budget > 0n && perTx > budget) {
-    errors.perTx = "The per-transaction cap cannot be larger than the period budget.";
+  } else {
+    const over = tooLarge(perTx, "cap");
+    if (over) {
+      errors.perTx = over;
+    } else if (budget !== null && budget > 0n && perTx > budget) {
+      errors.perTx = "The per-transaction cap cannot be larger than the period budget.";
+    }
   }
 
   const periodSecs = resolvePeriod(input);
@@ -144,7 +168,7 @@ export function validatePolicy(input: PolicyInput): PolicyValidation {
       : undefined,
     periodSecs: periodSecs ?? undefined,
     expiryUnix: expiryUnix ?? undefined,
-    budgetBase: budget !== null && budget > 0n ? budget : undefined,
+    budgetBase: budget !== null && budget > 0n && budget <= MAX_AMOUNT_BASE ? budget : undefined,
   };
 }
 
@@ -154,10 +178,17 @@ export interface LabelValidation {
   error?: string;
 }
 
-/** A card label is 1..=32 UTF-8 bytes (`contracts/card/src/label.rs`). */
+/**
+ * A card label is 1..=32 UTF-8 bytes (`contracts/card/src/label.rs`).
+ *
+ * The count is taken over the **trimmed** label, because that is what the
+ * wizard submits — otherwise trailing spaces could push an otherwise valid
+ * name over the limit and the counter would disagree with the transaction.
+ */
 export function validateLabel(label: string): LabelValidation {
-  const bytes = new TextEncoder().encode(label).length;
-  if (label.trim().length === 0) {
+  const trimmed = label.trim();
+  const bytes = new TextEncoder().encode(trimmed).length;
+  if (trimmed.length === 0) {
     return { bytes, error: "Give the card a name so you can tell it apart later." };
   }
   if (bytes > MAX_LABEL_BYTES) {

@@ -2,6 +2,7 @@ import { StrKey } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_AMOUNT_USDC,
   MAX_LABEL_BYTES,
   MAX_MERCHANTS,
   addMerchant,
@@ -63,6 +64,16 @@ describe("validatePolicy", () => {
     expect(validatePolicy(input({ perTx: "0.00000001" })).errors.perTx).toMatch(/7 decimal/i);
   });
 
+  it("refuses an amount beyond the app's supported range", () => {
+    const over = (MAX_AMOUNT_USDC + 1n).toString();
+    expect(validatePolicy(input({ budget: over })).errors.budget).toMatch(/larger than this app supports/i);
+    expect(validatePolicy(input({ budget: over, perTx: over })).errors.perTx).toMatch(
+      /larger than this app supports/i,
+    );
+    // The ceiling itself is still accepted.
+    expect(validatePolicy(input({ budget: MAX_AMOUNT_USDC.toString() })).errors.budget).toBeUndefined();
+  });
+
   it("rejects a per-transaction cap of zero", () => {
     expect(validatePolicy(input({ perTx: "0" })).errors.perTx).toMatch(/greater than 0/i);
   });
@@ -113,6 +124,11 @@ describe("validateLabel", () => {
     expect(validateLabel("çç").bytes).toBe(4);
     expect(validateLabel("agent").bytes).toBe(5);
     expect(validateLabel("🙂").bytes).toBe(4);
+  });
+
+  it("counts the trimmed label, since that is what is submitted", () => {
+    expect(validateLabel("  agent  ").bytes).toBe(5);
+    expect(validateLabel(`${"a".repeat(MAX_LABEL_BYTES)}   `).error).toBeUndefined();
   });
 
   it("rejects an empty label", () => {

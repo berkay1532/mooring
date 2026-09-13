@@ -212,6 +212,7 @@ function CardsScreen() {
             address={selected}
             owner={owner as string}
             fundSignal={fundSignal}
+            onFundOpened={() => setFundSignal(0)}
             onToast={setToast}
             onRemoved={handleRemoved}
           />
@@ -219,7 +220,15 @@ function CardsScreen() {
       </div>
 
       <Suspense fallback={null}>
-        <FundDeepLink onFund={() => setFundSignal((n) => n + 1)} />
+        <FundDeepLink
+          onFund={() => {
+            setFundSignal((n) => n + 1);
+            // `?fund=1` is only ever set by the new-card wizard, which
+            // cannot show this itself: its own toast would be unmounted by
+            // the navigation that brings the owner here.
+            setToast("Card created");
+          }}
+        />
       </Suspense>
       <AddCardModal open={adding} onClose={() => setAdding(false)} owner={owner ?? ""} onAdded={onAdded} />
       {toast ? <Toast message={toast} tone="success" onDismiss={() => setToast(null)} /> : null}

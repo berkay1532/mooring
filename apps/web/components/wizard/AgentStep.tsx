@@ -55,7 +55,7 @@ export function AgentStep({ draft, patch, agentError, agentValid, onBack, onCont
         placeholder="G…"
         unit={agentValid ? "✓" : undefined}
         error={agentError}
-        hint="Your agent's Stellar public key. No key yet? Run `mooring keygen` with the Mooring CLI — the secret half stays with the agent and never comes near this app."
+        hint="Your agent's Stellar public key. The secret half stays with the agent and never comes near this app."
         inputClassName="font-mono text-xs"
         spellCheck={false}
         autoComplete="off"
@@ -63,6 +63,9 @@ export function AgentStep({ draft, patch, agentError, agentValid, onBack, onCont
       {agentValid ? (
         <p className="mt-1.5 text-xs text-seaglass">✓ Valid key — the card will only accept payments it signs.</p>
       ) : null}
+      <p className="mt-1.5 text-xs text-text-lo">
+        No key yet? Run <code className="font-mono text-amber">mooring keygen</code> with the Mooring CLI.
+      </p>
 
       <div className="mt-5">
         <div className="flex items-baseline justify-between">

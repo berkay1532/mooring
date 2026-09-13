@@ -29,6 +29,13 @@ export type CreatePhase = "idle" | "card" | "merchants" | "done";
 
 export interface CreateCardFlow {
   phase: CreatePhase;
+  /**
+   * The card's address, frozen the moment creation starts: the derived one
+   * until the factory's own result arrives. `null` while `phase` is
+   * `"idle"`. Never follows the salt query afterwards — that query refetches
+   * as soon as the card lands and would then point at the *next* card.
+   */
+  address: string | null;
   /** How many merchants have been added so far. */
   merchantIndex: number;
   state: ActionState;
@@ -86,6 +93,13 @@ export function useCreateCard(
   const finishedCb = useRef(onFinished);
   finishedCb.current = onFinished;
 
+  // The draft as it was when `start()` ran. Everything after that point —
+  // the salt, the derived address, the merchant list — reads from here, so
+  // neither a refetched salt nor an edit on a step the owner walked back to
+  // can change what is being deployed or what is on screen.
+  const activeRef = useRef<CreateCardDraft | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+
   const cardRef = useRef<string | null>(null);
   const builtRef = useRef<AssembledTransaction<string> | null>(null);
   const finishedRef = useRef(false);
@@ -113,7 +127,8 @@ export function useCreateCard(
       // wizard would deploy the *next* card at.
       invalidates: (d) => [keys.cards(d.owner)],
       onConfirmed: () => {
-        cardRef.current = createdAddress(builtRef.current) ?? draftRef.current?.address ?? null;
+        cardRef.current = createdAddress(builtRef.current) ?? activeRef.current?.address ?? null;
+        if (cardRef.current) setAddress(cardRef.current);
         setPhase("merchants");
       },
     },
@@ -129,11 +144,11 @@ export function useCreateCard(
 
   const finish = useCallback(() => {
     if (finishedRef.current) return;
-    const address = cardRef.current;
-    if (!address) return;
+    const created = cardRef.current;
+    if (!created) return;
     finishedRef.current = true;
     setPhase("done");
-    finishedCb.current(address);
+    finishedCb.current(created);
   }, []);
 
   const runMerchant = addMerchant.run;
@@ -141,7 +156,7 @@ export function useCreateCard(
     if (phase !== "merchants") return;
     const card = cardRef.current;
     if (!card) return;
-    const merchants = draftRef.current?.merchants ?? [];
+    const merchants = activeRef.current?.merchants ?? [];
     if (merchantIndex >= merchants.length) {
       finish();
       return;
@@ -155,13 +170,15 @@ export function useCreateCard(
   const start = useCallback(() => {
     const current = draftRef.current;
     if (!current || finishedRef.current) return;
+    activeRef.current = current;
+    setAddress(current.address);
     setPhase("card");
     void runCreate(current);
   }, [runCreate]);
 
   const retryMerchant = useCallback(() => {
     const card = cardRef.current;
-    const merchants = draftRef.current?.merchants ?? [];
+    const merchants = activeRef.current?.merchants ?? [];
     if (!card || merchantIndex >= merchants.length) return;
     void runMerchant({ card, merchant: merchants[merchantIndex] });
   }, [merchantIndex, runMerchant]);
@@ -184,6 +201,7 @@ export function useCreateCard(
 
   return {
     phase,
+    address,
     merchantIndex,
     state,
     hash: active.hash,

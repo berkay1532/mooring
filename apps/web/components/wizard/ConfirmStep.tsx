@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { TxStatus, type TxError, type TxState } from "@/components/ui/TxStatus";
 import { formatDate } from "@/components/wizard/PolicyStep";
 import { explorerTxUrl } from "@/lib/chain/rpc";
+import { config } from "@/lib/config";
 import { shortAddress } from "@/lib/format/address";
 import { formatDuration } from "@/lib/format/time";
 import { formatUsdc } from "@/lib/format/usdc";
@@ -27,12 +28,16 @@ export interface ConfirmStepProps {
   /** Disabled until the expected address is known and nothing is in flight. */
   canCreate: boolean;
   creating: boolean;
+  /** The flow has started — going back would desync what is being deployed. */
+  locked?: boolean;
   onBack: () => void;
   onCreate: () => void;
   /** Offered when a merchant transaction failed: open the card anyway. */
   onSkipMerchants?: () => void;
   /** The submit button's text. Defaults to "Create with Freighter". */
   submitLabel?: string;
+  /** Retries the address lookup when discovery failed. */
+  onRetryAddress?: () => void;
 }
 
 /** "day" / "hour" / "week", or a plain duration for a custom period. */
@@ -58,10 +63,12 @@ export function ConfirmStep({
   tx,
   canCreate,
   creating,
+  locked,
   onBack,
   onCreate,
   onSkipMerchants,
   submitLabel = "Create with Freighter",
+  onRetryAddress,
 }: ConfirmStepProps) {
   const period = periodPhrase(policy.period_duration);
   const expires = formatDate(Number(policy.expiry));
@@ -101,6 +108,11 @@ export function ConfirmStep({
             {addressError ? "Couldn't reach the network to work out the address." : "Working out the address…"}
           </p>
         )}
+        {addressError && onRetryAddress ? (
+          <Button variant="ghost" className="mt-2 px-3.5 py-1.5 text-xs" onClick={onRetryAddress}>
+            Retry
+          </Button>
+        ) : null}
         <p className="mt-1.5 text-xs text-text-lo">
           Known in advance: the factory derives it from your wallet and this card&apos;s index, so you can
           check it before you sign.
@@ -110,6 +122,11 @@ export function ConfirmStep({
       <p className="mt-3.5 text-xs leading-relaxed text-text-lo">
         The card is a Soroban account tied to your wallet; the USDC in it stays under your control and you can
         withdraw it at any time. Creating it costs a one-time network fee — well under a cent on testnet.
+      </p>
+      <p className="mt-1.5 text-xs leading-relaxed text-text-lo">
+        {`What you will sign: one create_card call to the Mooring factory (${shortAddress(
+          config.factory,
+        )}) from your own account, carrying the policy and agent key above. Your wallet pays the network fee; no USDC moves in this transaction.`}
       </p>
       {count > 0 ? (
         <p className="mt-1.5 text-xs leading-relaxed text-text-lo">
@@ -136,7 +153,7 @@ export function ConfirmStep({
       ) : null}
 
       <div className="mt-6 flex justify-end gap-2.5">
-        <Button variant="ghost" onClick={onBack} disabled={creating}>
+        <Button variant="ghost" onClick={onBack} disabled={creating || locked}>
           ← Back
         </Button>
         <Button onClick={onCreate} loading={creating} disabled={!canCreate}>

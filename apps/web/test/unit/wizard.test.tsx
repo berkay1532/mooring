@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { StrKey } from "@stellar/stellar-sdk";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,22 +51,66 @@ vi.mock("@/lib/chain/discover", () => ({
 }));
 
 const runCalls: Array<{ args: unknown }> = [];
+/** Every `create_card` parameter object the wizard actually built. */
+const createParams: Array<Record<string, never>> = [];
+const addMerchantCalls: Array<[string, string]> = [];
 let confirmImmediately = false;
+/** When set, `run()` lands in `failed` with this translated error. */
+let failWith: { title: string; detail?: string; next?: string } | null = null;
+/** What the factory's simulated `create_card` returns, if anything. */
+let factoryResult: string | undefined;
 
-/** A `useContractAction` stand-in with real per-instance state (see details.test.tsx). */
-function fakeUseContractAction(_build: unknown, opts: { onConfirmed?: (hash: string) => void }) {
+const FAKE_WALLET = { publicKey: OWNER, signTransaction: vi.fn() };
+
+vi.mock("@/lib/chain/card", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/chain/card")>();
+  return {
+    ...actual,
+    buildCreateCard: async (params: Record<string, never>) => {
+      createParams.push(params);
+      return { result: factoryResult };
+    },
+    buildAddMerchant: async (address: string, merchant: string) => {
+      addMerchantCalls.push([address, merchant]);
+      return { result: undefined };
+    },
+  };
+});
+
+/**
+ * A `useContractAction` stand-in with real per-instance state (see
+ * details.test.tsx). Unlike that one it actually calls `build(args, wallet)`
+ * — so the arguments the wizard hands the factory are covered — and it
+ * invalidates the caller's query keys on confirmation, which is what makes
+ * the salt refetch (and so the B1 regression) reproducible here.
+ */
+function fakeUseContractAction(
+  build: (args: never, wallet: never) => Promise<unknown>,
+  opts: { onConfirmed?: (hash: string) => void; invalidates: (args: never) => unknown[] },
+) {
   const [state, setState] = useState<string>("idle");
+  const [error, setError] = useState<typeof failWith>(null);
+  const queryClient = useQueryClient();
   return {
     state,
     hash: state === "idle" ? null : "HASH",
-    error: null,
+    error,
     reset: () => setState("idle"),
-    run: async (args: unknown) => {
+    run: async (args: never) => {
       runCalls.push({ args });
       setState("preparing");
+      await build(args, FAKE_WALLET as never);
+      if (failWith) {
+        setError(failWith);
+        setState("failed");
+        return;
+      }
       if (confirmImmediately) {
         setState("confirmed");
         opts.onConfirmed?.("HASH");
+        for (const key of opts.invalidates(args)) {
+          void queryClient.invalidateQueries({ queryKey: key as never });
+        }
       }
     },
   };
@@ -74,7 +119,7 @@ function fakeUseContractAction(_build: unknown, opts: { onConfirmed?: (hash: str
 let cardInfo: CardInfo;
 
 vi.mock("@/lib/query/hooks", () => ({
-  useContractAction: (build: unknown, opts: never) => fakeUseContractAction(build, opts),
+  useContractAction: (build: never, opts: never) => fakeUseContractAction(build, opts),
   useCardInfo: () => ({ data: cardInfo, isLoading: false, error: null }),
   useMerchants: () => ({ data: [MERCHANT], isLoading: false, error: null }),
   useUsdcBalance: () => ({ data: 1_842_000_000n, isLoading: false, error: null }),
@@ -134,7 +179,11 @@ beforeEach(() => {
   push.mockClear();
   replace.mockClear();
   runCalls.length = 0;
+  createParams.length = 0;
+  addMerchantCalls.length = 0;
   confirmImmediately = false;
+  failWith = null;
+  factoryResult = undefined;
   discoverCardsMock.mockClear();
   discoverCardsMock.mockResolvedValue([]);
   searchParams = new URLSearchParams();
@@ -194,6 +243,19 @@ describe("new-card wizard · step 1 (policy)", () => {
     expect(screen.getByLabelText(/max per transaction/i)).toBeInTheDocument(); // still on step 1
   });
 
+  it("counts the trimmed label, which is what gets submitted", () => {
+    wizard();
+    type(/card name/i, "agent   ");
+    expect(screen.getByText(/5 \/ 32 bytes/)).toBeInTheDocument();
+  });
+
+  it("refuses an absurd budget rather than failing at signing time", () => {
+    wizard();
+    type(/card name/i, "inference-agent");
+    type(/period budget/i, "9999999999999");
+    expect(screen.getByText(/larger than this app supports/i)).toBeInTheDocument();
+  });
+
   it("asks for a custom period of at least 60 seconds", () => {
     wizard();
     fireEvent.click(screen.getByRole("radio", { name: /custom/i }));
@@ -246,6 +308,16 @@ describe("new-card wizard · step 2 (agent & merchants)", () => {
     expect(screen.getByText(/cannot pay anyone/i)).toBeInTheDocument();
   });
 
+  it("disables a forward chip once an earlier step stops being valid", () => {
+    wizard();
+    fillPolicy();
+    fillAgent();
+    click(/✓ policy/i);
+    type(/period budget/i, "");
+    expect(screen.getByRole("button", { name: /confirm/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /agent & merchants/i })).toBeDisabled();
+  });
+
   it("keeps step 1 state when going back", () => {
     wizard();
     fillPolicy({ label: "research-agent" });
@@ -294,6 +366,99 @@ describe("new-card wizard · step 3 (confirm)", () => {
     expect(getSelected(OWNER)).toBe(expected());
   });
 
+  it("builds create_card with the owner, agent key, USDC token, policy, label and salt", async () => {
+    confirmImmediately = true;
+    wizard();
+    fillPolicy();
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+
+    click(/create with freighter/i);
+    await waitFor(() => expect(createParams).toHaveLength(1));
+
+    const params = createParams[0] as unknown as {
+      owner: string;
+      signer: Uint8Array;
+      token: string;
+      label: string;
+      salt: Uint8Array;
+      policy: { period_amount: bigint; max_per_tx: bigint; period_duration: bigint; expiry: bigint };
+    };
+    expect(params.owner).toBe(OWNER);
+    expect(params.token).toBe(config.usdc);
+    expect(params.label).toBe("inference-agent");
+    expect(StrKey.encodeEd25519PublicKey(Buffer.from(params.signer))).toBe(AGENT);
+    expect(Array.from(params.salt)).toEqual(Array.from(saltBytes(0)));
+    expect(params.policy.period_amount).toBe(50n * BASE);
+    expect(params.policy.max_per_tx).toBe(10n * BASE);
+    expect(params.policy.period_duration).toBe(86_400n);
+    expect(typeof params.policy.expiry).toBe("bigint");
+    expect(Number(params.policy.expiry)).toBeGreaterThan(Math.floor(Date.now() / 1000));
+  });
+
+  it("prefers the address the factory returns over the derived one", async () => {
+    confirmImmediately = true;
+    factoryResult = CARD;
+    wizard();
+    fillPolicy();
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+
+    click(/create with freighter/i);
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/cards?fund=1"));
+    expect(getSelected(OWNER)).toBe(CARD);
+  });
+
+  it("keeps showing the created card's address after the salt query refetches", async () => {
+    confirmImmediately = true;
+    wizard();
+    fillPolicy();
+    type(/merchant address/i, MERCHANT);
+    click(/add merchant/i);
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+
+    // Once the card lands, discovery finds one more card — so a refetched
+    // salt would derive the *next* card's address.
+    discoverCardsMock.mockResolvedValue([expected()]);
+    click(/create with freighter/i);
+
+    await waitFor(() => expect(discoverCardsMock.mock.calls.length).toBeGreaterThan(1));
+    const nextAddress = deriveCardAddress(OWNER, saltBytes(1), config.factory, config.networkPassphrase);
+    expect(screen.queryByText(nextAddress)).not.toBeInTheDocument();
+    expect(screen.getByText(expected())).toBeInTheDocument();
+    expect(addMerchantCalls).toEqual([[expected(), MERCHANT]]);
+    await waitFor(() => expect(getSelected(OWNER)).toBe(expected()));
+  });
+
+  it("sends the owner to their cards after a poll timeout instead of re-creating", async () => {
+    failWith = { title: "Not confirmed yet", detail: "Still pending after 60 seconds." };
+    wizard();
+    fillPolicy();
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+
+    click(/create with freighter/i);
+    await waitFor(() => expect(screen.getByRole("button", { name: /check my cards/i })).toBeInTheDocument());
+    expect(screen.getByText(/may still have been created/i)).toBeInTheDocument();
+
+    click(/check my cards/i);
+    expect(push).toHaveBeenCalledWith("/cards");
+    expect(runCalls).toHaveLength(1); // never re-ran create_card with the same salt
+  });
+
+  it("locks the steps while the card is being created", async () => {
+    confirmImmediately = false;
+    wizard();
+    fillPolicy();
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+
+    click(/create with freighter/i);
+    await waitFor(() => expect(screen.getByRole("button", { name: /← back/i })).toBeDisabled());
+    expect(screen.getByRole("button", { name: /✓ policy/i })).toBeDisabled();
+  });
+
   it("adds each collected merchant in its own transaction after the card exists", async () => {
     confirmImmediately = true;
     wizard();
@@ -334,11 +499,30 @@ describe("fund deep link", () => {
     expect(onFund).not.toHaveBeenCalled();
   });
 
-  it("opens the fund sheet on the details panel when signalled", async () => {
+  it("opens the fund sheet on the details panel when signalled, and reports it once", async () => {
+    const onFundOpened = vi.fn();
     render(
-      <CardDetails address={CARD} owner={OWNER} nowUnix={NOW} fundSignal={1} onToast={() => {}} onRemoved={() => {}} />,
+      <CardDetails
+        address={CARD}
+        owner={OWNER}
+        nowUnix={NOW}
+        fundSignal={1}
+        onFundOpened={onFundOpened}
+        onToast={() => {}}
+        onRemoved={() => {}}
+      />,
       { wrapper: Wrapper },
     );
     await waitFor(() => expect(screen.getByText(/fund the card/i)).toBeInTheDocument());
+    expect(onFundOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open the fund sheet for the next card once the signal is consumed", async () => {
+    render(
+      <CardDetails address={CARD} owner={OWNER} nowUnix={NOW} fundSignal={0} onToast={() => {}} onRemoved={() => {}} />,
+      { wrapper: Wrapper },
+    );
+    await waitFor(() => expect(screen.getByText(/inference-agent/i)).toBeInTheDocument());
+    expect(screen.queryByText(/fund the card/i)).not.toBeInTheDocument();
   });
 });
