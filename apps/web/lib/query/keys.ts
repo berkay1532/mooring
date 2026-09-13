@@ -9,6 +9,14 @@ import type { QueryKey } from "@tanstack/react-query";
 export const keys = {
   /** An owner's card list (discovered + added). */
   cards: (owner: string): QueryKey => ["cards", owner],
+  /**
+   * The first free deployer salt for an owner — the index the new-card
+   * wizard deploys at, and what its expected card address is derived from.
+   * Separate from {@link keys.cards} because it counts *discovered* cards
+   * only (a manually-added card from another factory is not a salt this
+   * owner has used).
+   */
+  nextSalt: (owner: string): QueryKey => ["cards", owner, "next-salt"],
   /** A single card's `info()` read. */
   info: (address: string): QueryKey => ["card", address, "info"],
   /** A single card's `merchants()` allowlist read. */

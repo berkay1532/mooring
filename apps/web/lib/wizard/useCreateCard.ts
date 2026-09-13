@@ -1,0 +1,196 @@
+"use client";
+
+import { Buffer } from "buffer";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Card } from "@mooring/contracts-ts";
+import type { AssembledTransaction } from "@stellar/stellar-sdk/contract";
+
+import { buildAddMerchant, buildCreateCard } from "@/lib/chain/card";
+import type { TranslatedError } from "@/lib/chain/errors";
+import { saltBytes } from "@/lib/chain/derive";
+import { config } from "@/lib/config";
+import { useContractAction, type ActionState } from "@/lib/query/hooks";
+import { keys } from "@/lib/query/keys";
+
+export interface CreateCardDraft {
+  owner: string;
+  label: string;
+  policy: Card.Policy;
+  /** The agent's raw 32-byte ed25519 public key. */
+  signer: Buffer;
+  merchants: readonly string[];
+  /** The first free deployer salt for this owner. */
+  salt: number;
+  /** The address `(factory, owner, salt)` derives to — what the card will be called. */
+  address: string;
+}
+
+export type CreatePhase = "idle" | "card" | "merchants" | "done";
+
+export interface CreateCardFlow {
+  phase: CreatePhase;
+  /** How many merchants have been added so far. */
+  merchantIndex: number;
+  state: ActionState;
+  hash: string | null;
+  error: TranslatedError | null;
+  /** A transaction is in flight, or more are queued. */
+  busy: boolean;
+  /** Starts the card transaction, then one `add_merchant` per collected merchant. */
+  start(): void;
+  /** Retries the merchant transaction that failed. */
+  retryMerchant(): void;
+  /** Gives up on the remaining merchants and opens the card anyway. */
+  skipMerchants(): void;
+}
+
+/**
+ * The simulated `create_card` result — the deployed card's address. The
+ * factory derives it deterministically from `(factory, owner, salt)`, so
+ * the simulated value is the real one; the caller still keeps its own
+ * derived address as a fallback for when the result cannot be read.
+ */
+function createdAddress(tx: AssembledTransaction<string> | null): string | null {
+  try {
+    const result = tx?.result;
+    return typeof result === "string" ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drives card creation: one `create_card` transaction, then one
+ * `add_merchant` per merchant collected in the wizard.
+ *
+ * The merchants are separate transactions because the factory's
+ * `create_card` takes no allowlist (`contracts/factory/src/lib.rs`) — the
+ * card's allowlist is only writable by the owner afterwards. They run one
+ * at a time, each with its own signature; if one fails the sequence stops
+ * with the error on screen and the owner can retry it or skip the rest (the
+ * card already exists, and merchants can be added from the card itself).
+ *
+ * `onFinished` is called exactly once, with the new card's address.
+ */
+export function useCreateCard(
+  draft: CreateCardDraft | null,
+  onFinished: (address: string) => void,
+): CreateCardFlow {
+  const [phase, setPhase] = useState<CreatePhase>("idle");
+  const [merchantIndex, setMerchantIndex] = useState(0);
+
+  // Refs, not state: these are read from inside callbacks that must never
+  // re-run just because the draft object identity changed on a keystroke.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const finishedCb = useRef(onFinished);
+  finishedCb.current = onFinished;
+
+  const cardRef = useRef<string | null>(null);
+  const builtRef = useRef<AssembledTransaction<string> | null>(null);
+  const finishedRef = useRef(false);
+  const startedRef = useRef(-1);
+
+  const create = useContractAction<CreateCardDraft>(
+    async (d, wallet) => {
+      const tx = await buildCreateCard(
+        {
+          owner: d.owner,
+          signer: d.signer,
+          token: config.usdc,
+          policy: d.policy,
+          label: d.label,
+          salt: Buffer.from(saltBytes(d.salt)),
+        },
+        wallet,
+      );
+      builtRef.current = tx;
+      return tx;
+    },
+    {
+      // `keys.cards(owner)` is a prefix of `keys.nextSalt(owner)`, so this
+      // one key refreshes both the dashboard's card list and the salt the
+      // wizard would deploy the *next* card at.
+      invalidates: (d) => [keys.cards(d.owner)],
+      onConfirmed: () => {
+        cardRef.current = createdAddress(builtRef.current) ?? draftRef.current?.address ?? null;
+        setPhase("merchants");
+      },
+    },
+  );
+
+  const addMerchant = useContractAction<{ card: string; merchant: string }>(
+    ({ card, merchant }, wallet) => buildAddMerchant(card, merchant, wallet),
+    {
+      invalidates: ({ card }) => [keys.merchants(card), keys.info(card)],
+      onConfirmed: () => setMerchantIndex((index) => index + 1),
+    },
+  );
+
+  const finish = useCallback(() => {
+    if (finishedRef.current) return;
+    const address = cardRef.current;
+    if (!address) return;
+    finishedRef.current = true;
+    setPhase("done");
+    finishedCb.current(address);
+  }, []);
+
+  const runMerchant = addMerchant.run;
+  useEffect(() => {
+    if (phase !== "merchants") return;
+    const card = cardRef.current;
+    if (!card) return;
+    const merchants = draftRef.current?.merchants ?? [];
+    if (merchantIndex >= merchants.length) {
+      finish();
+      return;
+    }
+    if (startedRef.current === merchantIndex) return;
+    startedRef.current = merchantIndex;
+    void runMerchant({ card, merchant: merchants[merchantIndex] });
+  }, [phase, merchantIndex, finish, runMerchant]);
+
+  const runCreate = create.run;
+  const start = useCallback(() => {
+    const current = draftRef.current;
+    if (!current || finishedRef.current) return;
+    setPhase("card");
+    void runCreate(current);
+  }, [runCreate]);
+
+  const retryMerchant = useCallback(() => {
+    const card = cardRef.current;
+    const merchants = draftRef.current?.merchants ?? [];
+    if (!card || merchantIndex >= merchants.length) return;
+    void runMerchant({ card, merchant: merchants[merchantIndex] });
+  }, [merchantIndex, runMerchant]);
+
+  // Whichever transaction the status box is about: the merchant one while
+  // it is running, the card one before the first merchant starts (and when
+  // there are no merchants at all), so the hash on screen is never blank.
+  const active = addMerchant.state === "idle" ? create : addMerchant;
+  // In the gap between the card confirming and the first `add_merchant`
+  // being prepared, the merchant action is still `idle` — the card
+  // transaction is what just confirmed, so that is what the status shows.
+  const state: ActionState =
+    phase === "done"
+      ? "confirmed"
+      : phase === "merchants"
+        ? addMerchant.state === "idle"
+          ? "confirmed"
+          : addMerchant.state
+        : create.state;
+
+  return {
+    phase,
+    merchantIndex,
+    state,
+    hash: active.hash,
+    error: active.error,
+    busy: state !== "failed" && (phase === "card" || phase === "merchants"),
+    start,
+    retryMerchant,
+    skipMerchants: finish,
+  };
+}
