@@ -40,3 +40,8 @@ scripts/agent/.env
 !**/.env.example
 **/.next/
 **/*.tsbuildinfo
+
+# Playwright (apps/web e2e)
+**/playwright-report/
+**/test-results/
+**/.playwright/

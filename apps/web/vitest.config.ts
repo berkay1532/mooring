@@ -10,6 +10,9 @@ export default defineConfig({
     },
   },
   test: {
+    // Scoped to the unit suite so vitest never picks up `e2e/*.spec.ts`,
+    // which are Playwright tests and must only run under `npm run e2e`.
+    include: ["test/unit/**/*.test.{ts,tsx}"],
     environment: "jsdom",
     setupFiles: ["./test/setup.ts"],
     // `lib/config.ts` throws at import time if any NEXT_PUBLIC_* var is
