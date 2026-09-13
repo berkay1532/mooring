@@ -35,7 +35,11 @@ export function CancelModal({ open, onClose, address, info, onDone }: OpModalPro
   const blocked = trustline === "missing" && info.balance > 0n;
 
   const op = useCardOp<void>("cancel", (_args, wallet) => buildCancel(address, wallet), {
-    invalidates: () => [keys.info(address), keys.cards(info.owner)],
+    // The sweep moves the card's whole balance into the owner's wallet, so
+    // the owner's own USDC balance (the Fund sheet's quick picks, the
+    // withdraw/cancel trustline probe) is stale too — fund and withdraw
+    // already invalidate it.
+    invalidates: () => [keys.info(address), keys.cards(info.owner), keys.balance(info.owner)],
     onDone: () => {
       onDone("Card cancelled");
       onClose();

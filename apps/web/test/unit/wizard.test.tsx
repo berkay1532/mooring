@@ -57,6 +57,12 @@ const addMerchantCalls: Array<[string, string]> = [];
 let confirmImmediately = false;
 /** When set, `run()` lands in `failed` with this translated error. */
 let failWith: { title: string; detail?: string; next?: string } | null = null;
+/**
+ * Whether that failure happened *before* submission (a declined signature, a
+ * failed simulation): the real hook only has a hash once `sendTransaction`
+ * answered, and the wizard reads exactly that to decide the step lock.
+ */
+let failBeforeSubmit = false;
 /** What the factory's simulated `create_card` returns, if anything. */
 let factoryResult: string | undefined;
 
@@ -93,7 +99,7 @@ function fakeUseContractAction(
   const queryClient = useQueryClient();
   return {
     state,
-    hash: state === "idle" ? null : "HASH",
+    hash: state === "idle" || (state === "failed" && failBeforeSubmit) ? null : "HASH",
     error,
     reset: () => setState("idle"),
     run: async (args: never) => {
@@ -118,7 +124,9 @@ function fakeUseContractAction(
 
 let cardInfo: CardInfo;
 
-vi.mock("@/lib/query/hooks", () => ({
+vi.mock("@/lib/query/hooks", async (importOriginal) => ({
+  // The real constants (NOT_CONFIRMED_TITLE) alongside the faked hooks.
+  ...(await importOriginal<typeof import("../../lib/query/hooks")>()),
   useContractAction: (build: never, opts: never) => fakeUseContractAction(build, opts),
   useCardInfo: () => ({ data: cardInfo, isLoading: false, error: null }),
   useMerchants: () => ({ data: [MERCHANT], isLoading: false, error: null }),
@@ -183,6 +191,7 @@ beforeEach(() => {
   addMerchantCalls.length = 0;
   confirmImmediately = false;
   failWith = null;
+  failBeforeSubmit = false;
   factoryResult = undefined;
   discoverCardsMock.mockClear();
   discoverCardsMock.mockResolvedValue([]);
@@ -457,6 +466,39 @@ describe("new-card wizard · step 3 (confirm)", () => {
     click(/create with freighter/i);
     await waitFor(() => expect(screen.getByRole("button", { name: /← back/i })).toBeDisabled());
     expect(screen.getByRole("button", { name: /✓ policy/i })).toBeDisabled();
+  });
+
+  it("releases the step lock when the create fails before submission, keeping the salt", async () => {
+    confirmImmediately = false;
+    failWith = { title: "Signing request declined", detail: "You declined the request in Freighter." };
+    failBeforeSubmit = true;
+    wizard();
+    fillPolicy();
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+
+    click(/create with freighter/i);
+    await waitFor(() => expect(screen.getByText("Signing request declined")).toBeInTheDocument());
+
+    // Nothing was deployed, so the wizard is editable again.
+    expect(screen.getByRole("button", { name: /← back/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /✓ policy/i })).toBeEnabled();
+
+    // Back to step 1, change the budget, and retry: the address (and so the
+    // salt) is still the one that was on screen before the first attempt.
+    click(/← back/i);
+    click(/✓ policy/i);
+    type(/period budget/i, "60");
+    click(/continue/i);
+    click(/continue/i);
+    expect(screen.getByText(expected())).toBeInTheDocument();
+
+    failWith = null;
+    failBeforeSubmit = false;
+    click(/create with freighter/i);
+    await waitFor(() => expect(runCalls).toHaveLength(2));
+    expect((runCalls[1].args as { salt: number; address: string }).salt).toBe(0);
+    expect((runCalls[1].args as { salt: number; address: string }).address).toBe(expected());
   });
 
   it("adds each collected merchant in its own transaction after the card exists", async () => {

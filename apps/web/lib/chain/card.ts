@@ -11,7 +11,7 @@ import {
   type Transaction,
   type xdr,
 } from "@stellar/stellar-sdk";
-import { AssembledTransaction } from "@stellar/stellar-sdk/contract";
+import { AssembledTransaction, DEFAULT_TIMEOUT } from "@stellar/stellar-sdk/contract";
 
 import { config } from "../config";
 import { getRpcServer, type AccountRpc } from "./rpc";
@@ -218,7 +218,13 @@ export async function buildFundTransfer(
         ],
       }),
     )
-    .setTimeout(30)
+    // The same window every other write gets: the bindings' own
+    // `AssembledTransaction` builds with `DEFAULT_TIMEOUT` (300 s). The time
+    // bound starts when the transaction is *built*, i.e. when the owner
+    // clicks "Send with my wallet" — a 30 s window expires while the
+    // Freighter popup is still open (unlock, read, approve) and the network
+    // then rejects a perfectly valid transfer with `txTooLate`.
+    .setTimeout(DEFAULT_TIMEOUT)
     .build();
   return (await rpc.prepareTransaction(tx)) as Transaction;
 }

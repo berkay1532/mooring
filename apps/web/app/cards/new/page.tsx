@@ -17,6 +17,7 @@ import { discoverCards } from "@/lib/chain/discover";
 import { getRpcServer } from "@/lib/chain/rpc";
 import { config } from "@/lib/config";
 import { setSelected } from "@/lib/prefs";
+import { NOT_CONFIRMED_TITLE } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
 import { useWallet } from "@/lib/wallet/context";
 import { useCreateCard, type CreateCardDraft } from "@/lib/wizard/useCreateCard";
@@ -135,8 +136,9 @@ function NewCardWizard() {
   // Once a transaction is in flight the wizard is read-only: editing the
   // policy would show a summary that was never deployed, and editing the
   // merchant list would shift the running `add_merchant` sequence onto the
-  // wrong entry.
-  const locked = flow.phase !== "idle";
+  // wrong entry. `flow.locked` lifts again if the create failed before it
+  // was submitted — nothing was deployed, so Back and the chips work again.
+  const locked = flow.locked;
   const chipsEnabled = locked
     ? [false, false, false]
     : [true, maxStep >= 1 && policyValid, maxStep >= 2 && policyValid && agent.valid];
@@ -161,8 +163,9 @@ function NewCardWizard() {
   // A poll timeout is not a plain failure: the transaction may still land,
   // and re-running `create_card` with the same salt would then fail on an
   // address that already exists. Send the owner to their cards instead.
-  // The title is `useContractAction`'s own constant for that case.
-  const timedOut = flow.phase === "card" && flow.state === "failed" && flow.error?.title === "Not confirmed yet";
+  // The title is `useContractAction`'s own exported constant for that case.
+  const timedOut =
+    flow.phase === "card" && flow.state === "failed" && flow.error?.title === NOT_CONFIRMED_TITLE;
 
   // Frozen the moment creation starts, so the salt query refetching (the
   // create invalidates `keys.cards`, a prefix of the salt key) can never

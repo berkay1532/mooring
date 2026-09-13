@@ -43,6 +43,15 @@ export interface CreateCardFlow {
   error: TranslatedError | null;
   /** A transaction is in flight, or more are queued. */
   busy: boolean;
+  /**
+   * The wizard must stay read-only: something is in flight, or a card has
+   * already been deployed and going back would desync what is on screen from
+   * what exists. False again after a create that failed *before* submission
+   * (a declined signature, a failed simulation) — nothing was deployed, so
+   * Back and the step chips have to work again. The salt and address stay
+   * frozen either way, so a retry deploys at the same place.
+   */
+  locked: boolean;
   /** Starts the card transaction, then one `add_merchant` per collected merchant. */
   start(): void;
   /** Retries the merchant transaction that failed. */
@@ -170,10 +179,17 @@ export function useCreateCard(
   const start = useCallback(() => {
     const current = draftRef.current;
     if (!current || finishedRef.current) return;
-    activeRef.current = current;
-    setAddress(current.address);
+    // A retry after a failed create keeps the salt (and therefore the
+    // address) of the first attempt, even if the owner walked back and
+    // edited the policy in between: the salt query may have refetched, and
+    // deploying at a different index would contradict the address the
+    // confirm step has been showing all along.
+    const frozen = activeRef.current;
+    const next = frozen ? { ...current, salt: frozen.salt, address: frozen.address } : current;
+    activeRef.current = next;
+    setAddress(next.address);
     setPhase("card");
-    void runCreate(current);
+    void runCreate(next);
   }, [runCreate]);
 
   const retryMerchant = useCallback(() => {
@@ -199,6 +215,11 @@ export function useCreateCard(
           : addMerchant.state
         : create.state;
 
+  // Nothing reached the network: `useContractAction` only sets a hash once
+  // `sendTransaction` has answered, so a `failed` card phase with no hash is
+  // a declined signature or a failed simulation — no card exists.
+  const createAborted = phase === "card" && create.state === "failed" && create.hash === null;
+
   return {
     phase,
     address,
@@ -207,6 +228,7 @@ export function useCreateCard(
     hash: active.hash,
     error: active.error,
     busy: state !== "failed" && (phase === "card" || phase === "merchants"),
+    locked: phase !== "idle" && !createAborted,
     start,
     retryMerchant,
     skipMerchants: finish,

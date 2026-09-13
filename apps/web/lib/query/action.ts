@@ -47,6 +47,14 @@ export interface ContractActionResult<TArgs> {
   reset(): void;
 }
 
+/**
+ * The title a poll timeout reports. Exported because a caller has to be able
+ * to recognise *this* failure without matching on prose: the wizard treats a
+ * timed-out `create_card` differently from a plain failure (the transaction
+ * may still land, and re-running it with the same salt would collide).
+ */
+export const NOT_CONFIRMED_TITLE = "Not confirmed yet";
+
 /** Polls `getTransaction` once a second, for up to 60 seconds (per spec §4.2). */
 const POLL_INTERVAL_MS = 1_000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -299,7 +307,7 @@ export function useContractAction<TArgs>(
         if (!confirmed) {
           if (cancelledRef.current) return; // unmounted mid-poll — nothing left to report
           fail({
-            title: "Not confirmed yet",
+            title: NOT_CONFIRMED_TITLE,
             detail: "The transaction is still pending after 60 seconds.",
             next: `Check its status on the explorer: ${explorerTxUrl(sent.hash)}`,
           });

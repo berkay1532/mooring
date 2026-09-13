@@ -9,7 +9,7 @@ import { getAddedCards } from "../prefs";
 import { config } from "../config";
 import { keys } from "./keys";
 
-export { useContractAction } from "./action";
+export { NOT_CONFIRMED_TITLE, useContractAction } from "./action";
 export type { ActionState, BuiltTransaction, ContractActionOptions, ContractActionResult } from "./action";
 
 /**
