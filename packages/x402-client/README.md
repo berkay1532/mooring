@@ -129,7 +129,7 @@ card.
 | `PaymentError` | every failure that is *not* the card's policy (`rejected` / `unconfirmed`) |
 | `reconcileSettlement(rpcUrl, network, hash)` | asks the ledger what became of a settlement transaction |
 | `precheck(info, merchants, terms, now)` | the local policy mirror, on its own |
-| `readCardInfo(rpcUrl, passphrase, card)`, `readMerchants(…)` | read-only card views (`info()`, `merchants()`) |
+| `readCardInfo(rpcUrl, passphrase, card)`, `readMerchants(…)` | read-only card views (`info()`, `merchants()`); `CardInfo.label` is the owner-chosen display name |
 | `CardExactStellarScheme` | the x402 `exact` scheme client whose payer is the card |
 | `signCardAuthEntries(tx, card, agent, expirationLedger)` | signs a card auth entry with the agent key |
 

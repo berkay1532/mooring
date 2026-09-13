@@ -18,7 +18,7 @@ describe("mooring keygen", () => {
 describe("mooring status", () => {
   it("prints info and merchants as JSON with --json", async () => {
     const out: string[] = [];
-    const info = { state: 0, remaining: 10n, balance: 20n, allow_count: 1, policy: { max_per_tx: 5n } };
+    const info = { state: 0, remaining: 10n, balance: 20n, allow_count: 1, policy: { max_per_tx: 5n }, label: "inference-agent" };
     const program = buildProgram({
       stdout: (s: string) => out.push(s),
       readCardInfo: vi.fn(async () => info),
@@ -28,6 +28,19 @@ describe("mooring status", () => {
     const parsed = JSON.parse(out.join(""));
     expect(parsed.merchants).toEqual(["GMERCHANT"]);
     expect(parsed.info.remaining).toBe("10");
+    expect(parsed.info.label).toBe("inference-agent");
+  });
+
+  it("prints the label as the first line in text mode", async () => {
+    const out: string[] = [];
+    const info = { state: 0, remaining: 10n, balance: 20n, allow_count: 1, policy: { max_per_tx: 5n }, label: "inference-agent" };
+    const program = buildProgram({
+      stdout: (s: string) => out.push(s),
+      readCardInfo: vi.fn(async () => info),
+      readMerchants: vi.fn(async () => ["GMERCHANT"]),
+    } as never);
+    await program.parseAsync(["node", "mooring", "status", "--card", CARD]);
+    expect(out[0]).toBe("Label: inference-agent");
   });
 });
 

@@ -13,6 +13,7 @@ const info = {
   owner: "G",
   signer: new Uint8Array(32),
   token: TOKEN,
+  label: "inference-agent",
   policy: {
     period_amount: 50n * USDC,
     period_duration: 86_400n,

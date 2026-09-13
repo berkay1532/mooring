@@ -9,7 +9,7 @@ const NOW = 1_800_000_000;
 
 function info(over: Partial<CardInfo> = {}): CardInfo {
   return {
-    owner: "GOWNER", signer: new Uint8Array(32), token: TOKEN,
+    owner: "GOWNER", signer: new Uint8Array(32), token: TOKEN, label: "inference-agent",
     policy: { period_amount: 50n * USDC, period_duration: 86_400n, max_per_tx: 10n * USDC, expiry: BigInt(NOW + 3600) },
     state: 0, period: { start: BigInt(NOW - 100), spent: 0n },
     remaining: 50n * USDC, balance: 20n * USDC, allow_count: 1,
