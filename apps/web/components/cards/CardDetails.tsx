@@ -29,6 +29,12 @@ export interface CardDetailsProps {
   address: string;
   owner: string;
   nowUnix?: number;
+  /**
+   * Bumped by the cards screen to ask for the Fund sheet — the `?fund=1`
+   * deep link the new-card wizard lands on (see `components/cards/FundDeepLink`).
+   * Any change to a non-zero value opens the sheet.
+   */
+  fundSignal?: number;
   onToast: (message: string) => void;
   /** The owner dropped this (manually added) card from the dashboard. */
   onRemoved: (address: string) => void;
@@ -50,7 +56,7 @@ export function CardDetails(props: CardDetailsProps) {
   );
 }
 
-function CardDetailsInner({ address, owner, nowUnix, onToast, onRemoved }: CardDetailsProps) {
+function CardDetailsInner({ address, owner, nowUnix, fundSignal, onToast, onRemoved }: CardDetailsProps) {
   const now = nowUnix ?? Math.floor(Date.now() / 1000);
   const infoQuery = useCardInfo(address);
   const merchantsQuery = useMerchants(address);
@@ -59,6 +65,10 @@ function CardDetailsInner({ address, owner, nowUnix, onToast, onRemoved }: CardD
 
   const [locallyAdded, setLocallyAdded] = useState(false);
   useEffect(() => setLocallyAdded(getAddedCards(owner).includes(address)), [owner, address]);
+
+  useEffect(() => {
+    if (fundSignal) setPanel("fund");
+  }, [fundSignal]);
 
   const info = infoQuery.data;
   const frozen = info?.state === 1;

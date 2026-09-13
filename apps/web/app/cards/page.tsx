@@ -2,13 +2,14 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { CardCarousel } from "@/components/card/CardCarousel";
 import { CardList } from "@/components/card/CardList";
 import { AddCardModal } from "@/components/cards/AddCardModal";
 import { CardDetails } from "@/components/cards/CardDetails";
 import { EmptyState } from "@/components/cards/EmptyState";
+import { FundDeepLink } from "@/components/cards/FundDeepLink";
 import { totals, useCardSummaries } from "@/components/cards/summary";
 import { HeaderBar } from "@/components/layout/HeaderBar";
 import { NetworkGuard } from "@/components/layout/NetworkGuard";
@@ -57,6 +58,9 @@ function CardsScreen() {
   const [view, setView] = useState<ViewMode>("grid");
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Bumped by `?fund=1` (the new-card wizard lands here), which tells the
+  // details panel below to open the Fund sheet for the selected card.
+  const [fundSignal, setFundSignal] = useState(0);
 
   // Restore the owner's last selection before the card list arrives, so the
   // details panel doesn't flash the first card and then switch.
@@ -200,12 +204,16 @@ function CardsScreen() {
             key={selected}
             address={selected}
             owner={owner as string}
+            fundSignal={fundSignal}
             onToast={setToast}
             onRemoved={handleRemoved}
           />
         ) : null}
       </div>
 
+      <Suspense fallback={null}>
+        <FundDeepLink onFund={() => setFundSignal((n) => n + 1)} />
+      </Suspense>
       <AddCardModal open={adding} onClose={() => setAdding(false)} owner={owner ?? ""} onAdded={onAdded} />
       {toast ? <Toast message={toast} tone="success" onDismiss={() => setToast(null)} /> : null}
     </main>
