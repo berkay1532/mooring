@@ -34,3 +34,13 @@ export function getRpcServer(): Server {
   }
   return sharedServer;
 }
+
+/**
+ * A stellar.expert explorer link for a transaction hash, on the network
+ * `config.network` names. Used by `useContractAction`'s poll-timeout `next`
+ * step, and by `TxStatus` (Task 8/9) for a "view on explorer" link.
+ */
+export function explorerTxUrl(hash: string, network: typeof config.network = config.network): string {
+  const segment = network === "stellar:pubnet" ? "public" : "testnet";
+  return `https://stellar.expert/explorer/${segment}/tx/${hash}`;
+}
