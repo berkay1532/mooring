@@ -53,6 +53,24 @@ function invokeOwner(fn: string, merchant: string): void {
   );
 }
 
+/**
+ * Bumps the card's instance and code TTL (`bump()`, callable by anyone). Run
+ * once, immediately before the baseline measurement: `add_merchant` (used to
+ * grow the allowlist to 32 for the second measurement) also extends the
+ * instance TTL as a side effect of the write, so without this the baseline
+ * would be measured at whatever TTL the card happened to be at while the
+ * 32-merchant case is measured right after a TTL-extending write. Bumping
+ * first puts both measurements at the same TTL, so the only difference
+ * between them is the allowlist size, not incidental rent/TTL state.
+ */
+function invokeBump(): void {
+  execFileSync(
+    "stellar",
+    ["contract", "invoke", "--source-account", "mooring-owner", "--network", "testnet", "--id", d.card, "--", "bump"],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
 async function allowCount(): Promise<number> {
   const info = await readCardInfo(RPC_URL, NETWORK_PASSPHRASE, d.card);
   return info.allow_count;
@@ -97,6 +115,9 @@ if (startCount !== 1) {
   );
 }
 console.log("initial allow_count == 1, confirmed.");
+
+console.log("bumping instance/code TTL before the baseline (see invokeBump doc comment)...");
+invokeBump();
 
 console.log("baseline (1 merchant) minResourceFee:", await measureMinResourceFee());
 

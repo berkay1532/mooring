@@ -200,7 +200,7 @@ it.
 
 ## Deployment v2 (on-chain label, 2026-09-13)
 
-The card contract now stores an owner-settable **label** (`String`, ≤ 32 chars), set by the
+The card contract now stores an owner-settable **label** (`String`, ≤ 32 bytes (UTF-8)), set by the
 constructor and therefore part of the card's WASM ABI. Existing cards cannot gain the field, so
 D3-A redeployed the WASM, the factory and the card, and migrated the previous card's funds. The
 deployment in the table at the top of this file is superseded by the one below; everything
@@ -269,12 +269,14 @@ payment path reads and rewrites — negligible, and the point of measuring it.
 The 32-merchant figure came out **14 147 stroops lower than the v1 measurement**, i.e. the
 allowlist spread is 1 237 stroops here against 15 454 on the v1 card. That drop is not explained
 by the label change and was not chased down in this task: both runs maxed the instance TTL via
-`add_merchant` immediately beforehand, so it is not TTL rent, and the v1 card is now cancelled so
-the old measurement cannot be reproduced. **The conservative number to quote is therefore still
-the v1 worst case, 49 380 stroops**, which remains below every fee OZ Channels has been observed
-to accept (see the D2 section above). Re-measure when the allowlist or the payment-path storage
-changes; if the 32-merchant figure stays near 35 000 on a card that has been live for some days,
-the v1 number was an artifact of that card's state rather than of allowlist size.
+`add_merchant` immediately beforehand, so it is not TTL rent. The v1 card itself is now cancelled,
+but the old factory (`CCPVVXXD…F4RL`, still live) can still mint a fresh v1 card to re-measure
+against — that re-measurement is tracked as a follow-up, not done here. **The conservative number
+to quote is therefore still the v1 worst case, 49 380 stroops**, which remains below every fee OZ
+Channels has been observed to accept (see the D2 section above). Re-measure when the allowlist or
+the payment-path storage changes; if the 32-merchant figure stays near 35 000 on a card that has
+been live for some days, the v1 number was an artifact of that card's state rather than of
+allowlist size.
 
 ### D3-A e2e re-run against the new card
 

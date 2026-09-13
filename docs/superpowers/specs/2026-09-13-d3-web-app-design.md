@@ -24,7 +24,7 @@ Two keys, two roles:
 | New card | 3-step wizard (Policy → Agent & merchants → Confirm) with a live preview card that updates as the form changes. |
 | Writes | One shared transaction-status component for every write: Prepared → Signature → Submitted → Confirmed. |
 | Funding | Sheet with two tabs: "From my wallet" (amount, quick picks, Freighter signs a USDC transfer to the card) and "Show address" (QR + copyable C… address). |
-| Card name | **On-chain label.** The card contract gains a bounded `label` (≤ 32 chars) set at creation (constructor argument) and changeable by the owner via `set_label` (an owner transaction with a sub-cent network fee, stated in the UI). `info()` returns it; the CLI shows it. Requires a card contract update and a new factory deployment (the D1 model: immutable code, versioned factory). |
+| Card name | **On-chain label.** The card contract gains a bounded `label` (≤ 32 bytes (UTF-8)) set at creation (constructor argument) and changeable by the owner via `set_label` (an owner transaction with a sub-cent network fee, stated in the UI). `info()` returns it; the CLI shows it. Requires a card contract update and a new factory deployment (the D1 model: immutable code, versioned factory). |
 
 ## 3. Screens and flows (v1 scope)
 
@@ -43,7 +43,7 @@ Two keys, two roles:
 - **Empty state**: one large, dimmed card illustration and "Create your first card".
 
 ### 3.3 New card (`/cards/new`)
-- Step 1 **Policy**: card label (≤ 32 chars, on-chain), period budget with unit picker (hour / day / week / custom seconds), per-tx cap (must be ≤ budget), expiry (presets 7 / 30 / 90 days or a date). Live preview card on the left.
+- Step 1 **Policy**: card label (≤ 32 bytes (UTF-8), on-chain), period budget with unit picker (hour / day / week / custom seconds), per-tx cap (must be ≤ budget), expiry (presets 7 / 30 / 90 days or a date). Live preview card on the left. The wizard validates `new TextEncoder().encode(label).length <= 32`, not `label.length` — multi-byte characters (e.g. "ç", emoji) count as more than one byte, so the JS character count is not the same as the contract's byte limit.
 - Step 2 **Agent & merchants**: agent public key (validated as a G… ed25519 strkey; green tick), optional initial merchants (G… or C… addresses, max 32, deduplicated). Hint: `mooring keygen`.
 - Step 3 **Confirm**: summary, plain-language note ("The card is a Soroban account tied to your wallet; funds stay under your control"), "Create with Freighter".
 - After confirmation the app navigates to `/cards` with the new card selected and opens the Fund sheet.
@@ -102,7 +102,7 @@ packages/contracts-ts/         generated TS bindings for card + factory (`stella
 ### 4.2 Writes
 - Generated binding → `AssembledTransaction` → simulation → Freighter `signTransaction(xdr, { networkPassphrase })` → `rpc.sendTransaction` → poll `getTransaction` → invalidate queries.
 - One hook `useContractAction(name, build)` returns `{ run, state }` with `state ∈ idle | preparing | signing | submitted | confirmed | failed`, the hash when known, and a translated error.
-- Error translation: Freighter rejection ("You declined the signature"), wrong network, RPC/simulation failures, and card contract errors mapped through the same code table as `@mooring/x402-client` (`CARD_ERROR_CODES`: 3 Frozen … 12 InvalidState) to user sentences with the code in parentheses and a next step.
+- Error translation: Freighter rejection ("You declined the signature"), wrong network, RPC/simulation failures, and card contract errors mapped through `CARD_ERRORS` (1..13) from `@mooring/x402-client` to user sentences with the code in parentheses and a next step.
 
 ### 4.3 Wallet
 - `lib/wallet` exposes `connect()`, `disconnect()`, `address`, `network`, `signTransaction(xdr)`. Freighter is the only implementation in v1; the interface is what a Wallets Kit adapter would implement later.

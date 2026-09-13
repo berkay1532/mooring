@@ -242,7 +242,8 @@ the limits on-chain, and a second, unrelated cap in the client would only get in
 `readCardInfo` (also exported from `@mooring/x402-client`) returns the same `CardInfo` the
 pre-check reads: `owner`, `signer`, `token`, `label` (the card's on-chain, owner-settable label),
 `policy`, `state`, `period`, `remaining`, `balance`, `allow_count` — a plain read-only simulation,
-no signing or fees.
+no signing or fees. The label is opaque bytes (1..=32); consumers must treat it as untrusted text
+(escape when rendering).
 
 ### From the CLI
 
