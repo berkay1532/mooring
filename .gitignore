@@ -47,3 +47,7 @@ scripts/agent/.env
 
 # Vercel CLI link (project id / org id) -- never committed
 .vercel/
+
+# local env files (Vercel CLI writes .env.local with an OIDC token)
+**/.env.local
+**/.env.*.local

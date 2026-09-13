@@ -48,10 +48,9 @@ PR #1, D2 in PR #2.
   see `docs/x402-integration.md` and the D2 evidence in `docs/testnet.md`.
 - **Web app** (`apps/web`) — built: connect Freighter, create and fund cards, live
   budget and balance, freeze / unfreeze / withdraw / cancel, rename, policy edit,
-  merchant allowlist, agent signer rotation. Covered by 230 unit tests and 19
-  Playwright flows in CI. The manual testnet checklist and the Vercel deployment
-  are pending the repository owner — see [`docs/web-app.md`](docs/web-app.md).
-  Deployed URL: `pending`.
+  merchant allowlist, agent signer rotation. Covered by 244 unit tests and 19
+  Playwright flows in CI. Live at https://mooring-web.vercel.app — see [`docs/web-app.md`](docs/web-app.md).
+  The manual testnet checklist (hashes + screenshots) is pending the repository owner.
 - **Evidence package** — next.
 
 ## Pay an API from a card

@@ -114,7 +114,7 @@ Connect Freighter, switch it to testnet, and the app is live against the deploym
 
 ```sh
 npm run typecheck -w @mooring/web    # tsc --noEmit
-npm test -w @mooring/web             # 230 unit + component tests (vitest, jsdom)
+npm test -w @mooring/web             # 244 unit + component tests (vitest, jsdom)
 npm run build:web -w @mooring/web    # next build (needs the env vars; CI sources .env.example)
 npm run e2e -w @mooring/web          # 19 Playwright flows (chromium)
 ```
@@ -132,10 +132,11 @@ run from the repo root (it builds `@mooring/contracts-ts` and `@mooring/x402-cli
 `apps/web/vercel.json` carries exactly that install and build command; the rest is project
 settings.
 
-**Status: not deployed yet.** The Vercel CLI on the build machine is logged out
-(`npx vercel whoami` → "Logged out"), and logging in needs the repository owner. The steps below
-are what the owner runs; the deployed URL then replaces the placeholder in this file,
-`docs/testnet.md` and `README.md`.
+**Status: deployed.** Production is live at https://mooring-web.vercel.app (Vercel project `mooring-web`,
+root directory `apps/web`, deployed 2026-09-14 with `vercel deploy --prod`). The steps below
+reproduce the setup; the project's `NEXT_PUBLIC_*` values match `apps/web/.env.example`
+(`NEXT_PUBLIC_WALLET` is deliberately unset in production, so the mock adapter is excluded from
+the bundle and `/dev/gallery` returns 404).
 
 ```sh
 npx vercel login                       # owner's account; opens a browser
@@ -165,7 +166,7 @@ Project settings that matter:
 `.vercel/` (the local link and project id the CLI writes) is git-ignored and must never be
 committed.
 
-**Deployed URL:** `pending` — the owner provides it after `vercel deploy --prod`.
+**Deployed URL:** https://mooring-web.vercel.app — verified after deploy: `/`, `/cards` and `/cards/new` return 200, the factory address is inlined in the client chunks, and `__mooringMock` is absent.
 
 The same build runs locally and in CI, so a failure here would be a Vercel configuration
 problem, not an application one:
