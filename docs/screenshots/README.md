@@ -1,28 +1,22 @@
 # Screenshots
 
-Evidence images for the manual testnet checklist in [`../web-app.md`](../web-app.md). They are
-captured by the repository owner while running the checklist with the real Freighter extension
-against the testnet deployment; **none of them exist yet.**
+Evidence images for the manual testnet checklist in [`../web-app.md`](../web-app.md), captured by
+the repository owner on 2026-09-25 while running the checklist with the real Freighter extension
+against a local `next dev` on testnet. JPEG, resized to 1600 px wide. The transaction hashes in
+the checklist are the primary evidence; these images show the app at the corresponding moments.
 
-Expected files, in checklist order:
-
-| File | Step |
+| File | What it shows |
 |---|---|
-| `01-connect.png` | Freighter connected, wallet badge on testnet |
-| `02-wizard-policy.png` | Wizard step 1, label `inference-agent-2` and the live preview |
-| `03-wizard-agent.png` | Wizard step 2, agent public key and merchants |
-| `04-card-created.png` | New card selected on `/cards` after `create_card` |
-| `05-merchant-added.png` | `add_merchant` confirmed for the wizard's merchant |
-| `06-funded.png` | Card funded with 1 USDC |
-| `07-policy-edited.png` | `set_policy` confirmed, new budget on the card |
-| `08-merchant-add.png` | Second merchant added |
-| `09-merchant-remove.png` | That merchant removed |
-| `10-signer-rotated.png` | `set_signer` confirmed |
-| `11-frozen.png` | Frozen card face |
-| `12-unfrozen.png` | Active again |
-| `13-budget-moved.png` | Budget bar after a `mooring pay` payment |
-| `14-withdrawn.png` | 0.5 USDC withdrawn |
-| `15-cancelled.png` | Cancelled card, balance swept to the owner |
-| `16-denied-after-cancel.png` | Optional: payment denied after cancel |
+| `01-connect.jpg` | Header with the connected wallet badge (`GCJJ…KKBD · testnet`), on the wizard route |
+| `02-wizard-policy.jpg` | Wizard step 1 (policy) with the live preview card |
+| `03-wizard-agent.jpg` | Wizard step 2 (agent key and merchants), taken on a later card (`inference-agent-3`) |
+| `04-card-created.jpg` | My cards after the run: the legacy card selected, `inference-agent-2` (cancelled) beside it |
+| `05-merchant-added.jpg` | Merchants section, `1 / 32` |
+| `06-funded.jpg` | Card face at carousel size (legacy card, 11.30 USDC) |
+| `07-policy-edited.jpg` | Policy panel (legacy card) |
+| `11-frozen.jpg` | Frozen card face (legacy card) |
+| `15-cancelled.jpg` | `inference-agent-2` cancelled, balance 0.00 |
 
-PNG, cropped to the browser viewport, no wallet secrets or seed phrases visible.
+Not captured: 08 (second merchant added), 09 (merchant removed), 10 (signer rotated),
+12 (unfrozen), 13 (budget after `mooring pay` — a 0.001 USDC payment is below the two-decimal
+display), 14 (withdrawn), 16 (denied after cancel — CLI output only).

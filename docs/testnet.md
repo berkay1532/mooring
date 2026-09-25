@@ -341,5 +341,4 @@ history in order:
 | `cancel` (balance swept to the owner; final state `Cancelled`) | [`2bd31d0b…245d81`](https://stellar.expert/explorer/testnet/tx/2bd31d0b8d0462a48c7c8ffb84e423cfabe653104086f25f5313e9164e245d81) |
 
 `mooring pay` against `/premium` (20 USDC, above the 5 USDC per-tx cap) was refused by the
-client's local precheck (`over_per_tx_cap`) before anything was signed. Screenshots are pending
-in `docs/screenshots/`.
+client's local precheck (`over_per_tx_cap`) before anything was signed. Screenshots are linked from the checklist table in `docs/web-app.md` (`docs/screenshots/`).
