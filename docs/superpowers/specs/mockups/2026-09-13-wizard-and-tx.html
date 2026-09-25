@@ -1,0 +1,122 @@
+<h2>Yeni kart sihirbazı · fonlama · işlem durumu</h2>
+<p class="subtitle">Aynı dil: sol tarafta canlı önizleme kartı, sağda form. İşlemler tek bir durum çubuğuyla ilerler.</p>
+
+<style>
+  .mk { background:#050b14; color:#93a3b5; font-family: Manrope, system-ui, sans-serif; border-radius:16px; border:1px solid rgba(242,238,228,.08); font-size:14px; line-height:1.45; max-width:1100px; margin:0 auto 34px; overflow:hidden; position:relative; }
+  .mk .ser { font-family: "Instrument Serif", Georgia, serif; color:#f2eee4; font-weight:400; }
+  .mk .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; letter-spacing:.16em; font-size:11px; color:#93a3b5; text-transform:uppercase; }
+  .mk .addr { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size:12px; letter-spacing:0; text-transform:none; color:#f2eee4; }
+  .mk .surf { background:#0f1e30; border:1px solid rgba(242,238,228,.07); border-radius:14px; padding:18px 20px; }
+  .mk .amber { color:#f2b44a; } .mk .sea { color:#7fb8a8; } .mk .dan { color:#e05548; }
+  .mk .btn { display:inline-block; padding:10px 18px; border-radius:999px; background:#f2b44a; color:#050b14; font-weight:700; font-size:13px; }
+  .mk .ghost { display:inline-block; padding:10px 18px; border-radius:999px; border:1px solid rgba(242,238,228,.18); color:#f2eee4; font-size:13px; }
+  .mk .body { padding:26px 32px 30px; }
+  .mk .row { display:flex; gap:28px; } .mk .col { flex:1; min-width:0; }
+  .mk .card3 { width:380px; height:226px; border-radius:20px; padding:22px 26px; overflow:hidden; position:relative; flex:none;
+    background:linear-gradient(135deg,#17304a 0%,#0e1d30 55%,#0a1522 100%); border:1px solid rgba(242,238,228,.16);
+    box-shadow: inset 0 1px 0 rgba(242,238,228,.14), 0 12px 24px rgba(0,0,0,.45), 0 40px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(242,180,74,.2); }
+  .mk .card3 .glow { position:absolute; left:-10%; right:-10%; bottom:-70%; height:90%; background:radial-gradient(ellipse at center, rgba(242,180,74,.24), transparent 60%); }
+  .mk .card3 .chip { position:absolute; right:24px; top:24px; width:38px; height:26px; border-radius:7px; background:linear-gradient(135deg, #f7d089, #c98a2a); }
+  .mk .steps { display:flex; gap:10px; align-items:center; margin-bottom:22px; } .mk .steps span { padding:6px 12px; border-radius:999px; border:1px solid rgba(242,238,228,.12); font-size:12px; } .mk .steps .on { background:#f2b44a; color:#050b14; border-color:#f2b44a; font-weight:700; } .mk .steps .done { color:#7fb8a8; border-color:rgba(127,184,168,.4); }
+  .mk label { display:block; margin-top:14px; font-size:12px; color:#93a3b5; } .mk .in { margin-top:6px; background:#0a1522; border:1px solid rgba(242,238,228,.12); border-radius:10px; padding:11px 14px; color:#f2eee4; display:flex; justify-content:space-between; }
+  .mk .in .unit { color:#93a3b5; font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:12px; }
+  .mk .hint { font-size:12px; margin-top:6px; }
+  .mk .seg { display:inline-flex; border:1px solid rgba(242,238,228,.12); border-radius:10px; overflow:hidden; margin-top:6px; } .mk .seg span { padding:8px 14px; font-size:12px; } .mk .seg .on { background:#0f1e30; color:#f2eee4; }
+  .mk .status { display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:14px; background:#0a1522; border:1px solid rgba(242,238,228,.1); }
+  .mk .dot { width:10px; height:10px; border-radius:50%; } .mk .spin { border:2px solid rgba(242,180,74,.25); border-top-color:#f2b44a; width:16px; height:16px; border-radius:50%; }
+  .mk .tl { display:flex; gap:0; align-items:center; margin-top:14px; } .mk .tl div { flex:1; text-align:center; font-size:11px; padding-top:10px; border-top:2px solid rgba(242,238,228,.1); } .mk .tl .ok { border-top-color:#7fb8a8; color:#7fb8a8; } .mk .tl .now { border-top-color:#f2b44a; color:#f2eee4; }
+  .mk .sheet { position:absolute; right:32px; top:26px; width:380px; background:#0f1e30; border:1px solid rgba(242,238,228,.12); border-radius:18px; padding:22px; box-shadow:0 40px 80px rgba(0,0,0,.6); }
+  .mk .qr { width:96px; height:96px; background:repeating-conic-gradient(#f2eee4 0 25%, #0a1522 0 50%) 0 0/16px 16px; border-radius:8px; opacity:.85; }
+  .pick { max-width:1100px; margin:14px auto 40px; }
+</style>
+
+<!-- ===================== WIZARD ===================== -->
+<h3 style="max-width:1100px;margin:0 auto 10px">Yeni kart · adım 1 / 3 (Politika)</h3>
+<div class="mk"><div class="body">
+  <div class="steps"><span class="on">1 · Politika</span><span>2 · Ajan & merchant'lar</span><span>3 · Onay</span></div>
+  <div class="row">
+    <div>
+      <div class="card3">
+        <div class="glow"></div><div class="chip"></div>
+        <div class="ser" style="font-size:20px;letter-spacing:.08em">MOORING</div>
+        <div class="mono" style="color:#93a3b5">○ henüz oluşturulmadı</div>
+        <div class="mono" style="margin-top:34px">daily budget</div>
+        <div class="ser" style="font-size:40px;line-height:1">50.00 <span style="font-size:15px;color:#93a3b5">USDC</span></div>
+        <div class="mono" style="margin-top:18px;display:flex;justify-content:space-between"><span>per tx 10.00</span><span>expires 30d</span></div>
+        <div class="mono" style="margin-top:16px">inference-agent</div>
+      </div>
+      <p class="hint" style="width:380px;margin-top:12px">Önizleme sen yazdıkça güncellenir. Ad zincire yazılmaz; sadece bu tarayıcıda saklanır.</p>
+    </div>
+    <div class="col">
+      <label>Kart adı</label><div class="in"><span>inference-agent</span></div>
+      <label>Dönem bütçesi</label><div class="in"><span>50</span><span class="unit">USDC / <b class="amber">gün</b> ▾</span></div>
+      <div class="seg"><span>saat</span><span class="on">gün</span><span>hafta</span><span>özel</span></div>
+      <label>İşlem başı üst limit</label><div class="in"><span>10</span><span class="unit">USDC</span></div>
+      <div class="hint">Bütçeden büyük olamaz. Tipik olarak tek bir API çağrısının en pahalı hâli.</div>
+      <label>Son kullanma</label><div class="in"><span>30 gün sonra · 12 Eki 2026</span><span class="unit">▾</span></div>
+      <div style="margin-top:24px;display:flex;justify-content:flex-end;gap:10px"><span class="ghost">Vazgeç</span><span class="btn">Devam →</span></div>
+    </div>
+  </div>
+</div></div>
+
+<h3 style="max-width:1100px;margin:0 auto 10px">Yeni kart · adım 2 / 3 (Ajan & merchant'lar) ve adım 3 (Onay)</h3>
+<div class="mk"><div class="body">
+  <div class="row">
+    <div class="col">
+      <div class="steps"><span class="done">✓ Politika</span><span class="on">2 · Ajan & merchant'lar</span><span>3 · Onay</span></div>
+      <label>Ajan public key</label><div class="in"><span class="addr">GDHDJL3RT6S3OABSHLOEOCBH4BMMAKLVOR5FPEHXG5ZW2DDJDRRJJSM7</span><span class="sea">✓</span></div>
+      <div class="hint">Ajanının Stellar public key'i (G…). Anahtarı yoksa: <span class="addr" style="color:#f2b44a">mooring keygen</span></div>
+      <label>Merchant'lar (isteğe bağlı, sonra da eklenebilir)</label>
+      <div class="in"><span class="addr">GAW3KSJBGKNW…I524NXLOIG</span><span class="dan">×</span></div>
+      <div class="in" style="margin-top:8px;color:#93a3b5"><span>G… adresi yapıştır</span><span class="amber">+ ekle</span></div>
+      <div class="hint">Kart yalnızca bu adreslere ödeme yapar. En fazla 32.</div>
+    </div>
+    <div class="col">
+      <div class="steps"><span class="done">✓ Politika</span><span class="done">✓ Ajan</span><span class="on">3 · Onay</span></div>
+      <div class="surf">
+        <div class="mono">Özet</div>
+        <div style="margin-top:8px;color:#f2eee4">inference-agent</div>
+        <div class="hint">50 USDC / gün · per tx 10 USDC · 12 Eki 2026'ya kadar</div>
+        <div class="hint">Ajan <span class="addr">GDHD…JSM7</span> · 1 merchant</div>
+        <div class="hint" style="margin-top:12px">Kart senin cüzdanına bağlı bir Soroban hesabı olarak oluşturulur; fonlar her zaman senin kontrolünde kalır. Oluşturma ücreti ağ tarafından alınır (testnet: ~0.01 XLM).</div>
+      </div>
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px"><span class="ghost">← Geri</span><span class="btn">Freighter ile oluştur</span></div>
+    </div>
+  </div>
+</div></div>
+
+<!-- ===================== TX STATUS + FUNDING ===================== -->
+<h3 style="max-width:1100px;margin:0 auto 10px">İşlem durumu (her yazma işleminde aynı bileşen) ve fonlama paneli</h3>
+<div class="mk" style="min-height:360px"><div class="body">
+  <div class="row">
+    <div class="col">
+      <div class="status"><div class="spin"></div><div><div style="color:#f2eee4">Freighter'da imza bekleniyor</div><div class="hint">Cüzdan penceresini onayla. Bu adım ücret almaz.</div></div></div>
+      <div class="tl"><div class="ok">✓ Hazırlandı</div><div class="now">İmza</div><div>Gönderildi</div><div>Onaylandı</div></div>
+
+      <div class="status" style="margin-top:22px;border-color:rgba(127,184,168,.35)"><div class="dot" style="background:#7fb8a8"></div><div><div style="color:#f2eee4">Kart donduruldu</div><div class="hint">Ledger 4 645 812 · <span class="amber">işlemi gör ↗</span> · ajan ödemeleri artık reddedilir</div></div></div>
+
+      <div class="status" style="margin-top:14px;border-color:rgba(224,85,72,.35)"><div class="dot" style="background:#e05548"></div><div><div style="color:#f2eee4">Politika reddedildi</div><div class="hint">İşlem başı limit dönem bütçesinden büyük olamaz (kod #11). <span class="amber">Düzelt</span></div></div></div>
+      <p class="hint" style="margin-top:14px">Kural: hata mesajları kullanıcı dilinde, kod parantezde; her hata bir sonraki adımı söyler.</p>
+    </div>
+
+    <div class="col" style="position:relative;min-height:300px">
+      <div class="sheet">
+        <div class="ser" style="font-size:22px">Kartı fonla</div>
+        <div class="hint">inference-agent · bakiye 11.00 USDC</div>
+        <div class="seg" style="margin-top:14px"><span class="on">Cüzdanımdan</span><span>Adresi göster</span></div>
+        <label>Tutar</label><div class="in"><span>20</span><span class="unit">USDC · cüzdanda 184.20</span></div>
+        <div style="display:flex;gap:8px;margin-top:8px"><span class="ghost" style="padding:5px 10px;font-size:11px">10</span><span class="ghost" style="padding:5px 10px;font-size:11px">50</span><span class="ghost" style="padding:5px 10px;font-size:11px">100</span><span class="ghost" style="padding:5px 10px;font-size:11px">maks</span></div>
+        <div style="margin-top:18px;display:flex;gap:12px;align-items:center">
+          <div class="qr"></div>
+          <div class="hint">"Adresi göster" sekmesinde: QR + kopyalanabilir C… adresi; başka bir cüzdan veya borsa çekimi için.</div>
+        </div>
+        <div style="margin-top:18px;display:flex;justify-content:flex-end;gap:10px"><span class="ghost">Kapat</span><span class="btn">Freighter ile gönder</span></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="options pick">
+  <div class="option" data-choice="wizard-ok" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>Onayla</h3><p>Sihirbaz (canlı önizleme + 3 adım), tek işlem-durumu bileşeni, fonlama paneli.</p></div></div>
+  <div class="option" data-choice="wizard-tweak" onclick="toggleSelect(this)"><div class="letter">~</div><div class="content"><h3>Değişiklik var</h3><p>Terminalde yaz.</p></div></div>
+</div>

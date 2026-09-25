@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./*"] }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "//exclude": "\"* 2.*\" excludes the conflict copies a syncing file manager (iCloud Drive) leaves behind — e.g. `.next/types/cache-life.d 2.ts`, which duplicates every identifier in the file it copied and breaks `tsc` on a developer machine. CI never sees them.",
+  "exclude": ["node_modules", "**/* 2.*", "**/* 3.*"]
+}

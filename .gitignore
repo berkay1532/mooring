@@ -38,3 +38,16 @@ scripts/agent/.env
 **/dist
 **/.env
 !**/.env.example
+**/*.tsbuildinfo
+
+# Playwright (apps/web e2e)
+**/playwright-report/
+**/test-results/
+**/.playwright/
+
+# Vercel CLI link (project id / org id) -- never committed
+.vercel/
+
+# local env files (Vercel CLI writes .env.local with an OIDC token)
+**/.env.local
+**/.env.*.local
