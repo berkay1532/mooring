@@ -316,12 +316,30 @@ card".
 | Item | Value |
 |---|---|
 | Deployed URL | https://mooring-web.vercel.app (Vercel project `mooring-web`, deployed 2026-09-14; steps in `docs/web-app.md`) |
-| Automated coverage | 230 vitest unit/component tests + 19 Playwright flows, both in the `web` CI job; neither touches testnet |
+| Automated coverage | 244 vitest unit/component tests + 19 Playwright flows, both in the `web` CI job; neither touches testnet |
 | Manual testnet checklist | `docs/web-app.md` → "Manual testnet checklist" |
 
-**On-chain evidence for D3 is `pending`.** The checklist (create a card `inference-agent-2`, fund
-1 USDC, edit policy, add and remove a merchant, rotate the signer, freeze/unfreeze, pay it with
-`mooring pay`, withdraw 0.5 USDC, cancel) has to be run with the real Freighter extension holding
-the owner key, which only the repository owner can do. Every transaction hash and screenshot from
-that run belongs in the table in `docs/web-app.md`; this section then points at the results.
-Nothing has been simulated or estimated to fill the gap.
+**On-chain evidence for D3 (run 2026-09-25).** The owner ran the checklist in `docs/web-app.md`
+with the real Freighter extension against a local `next dev` on testnet. Card
+`CCFZQBAFDJEC635N5DWJYX53GNIOOZPGO3AQXMZ7KRATMA2XVVLKIEYV` (`inference-agent-2`) was created from
+the wizard and driven through every owner operation; the hashes below are the owner's Horizon
+history in order:
+
+| Operation | Tx |
+|---|---|
+| `create_card` (factory v2) | [`ceaceb7b…c2039c`](https://stellar.expert/explorer/testnet/tx/ceaceb7bd83cebb42fa3178da035e084506d956d166ab24f0da446941fc2039c) |
+| `add_merchant` (from the wizard) | [`f63c15d7…bffa8a`](https://stellar.expert/explorer/testnet/tx/f63c15d790289747251ba5b0d6c9a08ce97e7bed9e612facd9d0b9e20abffa8a) |
+| fund: SAC `transfer` owner → card, 1 USDC | [`a920f9ea…adbe3c`](https://stellar.expert/explorer/testnet/tx/a920f9ea4620449709a3763f14a6e393619279d609991fc7f771b9eebbadbe3c) |
+| `set_policy` (20 USDC / day, cap 5) | [`a07e78ab…7e048a`](https://stellar.expert/explorer/testnet/tx/a07e78ab07434eaa072dab9476fd9a6628828957a8721b81207fe506067e048a) |
+| `add_merchant` | [`f9ee9f3b…01b184`](https://stellar.expert/explorer/testnet/tx/f9ee9f3b6c5a9b4b2fe0c941d031815cfb2c94dba17b6c1ad60856885201b184) |
+| `remove_merchant` | [`05068bd1…fb42c9`](https://stellar.expert/explorer/testnet/tx/05068bd1d1ac68eda7f08961fa53f573a560d87390b398017b89e124bafb42c9) |
+| `set_signer` → `GC3PG3W2…LNR5` | [`5cb87aed…58950d`](https://stellar.expert/explorer/testnet/tx/5cb87aed0a2dd75796d93ef66015520af7c096443819825329b9c991ef58950d) |
+| `freeze` | [`d871f707…b74bf0`](https://stellar.expert/explorer/testnet/tx/d871f707fbcfda2a37fa70060cdddb1b388686bcbf94f3f9e579389245b74bf0) |
+| `unfreeze` | [`71cb4215…d4b1eb`](https://stellar.expert/explorer/testnet/tx/71cb421597e23b26a1abc21c3fd4333f0d3abbaea25b5bd53a4ebebed4d4b1eb) |
+| `mooring pay` `/weather` (0.001 USDC, x402 via OZ Channels, signed with the rotated key) | [`903567d2…1a0e9e`](https://stellar.expert/explorer/testnet/tx/903567d20e1e68491b75629b9969a87f82d719e9ba015da7355731c3d71a0e9e) |
+| `withdraw` 0.5 USDC | [`a4c244fc…4bdc15`](https://stellar.expert/explorer/testnet/tx/a4c244fc3053fb5f3f413632fb3cd28a857bb950d33162565d90d42cef4bdc15) |
+| `cancel` (balance swept to the owner; final state `Cancelled`) | [`2bd31d0b…245d81`](https://stellar.expert/explorer/testnet/tx/2bd31d0b8d0462a48c7c8ffb84e423cfabe653104086f25f5313e9164e245d81) |
+
+`mooring pay` against `/premium` (20 USDC, above the 5 USDC per-tx cap) was refused by the
+client's local precheck (`over_per_tx_cap`) before anything was signed. Screenshots are pending
+in `docs/screenshots/`.

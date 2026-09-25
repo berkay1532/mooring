@@ -213,21 +213,28 @@ simulated or estimated.
 | Step | Expected | Tx hash | Screenshot |
 |---|---|---|---|
 | Connect Freighter on `/` | Wallet badge shows `GCJJ…KKBD · testnet`; redirect to `/cards` | — | `pending` (`01-connect.png`) |
-| Wizard step 1 — label `inference-agent-2`, budget 10 USDC / day, cap 1 USDC, expiry 30 days | Live preview card updates; label accepted (≤ 32 bytes) | — | `pending` (`02-wizard-policy.png`) |
+| Wizard step 1 — label `inference-agent-2`, budget 10 USDC / day, cap 5 USDC, expiry 30 days | Live preview card updates; label accepted (≤ 32 bytes) | — | `pending` (`02-wizard-policy.png`) |
 | Wizard step 2 — paste the agent public key, add one merchant | Green tick on the key; merchant listed, max 32, deduplicated | — | `pending` (`03-wizard-agent.png`) |
-| Wizard step 3 — "Create with Freighter" | `create_card` confirms; app returns to `/cards` with the new card selected | `pending` | `pending` (`04-card-created.png`) |
-| Merchant added after creation | One `add_merchant` transaction per merchant (see follow-ups) | `pending` | `pending` (`05-merchant-added.png`) |
-| Fund 1 USDC from the wallet (owner must hold ≥ 1.5 USDC — see prerequisite 4) | SAC `transfer` owner → card; card balance shows `1.00` | `pending` | `pending` (`06-funded.png`) |
-| Edit policy (budget 20 USDC / day) | `set_policy` confirms; current-period spend kept, period restarts now | `pending` | `pending` (`07-policy-edited.png`) |
-| Add a second merchant | `add_merchant`; allowlist count +1 | `pending` | `pending` (`08-merchant-add.png`) |
-| Remove that merchant | `remove_merchant`; allowlist count back down | `pending` | `pending` (`09-merchant-remove.png`) |
-| Rotate the signer to a second agent key | `set_signer`; the old key stops working immediately | `pending` | `pending` (`10-signer-rotated.png`) |
-| Freeze | `freeze`; card face turns frozen (❄, seaglass), payments rejected | `pending` | `pending` (`11-frozen.png`) |
-| Unfreeze | `unfreeze`; card active again | `pending` | `pending` (`12-unfrozen.png`) |
-| `mooring pay` against this card | HTTP 200 from the x402 endpoint; the card's budget bar moves in the app on the next refresh | `pending` | `pending` (`13-budget-moved.png`) |
-| Withdraw 0.5 USDC | `withdraw`; balance drops by 0.50, owner's USDC balance rises | `pending` | `pending` (`14-withdrawn.png`) |
-| Cancel (typed confirmation) | `cancel`; state Cancelled, full remaining balance swept to the owner | `pending` | `pending` (`15-cancelled.png`) |
-| Optional — `mooring pay` again after cancel | Payment denied at simulation (card cancelled); nothing settles | — | `pending` (`16-denied-after-cancel.png`) |
+| Wizard step 3 — "Create with Freighter" | `create_card` confirms; app returns to `/cards` with the new card selected — card `CCFZQBAFDJEC635N5DWJYX53GNIOOZPGO3AQXMZ7KRATMA2XVVLKIEYV` | [`ceaceb7b…c2039c`](https://stellar.expert/explorer/testnet/tx/ceaceb7bd83cebb42fa3178da035e084506d956d166ab24f0da446941fc2039c) | `pending` (`04-card-created.png`) |
+| Merchant added after creation | One `add_merchant` transaction per merchant (see follow-ups) | [`f63c15d7…bffa8a`](https://stellar.expert/explorer/testnet/tx/f63c15d790289747251ba5b0d6c9a08ce97e7bed9e612facd9d0b9e20abffa8a) | `pending` (`05-merchant-added.png`) |
+| Fund 1 USDC from the wallet (owner must hold ≥ 1.5 USDC — see prerequisite 4) | SAC `transfer` owner → card; card balance shows `1.00` | [`a920f9ea…adbe3c`](https://stellar.expert/explorer/testnet/tx/a920f9ea4620449709a3763f14a6e393619279d609991fc7f771b9eebbadbe3c) | `pending` (`06-funded.png`) |
+| Edit policy (budget 20 USDC / day, cap 5 USDC) | `set_policy` confirms; current-period spend kept, period restarts now | [`a07e78ab…7e048a`](https://stellar.expert/explorer/testnet/tx/a07e78ab07434eaa072dab9476fd9a6628828957a8721b81207fe506067e048a) | `pending` (`07-policy-edited.png`) |
+| Add a second merchant | `add_merchant`; allowlist count +1 | [`f9ee9f3b…01b184`](https://stellar.expert/explorer/testnet/tx/f9ee9f3b6c5a9b4b2fe0c941d031815cfb2c94dba17b6c1ad60856885201b184) | `pending` (`08-merchant-add.png`) |
+| Remove that merchant | `remove_merchant`; allowlist count back down | [`05068bd1…fb42c9`](https://stellar.expert/explorer/testnet/tx/05068bd1d1ac68eda7f08961fa53f573a560d87390b398017b89e124bafb42c9) | `pending` (`09-merchant-remove.png`) |
+| Rotate the signer to a second agent key (`GC3PG3W2…LNR5`) | `set_signer`; the old key stops working immediately | [`5cb87aed…58950d`](https://stellar.expert/explorer/testnet/tx/5cb87aed0a2dd75796d93ef66015520af7c096443819825329b9c991ef58950d) | `pending` (`10-signer-rotated.png`) |
+| Freeze | `freeze`; card face turns frozen (❄, seaglass), payments rejected | [`d871f707…b74bf0`](https://stellar.expert/explorer/testnet/tx/d871f707fbcfda2a37fa70060cdddb1b388686bcbf94f3f9e579389245b74bf0) | `pending` (`11-frozen.png`) |
+| Unfreeze | `unfreeze`; card active again | [`71cb4215…d4b1eb`](https://stellar.expert/explorer/testnet/tx/71cb421597e23b26a1abc21c3fd4333f0d3abbaea25b5bd53a4ebebed4d4b1eb) | `pending` (`12-unfrozen.png`) |
+| `mooring pay` against this card (`/weather`, 0.001 USDC, signed with the rotated key) | HTTP 200; on-chain `spent` 0.001 USDC, balance 9.999 → 0.999 after the earlier withdraw ordering — see note | [`903567d2…1a0e9e`](https://stellar.expert/explorer/testnet/tx/903567d20e1e68491b75629b9969a87f82d719e9ba015da7355731c3d71a0e9e) | `pending` (`13-budget-moved.png`) |
+| Withdraw 0.5 USDC | `withdraw`; balance drops by 0.50, owner's USDC balance rises | [`a4c244fc…4bdc15`](https://stellar.expert/explorer/testnet/tx/a4c244fc3053fb5f3f413632fb3cd28a857bb950d33162565d90d42cef4bdc15) | `pending` (`14-withdrawn.png`) |
+| Cancel (typed confirmation) | `cancel`; state Cancelled (state = 2), balance 0 — remaining balance swept to the owner | [`2bd31d0b…245d81`](https://stellar.expert/explorer/testnet/tx/2bd31d0b8d0462a48c7c8ffb84e423cfabe653104086f25f5313e9164e245d81) | `pending` (`15-cancelled.png`) |
+| `mooring pay` above the per-tx cap (`/premium`, 20 USDC) | Denied locally at precheck (`over_per_tx_cap`); nothing signed or submitted | — | `pending` (`16-denied-after-cancel.png`) |
+
+**Run of 2026-09-25** (owner with Freighter on a local `next dev`, testnet): all eleven owner
+transactions above succeeded in the order listed (Horizon history of `GCJJ…KKBD`, 17:33–17:43 UTC),
+the payment settled through OZ Channels, and the over-cap payment was refused before signing. The
+card's final on-chain state is `Cancelled` with a zero balance. Note on the pay row: the payment ran
+before the withdraw, so the balance went 1.00 → 0.999 → 0.499 → 0 (cancel sweep). The screenshot
+column is still `pending`: the owner drops the files into `docs/screenshots/` with the names shown.
 
 `cancel` is deliberately the last on-chain step: it is permanent and sweeps the balance, so the
 `mooring pay` run sits before it. The payment step uses the agent secret that matches the
