@@ -3,9 +3,8 @@
 > Mooring is a **production product**, not a demo. The SCF sprint delivers a production-quality
 > v1 on testnet; mainnet follows a security audit. See "Product roadmap" below.
 
-Status: **D1 and D2 delivered (see `docs/testnet.md`); D3 in progress — on-chain labels
-landed, the web app is built and in review (`docs/web-app.md`), its testnet checklist and
-deployment pending.** Agreed via brainstorming
+Status: **D1, D2 and D3 delivered (see `docs/testnet.md` and `docs/web-app.md`); the web app is
+live at https://mooring-web.vercel.app and the testnet checklist was run on 2026-09-25.** Agreed via brainstorming
 (2026-08); W1 spike **resolved 2026-09-08** — see `docs/spike-w1-auth-mechanism.md`. The x402
 integration is documented in `docs/x402-integration.md`.
 
