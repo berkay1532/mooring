@@ -314,8 +314,8 @@ export interface TxToastsApi {
 
 const TxToastContext = createContext<TxToastsApi | null>(null);
 
-/** Oldest settled toasts are dropped beyond this many. In-flight ones never are. */
-const MAX_TOASTS = 5;
+/** The stack's size cap — see `trim` for what may be evicted to keep it. */
+export const MAX_TOASTS = 5;
 
 let nextId = 0;
 function newId(prefix: string): string {
@@ -356,6 +356,7 @@ export function TxToastProvider({ children }: { children: ReactNode }) {
     <TxToastContext.Provider value={api}>
       {children}
       <div
+        data-toast-region=""
         aria-live="polite"
         className="pointer-events-none fixed bottom-6 right-6 z-50 flex w-[min(360px,calc(100vw-32px))] flex-col gap-2.5 max-sm:bottom-4 max-sm:right-4"
       >
@@ -378,16 +379,30 @@ export function TxToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Keeps the stack at {@link MAX_TOASTS}: evicts the oldest notice first, then
+ * the oldest confirmed toast. In-flight toasts are never evicted, and neither
+ * is a failure — it stays until the owner closes it, so a stack made only of
+ * those may grow past the cap rather than drop one.
+ */
 function trim(entries: Entry[]): Entry[] {
-  let excess = entries.length - MAX_TOASTS;
-  if (excess <= 0) return entries;
-  return entries.filter((e) => {
-    if (excess <= 0) return true;
-    const inFlight = e.kind === "tx" && (e.data.state === "preparing" || e.data.state === "signing" || e.data.state === "submitted");
-    if (inFlight) return true;
-    excess -= 1;
-    return false;
-  });
+  let next = entries;
+  for (const evictable of [isNotice, isConfirmed]) {
+    while (next.length > MAX_TOASTS) {
+      const i = next.findIndex(evictable);
+      if (i === -1) break;
+      next = [...next.slice(0, i), ...next.slice(i + 1)];
+    }
+  }
+  return next;
+}
+
+function isNotice(entry: Entry): boolean {
+  return entry.kind === "notice";
+}
+
+function isConfirmed(entry: Entry): boolean {
+  return entry.kind === "tx" && entry.data.state === "confirmed";
 }
 
 const NO_PROVIDER: TxToastsApi = { upsert: () => {}, notify: () => {}, dismiss: () => {} };

@@ -32,10 +32,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${instrumentSerif.variable} ${manrope.variable} ${plexMono.variable} bg-bg-deep text-text-lo font-body antialiased`}
-      >
+    // The `next/font` variables go on <html>: `globals.css` maps
+    // `--font-display/body/mono` to them inside `@theme`, which Tailwind emits
+    // on `:root` — set on <body>, they would be undefined where they are read,
+    // and every font would fall back to the system stack.
+    <html lang="en" className={`${instrumentSerif.variable} ${manrope.variable} ${plexMono.variable}`}>
+      <body className="bg-bg-deep text-text-lo font-body antialiased">
         <GrainOverlay />
         <Providers>{children}</Providers>
       </body>

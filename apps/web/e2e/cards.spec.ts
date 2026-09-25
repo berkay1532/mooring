@@ -86,6 +86,21 @@ test.describe("cards dashboard", () => {
     await expect(page.getByText("Card frozen")).toHaveCount(0);
   });
 
+  test("renders in the brand fonts, not the system fallback", async ({ page }) => {
+    // The design tokens (`--font-display/body/mono`) only resolve to the
+    // `next/font` faces when the font variables are set on <html>, where
+    // `@theme` reads them; otherwise everything falls back to the system
+    // sans. (Depending on the Next version the face is named "Instrument
+    // Serif" or "__Instrument_Serif_<hash>".)
+    const face = selectedFace(page);
+    const family = (locator: ReturnType<Page["locator"]>) =>
+      locator.evaluate((el) => getComputedStyle(el).fontFamily);
+
+    expect(await family(face.getByText("MOORING", { exact: true }))).toMatch(/Instrument[ _]Serif/);
+    expect(await family(page.locator("body"))).toMatch(/^"?_*Manrope/);
+    expect(await family(face.getByTestId("budget-expiry"))).toMatch(/IBM[ _]Plex[ _]Mono/);
+  });
+
   test("stays free of horizontal scroll at 400px", async ({ page }) => {
     await page.setViewportSize({ width: 400, height: 900 });
     await expect(page.getByRole("heading", { name: "My cards" })).toBeVisible();

@@ -563,7 +563,7 @@ describe("fund deep link", () => {
         nowUnix={NOW}
         fundSignal={1}
         onFundOpened={onFundOpened}
-       
+
         onRemoved={() => {}}
       />,
       { wrapper: Wrapper },

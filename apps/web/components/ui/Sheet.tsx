@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
-import { isTopDialog, popDialog, pushDialog } from "./dialogStack";
+import { dialogFocusables, isTopDialog, popDialog, pushDialog, trapTab } from "./dialogStack";
 
 export interface SheetProps {
   open: boolean;
@@ -12,9 +12,6 @@ export interface SheetProps {
   children: ReactNode;
   className?: string;
 }
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * A floating panel offset from the top-right (mockup's `.sheet`), used for
@@ -49,8 +46,7 @@ export function Sheet({ open, onClose, title, children, className }: SheetProps)
     document.body.style.overflow = "hidden";
 
     const panel = panelRef.current;
-    const focusable = () => Array.from(panel?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []);
-    (focusable()[0] ?? panel)?.focus();
+    (panel ? (dialogFocusables(panel).find((el) => panel.contains(el)) ?? panel) : null)?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -60,17 +56,7 @@ export function Sheet({ open, onClose, title, children, className }: SheetProps)
         return;
       }
       if (event.key === "Tab") {
-        const items = focusable();
-        if (items.length === 0) return;
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
+        trapTab(event, panel, dialogToken);
       }
     }
 

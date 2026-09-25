@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CONFIRMED_DISMISS_MS,
+  MAX_TOASTS,
   TxToast,
   TxToastProvider,
   useTxToast,
@@ -237,5 +238,56 @@ describe("TxToastProvider + useTxToast", () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("run"));
     expect(screen.queryByTestId("tx-toast")).not.toBeInTheDocument();
+  });
+});
+
+// --- the cap ------------------------------------------------------------------
+
+describe("toast stack cap", () => {
+  type Api = ReturnType<typeof useTxToasts>;
+  let api: Api;
+  function Grab() {
+    api = useTxToasts();
+    return null;
+  }
+  function stack() {
+    render(
+      <TxToastProvider>
+        <Grab />
+      </TxToastProvider>,
+    );
+  }
+  const put = (id: string, state: TxToastData["state"]) =>
+    act(() => api.upsert(id, { label: id, state, error: state === "failed" ? { title: `err ${id}` } : undefined }));
+  const labels = () => screen.queryAllByTestId("tx-toast").map((t) => t.querySelector("p")?.textContent);
+
+  it(`keeps at most ${MAX_TOASTS}, evicting the oldest confirmed toast`, () => {
+    stack();
+    for (let i = 1; i <= MAX_TOASTS + 1; i++) put(`c${i}`, "confirmed");
+    expect(labels()).toEqual(["c2", "c3", "c4", "c5", "c6"]);
+  });
+
+  it("never evicts a failed toast to make room", () => {
+    stack();
+    put("f1", "failed");
+    for (let i = 1; i <= MAX_TOASTS; i++) put(`c${i}`, "confirmed");
+    expect(labels()).toEqual(["f1", "c2", "c3", "c4", "c5"]);
+    expect(screen.getByRole("alert")).toHaveTextContent("err f1");
+  });
+
+  it("evicts notices before confirmed toasts", () => {
+    stack();
+    put("c1", "confirmed");
+    act(() => api.notify("Card added"));
+    for (let i = 2; i <= MAX_TOASTS; i++) put(`c${i}`, "confirmed");
+    expect(screen.queryByText("Card added")).not.toBeInTheDocument();
+    expect(labels()).toEqual(["c1", "c2", "c3", "c4", "c5"]);
+  });
+
+  it("grows past the cap rather than drop a failure or an in-flight toast", () => {
+    stack();
+    for (let i = 1; i <= MAX_TOASTS; i++) put(`f${i}`, "failed");
+    put("p1", "submitted");
+    expect(screen.getAllByTestId("tx-toast")).toHaveLength(MAX_TOASTS + 1);
   });
 });

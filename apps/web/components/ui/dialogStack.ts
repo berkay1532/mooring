@@ -56,3 +56,49 @@ function topEntry(): DialogEntry | undefined {
 export function isTopDialog(token: DialogToken): boolean {
   return topEntry()?.token === token;
 }
+
+/** What a dialog's Tab cycle can land on. Disabled controls are filtered with `:disabled` below. */
+const FOCUSABLE_SELECTOR =
+  'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+/** Marks the global toast stack (`TxToastProvider`), which stays reachable from an open dialog. */
+export const TOAST_REGION_SELECTOR = "[data-toast-region]";
+
+/**
+ * The open dialog's Tab cycle: the panel's own focusable controls, then the
+ * toast stack's (a write started in the dialog reports there). `:disabled`
+ * also catches controls disabled only through a `<fieldset disabled>`, which
+ * carry no `disabled` attribute of their own.
+ */
+export function dialogFocusables(panel: HTMLElement | null): HTMLElement[] {
+  const inPanel = Array.from(panel?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []);
+  const inToasts = Array.from(
+    document.querySelectorAll<HTMLElement>(`${TOAST_REGION_SELECTOR} :is(${FOCUSABLE_SELECTOR})`),
+  );
+  return [...inPanel, ...inToasts].filter((el) => !el.matches(":disabled"));
+}
+
+/**
+ * Keeps Tab inside the front-most dialog (plus the toast stack). The cycle
+ * is driven by hand rather than left to the browser, so focus that has
+ * already fallen out — e.g. to `<body>` when the clicked primary button
+ * became disabled while its write is in flight — is pulled back in instead
+ * of walking the page behind an `aria-modal` dialog.
+ */
+export function trapTab(event: KeyboardEvent, panel: HTMLElement | null, token: DialogToken): void {
+  if (!isTopDialog(token)) return;
+  event.preventDefault();
+  const items = dialogFocusables(panel);
+  if (items.length === 0) {
+    panel?.focus();
+    return;
+  }
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  const next =
+    index === -1
+      ? event.shiftKey
+        ? items.length - 1
+        : 0
+      : (index + (event.shiftKey ? -1 : 1) + items.length) % items.length;
+  items[next].focus();
+}

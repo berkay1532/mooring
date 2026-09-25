@@ -106,4 +106,36 @@ describe("Modal", () => {
     expect(onCloseModal).toHaveBeenCalledTimes(1);
     expect(onCloseSheet).not.toHaveBeenCalled();
   });
+
+  it("pulls focus that fell out of the panel back in, and cycles through the toast stack", () => {
+    render(
+      <>
+        <button type="button">page behind</button>
+        <Modal open onClose={() => {}} title="Withdraw">
+          <fieldset disabled>
+            <input aria-label="amount" />
+          </fieldset>
+          <button type="button">primary</button>
+        </Modal>
+        <div data-toast-region="">
+          <button type="button">Details</button>
+        </div>
+      </>,
+    );
+    const primary = screen.getByRole("button", { name: "primary" });
+    const details = screen.getByRole("button", { name: "Details" });
+
+    // The in-flight primary button got disabled and focus dropped to <body>.
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(primary); // the fieldset-disabled input is skipped
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(details);
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(primary); // never the page behind
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(details);
+  });
 });
