@@ -27,7 +27,7 @@ function firePointerMove(el: HTMLElement, clientX: number, clientY: number) {
 describe("MooringCard", () => {
   it("renders the label, balance, and this period's remaining budget for an active card", () => {
     const now = Math.floor(Date.now() / 1000);
-    render(
+    const { container } = render(
       <MooringCard
         size="carousel"
         state="active"
@@ -47,7 +47,16 @@ describe("MooringCard", () => {
     expect(screen.getByTestId("balance")).toHaveTextContent("11.00 USDC");
     // Remaining this period (periodAmount - spent = 50 - 10 = 40), not spent.
     expect(screen.getByTestId("budget-remaining")).toHaveTextContent("40.00 / 50.00");
-    expect(screen.getByText("left this period")).toBeInTheDocument();
+    // "left this period" rides inline on the budget line, inside the footer —
+    // never a separate row that would push the footer past the card's edge.
+    const footer = container.querySelector('[data-part="footer"]');
+    expect(footer).not.toBeNull();
+    const leftLabel = screen.getByText("left this period");
+    expect(leftLabel.parentElement).toContainElement(screen.getByTestId("budget-remaining"));
+    expect(footer).toContainElement(leftLabel);
+    expect(footer).toContainElement(screen.getByTestId("footer-label"));
+    expect(footer).toContainElement(screen.getByTestId("footer-address"));
+    expect(screen.getAllByText("left this period")).toHaveLength(1);
     expect(screen.getByTestId("status")).toHaveTextContent(/active/);
     expect(screen.getByTestId("footer-address")).toHaveTextContent("CAJP…AHCJ");
   });
@@ -162,6 +171,26 @@ describe("MooringCard", () => {
     expect(screen.queryByText("do-not-render-me")).not.toBeInTheDocument();
     expect(screen.queryByTestId("balance")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: /do-not-render-me card, active/ })).toBeInTheDocument();
+  });
+
+  it("keeps the face a clipped flex column with the footer pushed to the baseline", () => {
+    const { container } = render(
+      <MooringCard size="carousel" state="active" label="x" periodAmount={50n * BASE} spent={0n} />,
+    );
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toMatch(/\boverflow-hidden\b/);
+    expect(root.className).toMatch(/\bflex-col\b/);
+    const footer = container.querySelector('[data-part="footer"]') as HTMLElement;
+    expect(footer.className).toMatch(/\bmt-auto\b/);
+    // The footer is the face's last block — nothing can sit below it.
+    expect(root.lastElementChild).toBe(footer);
+  });
+
+  it("moves 'left this period' into a tooltip on the smaller preview face", () => {
+    render(<MooringCard size="preview" state="draft" label="x" periodAmount={50n * BASE} spent={0n} />);
+    expect(screen.queryByText("left this period")).not.toBeInTheDocument();
+    expect(screen.getByTestId("budget-remaining")).toHaveAttribute("title", "left this period");
+    expect(screen.getByTestId("budget-remaining")).toHaveTextContent("50.00 / 50.00");
   });
 
   it("falls back to placeholders when balance/expiry/address are not provided", () => {

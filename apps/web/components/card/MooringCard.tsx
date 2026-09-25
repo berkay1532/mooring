@@ -21,7 +21,14 @@ export interface MooringCardProps {
   periodAmount?: bigint;
   /** Unix seconds. */
   expiry?: number;
+  /**
+   * Accepted for callers that have them, but not drawn: the face follows the
+   * mockup's two footer rows (budget line + bar, then label · address), and
+   * a third row does not fit the fixed card height. The details panel's
+   * Merchants and Agent sections show both.
+   */
   allowCount?: number;
+  /** See {@link MooringCardProps.allowCount}. */
   signer?: string;
   selected?: boolean;
   /** Set to `false` to disable the pointer tilt regardless of size/motion preference. Defaults to `true`. */
@@ -114,8 +121,6 @@ export function MooringCard({
   spent,
   periodAmount,
   expiry,
-  allowCount = 0,
-  signer,
   selected = false,
   tilt = true,
   nowUnix,
@@ -229,7 +234,20 @@ export function MooringCard({
     );
   }
 
-  const balanceSizeClass = size === "carousel" ? "text-[44px]" : "text-[40px]";
+  const isCarousel = size === "carousel";
+  const balanceSizeClass = isCarousel ? "text-[44px]" : "text-[40px]";
+  // Vertical rhythm (mockups `cards-carousel-f2` and `wizard-and-tx`): the
+  // status line sits right under the wordmark, the "balance" label 34px
+  // below it, and the footer (budget line + bar, then label · address) sits
+  // on the card's baseline via `mt-auto`, at least 18px under the balance.
+  // Every text line has a fixed 14px line box (24px for the wordmark) so the
+  // stack is exactly as tall as the carousel face's content box (250 − 2×22
+  // padding − 2×1 border = 204px). The preview face is 24px shorter, so its
+  // balance gap tightens to 20px and its footer gap to 12px.
+  const balanceGapClass = isCarousel ? "mt-[34px]" : "mt-5";
+  const footerGapClass = isCarousel ? "pt-[18px]" : "pt-3";
+  const budgetText =
+    periodAmount === undefined ? "no budget set" : `${formatUsdc(remaining ?? 0n)} / ${formatUsdc(periodAmount)}`;
 
   return (
     <div
@@ -237,7 +255,7 @@ export function MooringCard({
       role="group"
       onPointerMove={tiltEnabled ? handlePointerMove : undefined}
       onPointerLeave={tiltEnabled ? handlePointerLeave : undefined}
-      className={`relative shrink-0 overflow-hidden px-[26px] py-[22px] ${className ?? ""}`}
+      className={`relative flex shrink-0 flex-col overflow-hidden px-[26px] py-[22px] text-left ${className ?? ""}`}
       style={baseStyle}
     >
       <span
@@ -266,42 +284,55 @@ export function MooringCard({
         }}
       />
 
-      <div className="font-display text-xl tracking-[0.08em] text-text-hi">MOORING</div>
-      <div data-testid="status" className={`font-mono text-[11px] uppercase tracking-[0.16em] ${STATUS_TONE[state]}`}>
+      <div className="font-display text-xl leading-6 tracking-[0.08em] text-text-hi">MOORING</div>
+      <div
+        data-testid="status"
+        className={`font-mono text-[11px] uppercase leading-[14px] tracking-[0.16em] ${STATUS_TONE[state]}`}
+      >
         {STATUS_TEXT[state]}
       </div>
 
-      <div className="mt-[34px] font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">balance</div>
+      <div
+        className={`${balanceGapClass} font-mono text-[11px] uppercase leading-[14px] tracking-[0.16em] text-text-lo`}
+      >
+        balance
+      </div>
       <div data-testid="balance" className={`font-display leading-none text-text-hi ${balanceSizeClass}`}>
         {balance === undefined ? "—" : formatUsdc(balance)} <span className="font-display text-[15px] text-text-lo">USDC</span>
       </div>
 
-      <div className="mt-[18px] flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">
-        <span data-testid="budget-remaining">
-          {periodAmount === undefined ? "no budget set" : `${formatUsdc(remaining ?? 0n)} / ${formatUsdc(periodAmount)}`}
-        </span>
-        <span data-testid="budget-expiry">expires {expiresText}</span>
-      </div>
-      {periodAmount !== undefined ? (
-        <div className="mt-0.5 font-body text-[10px] normal-case tracking-normal text-text-lo/70">left this period</div>
-      ) : null}
-      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-text-hi/[0.08]">
-        <div data-testid="budget-bar-fill" className="h-full rounded-full bg-seaglass" style={{ width: `${budgetPct}%` }} />
-      </div>
+      <div data-part="footer" className={`mt-auto ${footerGapClass}`}>
+        <div className="flex items-baseline justify-between gap-3 font-mono text-[11px] uppercase leading-[14px] tracking-[0.16em] text-text-lo">
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span
+              data-testid="budget-remaining"
+              className="shrink-0"
+              title={periodAmount !== undefined && !isCarousel ? "left this period" : undefined}
+            >
+              {budgetText}
+            </span>
+            {periodAmount !== undefined && isCarousel ? (
+              <span className="min-w-0 truncate font-body text-[10px] normal-case tracking-normal text-text-lo/70">
+                left this period
+              </span>
+            ) : null}
+          </span>
+          <span data-testid="budget-expiry" className="shrink-0">
+            expires {expiresText}
+          </span>
+        </div>
+        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-text-hi/[0.08]">
+          <div data-testid="budget-bar-fill" className="h-full rounded-full bg-seaglass" style={{ width: `${budgetPct}%` }} />
+        </div>
 
-      <div className="mt-4 flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">
-        <span data-testid="allow-count">
-          {allowCount} merchant{allowCount === 1 ? "" : "s"}
-        </span>
-        <span data-testid="footer-signer">signer {signer ? shortAddress(signer) : "—"}</span>
-      </div>
-      <div className="mt-2 flex items-baseline justify-between font-mono text-[11px] text-text-lo">
-        <span data-testid="footer-label" className="normal-case text-text-hi">
-          {label}
-        </span>
-        <span data-testid="footer-address" className="normal-case text-text-hi">
-          {address ? shortAddress(address) : "—"}
-        </span>
+        <div className="mt-3.5 flex items-baseline justify-between gap-3 font-mono text-[12px] leading-[14px] text-text-hi">
+          <span data-testid="footer-label" className="min-w-0 truncate" title={label}>
+            {label}
+          </span>
+          <span data-testid="footer-address" className="shrink-0" title={address}>
+            {address ? shortAddress(address) : "—"}
+          </span>
+        </div>
       </div>
     </div>
   );
