@@ -2,15 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { useCardOp, type OpModalProps } from "@/components/cards/busy";
+import { opButtonLabel, useCardOp, type OpModalProps } from "@/components/cards/busy";
 import { exactAmount } from "@/components/cards/summary";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Toggle } from "@/components/ui/Toggle";
-import { TxStatus } from "@/components/ui/TxStatus";
 import { buildSetPolicy, type Card } from "@/lib/chain/card";
-import { explorerTxUrl } from "@/lib/chain/rpc";
 import { parseUsdc } from "@/lib/format/usdc";
 import { keys } from "@/lib/query/keys";
 
@@ -53,7 +51,7 @@ export interface PolicyModalProps extends OpModalProps {
  * cap, cap ≤ budget, non-zero period, expiry in the future) so an
  * `InvalidPolicy` is caught before anything is signed (spec §6).
  */
-export function PolicyModal({ open, onClose, address, info, nowUnix, onDone }: PolicyModalProps) {
+export function PolicyModal({ open, onClose, address, info, nowUnix }: PolicyModalProps) {
   const [amount, setAmount] = useState(() => exactAmount(info.policy.period_amount));
   const [perTx, setPerTx] = useState(() => exactAmount(info.policy.max_per_tx));
   const [unit, setUnit] = useState<PeriodUnit>(() => unitOf(info.policy.period_duration));
@@ -99,10 +97,8 @@ export function PolicyModal({ open, onClose, address, info, nowUnix, onDone }: P
 
   const op = useCardOp<Card.Policy>("policy", (policy, wallet) => buildSetPolicy(address, policy, wallet), {
     invalidates: () => [keys.info(address)],
-    onDone: () => {
-      onDone("Policy updated");
-      onClose();
-    },
+    label: `Update policy of ${info.label}`,
+    onDone: onClose,
   });
 
   function save() {
@@ -117,69 +113,62 @@ export function PolicyModal({ open, onClose, address, info, nowUnix, onDone }: P
 
   return (
     <Modal open={open} onClose={onClose} title="Edit policy">
-      <Field
-        label="Period budget"
-        value={amount}
-        inputMode="decimal"
-        unit="USDC"
-        onChange={(event) => setAmount(event.target.value)}
-        error={amount ? amountError : undefined}
-      />
-      <Toggle
-        className="mt-2"
-        shape="segment"
-        aria-label="Period length"
-        options={UNIT_OPTIONS}
-        value={unit}
-        onChange={(value) => setUnit(value as PeriodUnit)}
-      />
-      {unit === "custom" ? (
+      <fieldset disabled={op.mine} className="min-w-0">
         <Field
-          label="Period length"
-          value={custom}
-          inputMode="numeric"
-          unit="seconds"
-          onChange={(event) => setCustom(event.target.value)}
-          error={durationError}
+          label="Period budget"
+          value={amount}
+          inputMode="decimal"
+          unit="USDC"
+          onChange={(event) => setAmount(event.target.value)}
+          error={amount ? amountError : undefined}
         />
-      ) : null}
+        <Toggle
+          className="mt-2"
+          shape="segment"
+          aria-label="Period length"
+          options={UNIT_OPTIONS}
+          value={unit}
+          onChange={(value) => setUnit(value as PeriodUnit)}
+        />
+        {unit === "custom" ? (
+          <Field
+            label="Period length"
+            value={custom}
+            inputMode="numeric"
+            unit="seconds"
+            onChange={(event) => setCustom(event.target.value)}
+            error={durationError}
+          />
+        ) : null}
 
-      <Field
-        label="Max per transaction"
-        value={perTx}
-        inputMode="decimal"
-        unit="USDC"
-        onChange={(event) => setPerTx(event.target.value)}
-        error={perTx ? perTxError : undefined}
-        hint="Typically the most a single API call can cost."
-      />
-      <Field
-        label="Expires"
-        type="date"
-        value={expiry}
-        onChange={(event) => setExpiry(event.target.value)}
-        error={expiryError}
-      />
+        <Field
+          label="Max per transaction"
+          value={perTx}
+          inputMode="decimal"
+          unit="USDC"
+          onChange={(event) => setPerTx(event.target.value)}
+          error={perTx ? perTxError : undefined}
+          hint="Typically the most a single API call can cost."
+        />
+        <Field
+          label="Expires"
+          type="date"
+          value={expiry}
+          onChange={(event) => setExpiry(event.target.value)}
+          error={expiryError}
+        />
 
-      <p className="mt-3 text-xs text-text-lo">
-        What the card has already spent in the current period is kept, and the period restarts now.
-      </p>
-
-      <TxStatus
-        className="mt-4"
-        state={op.state}
-        hash={op.hash ?? undefined}
-        error={op.error ?? undefined}
-        explorerUrl={op.hash ? explorerTxUrl(op.hash) : undefined}
-        details={op.details ?? undefined}
-      />
+        <p className="mt-3 text-xs text-text-lo">
+          What the card has already spent in the current period is kept, and the period restarts now.
+        </p>
+      </fieldset>
 
       <div className="mt-5 flex justify-end gap-2.5">
         <Button variant="ghost" onClick={onClose} disabled={op.mine}>
           Close
         </Button>
         <Button onClick={save} loading={op.mine} disabled={!valid || op.locked}>
-          Save policy
+          {opButtonLabel(op.state, "Save policy")}
         </Button>
       </div>
     </Modal>

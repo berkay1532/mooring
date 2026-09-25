@@ -9,6 +9,7 @@ import { PolicyModal } from "../../components/cards/PolicyModal";
 import { RenameModal } from "../../components/cards/RenameModal";
 import { SignerModal } from "../../components/cards/SignerModal";
 import { WithdrawModal } from "../../components/cards/WithdrawModal";
+import { TxToastProvider } from "../../components/ui/TxToast";
 import type { CardInfo } from "../../lib/chain/card";
 
 const BASE = 10_000_000n;
@@ -113,7 +114,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 function details() {
-  return render(<CardDetails address={CARD} owner={OWNER} nowUnix={NOW} onToast={() => {}} onRemoved={() => {}} />);
+  return render(<CardDetails address={CARD} owner={OWNER} nowUnix={NOW} onRemoved={() => {}} />);
 }
 
 // --- tests ----------------------------------------------------------------
@@ -150,6 +151,23 @@ describe("CardDetails", () => {
     // A second click never reaches the wallet a second time.
     fireEvent.click(freeze);
     expect(runCalls).toHaveLength(1);
+  });
+
+  it("reports a write on a toast, not inline in the panel", () => {
+    render(
+      <TxToastProvider>
+        <CardDetails address={CARD} owner={OWNER} nowUnix={NOW} onRemoved={() => {}} />
+      </TxToastProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Freeze" }));
+
+    const toast = screen.getByTestId("tx-toast");
+    expect(toast).toHaveAttribute("data-state", "preparing");
+    expect(toast).toHaveTextContent("Freeze inference-agent");
+    // Nothing transaction-shaped is rendered inside the details panel itself.
+    const panel = screen.getByRole("region", { name: /inference-agent details/i });
+    expect(panel.querySelector("[data-state]")).toBeNull();
+    expect(panel).not.toHaveTextContent(/waiting for signature|preparing the transaction/i);
   });
 
   it("renders the agent signer as a G… strkey", () => {
@@ -192,7 +210,7 @@ describe("CardDetails", () => {
 describe("RenameModal", () => {
   function renameModal() {
     return render(
-      <RenameModal open address={CARD} info={cardInfo} onClose={() => {}} onDone={() => {}} />,
+      <RenameModal open address={CARD} info={cardInfo} onClose={() => {}} />,
     );
   }
 
@@ -224,7 +242,7 @@ describe("RenameModal", () => {
 
 describe("CancelModal", () => {
   it("keeps the confirm button disabled until 'cancel' is typed", () => {
-    render(<CancelModal open address={CARD} info={cardInfo} onClose={() => {}} onDone={() => {}} />);
+    render(<CancelModal open address={CARD} info={cardInfo} onClose={() => {}} />);
     const confirm = screen.getByRole("button", { name: /cancel this card/i });
     expect(confirm).toBeDisabled();
 
@@ -239,9 +257,24 @@ describe("CancelModal", () => {
 describe("WithdrawModal", () => {
   function withdrawModal() {
     return render(
-      <WithdrawModal open address={CARD} info={cardInfo} owner={OWNER} onClose={() => {}} onDone={() => {}} />,
+      <WithdrawModal open address={CARD} info={cardInfo} owner={OWNER} onClose={() => {}} />,
     );
   }
+
+  it("disables the form and names what it waits for while the withdrawal is in flight", () => {
+    render(
+      <TxToastProvider>
+        <WithdrawModal open address={CARD} info={cardInfo} owner={OWNER} onClose={() => {}} />
+      </TxToastProvider>,
+    );
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^withdraw$/i }));
+
+    expect(screen.getByRole("button", { name: /preparing/i })).toBeDisabled();
+    expect(screen.getByLabelText(/amount/i)).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^max$/i })).toBeDisabled();
+    expect(screen.getByTestId("tx-toast")).toHaveTextContent("Withdraw 1.00 USDC from inference-agent");
+  });
 
   it("fills Max from the exact base-unit balance, not the 2-decimal display", () => {
     withdrawModal();
@@ -282,7 +315,7 @@ describe("WithdrawModal", () => {
 describe("PolicyModal", () => {
   function policyModal() {
     return render(
-      <PolicyModal open address={CARD} info={cardInfo} nowUnix={NOW} onClose={() => {}} onDone={() => {}} />,
+      <PolicyModal open address={CARD} info={cardInfo} nowUnix={NOW} onClose={() => {}} />,
     );
   }
 
@@ -306,7 +339,7 @@ describe("PolicyModal", () => {
 
 describe("SignerModal", () => {
   it("validates the key and asks for a second confirmation", () => {
-    render(<SignerModal open address={CARD} info={cardInfo} onClose={() => {}} onDone={() => {}} />);
+    render(<SignerModal open address={CARD} info={cardInfo} onClose={() => {}} />);
     const input = screen.getByLabelText(/agent public key/i);
 
     fireEvent.change(input, { target: { value: "not-a-key" } });

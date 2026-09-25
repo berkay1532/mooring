@@ -17,9 +17,7 @@ import { CardBusyProvider, useCardBusy, useCardOp } from "@/components/cards/bus
 import { faceState } from "@/components/cards/summary";
 import { Button } from "@/components/ui/Button";
 import { Pill } from "@/components/ui/Pill";
-import { TxStatus } from "@/components/ui/TxStatus";
 import { buildFreeze, buildUnfreeze } from "@/lib/chain/card";
-import { explorerTxUrl } from "@/lib/chain/rpc";
 import { shortAddress } from "@/lib/format/address";
 import { getAddedCards } from "@/lib/prefs";
 import { useCardInfo, useMerchants } from "@/lib/query/hooks";
@@ -40,7 +38,6 @@ export interface CardDetailsProps {
   fundSignal?: number;
   /** Called once the Fund sheet has been opened for a {@link CardDetailsProps.fundSignal}. */
   onFundOpened?: () => void;
-  onToast: (message: string) => void;
   /** The owner dropped this (manually added) card from the dashboard. */
   onRemoved: (address: string) => void;
 }
@@ -67,7 +64,6 @@ function CardDetailsInner({
   nowUnix,
   fundSignal,
   onFundOpened,
-  onToast,
   onRemoved,
 }: CardDetailsProps) {
   const now = nowUnix ?? Math.floor(Date.now() / 1000);
@@ -107,7 +103,7 @@ function CardDetailsInner({
     (_args, wallet) => (frozen ? buildUnfreeze(address, wallet) : buildFreeze(address, wallet)),
     {
       invalidates: () => [keys.info(address)],
-      onDone: () => onToast(frozen ? "Card unfrozen" : "Card frozen"),
+      label: `${frozen ? "Unfreeze" : "Freeze"} ${info?.label ?? "card"}`,
     },
   );
 
@@ -188,17 +184,6 @@ function CardDetailsInner({
         }
       />
 
-      {freeze.state !== "idle" ? (
-        <TxStatus
-          className="mt-4"
-          state={freeze.state}
-          hash={freeze.hash ?? undefined}
-          error={freeze.error ?? undefined}
-          explorerUrl={freeze.hash ? explorerTxUrl(freeze.hash) : undefined}
-          details={freeze.details ?? undefined}
-        />
-      ) : null}
-
       <div className="mt-5 flex flex-col gap-5 lg:flex-row">
         <div className="min-w-0 flex-1">
           <PolicySection info={info} nowUnix={now} onEdit={() => setPanel("policy")} disabled={disabled} />
@@ -209,7 +194,6 @@ function CardDetailsInner({
             merchants={merchantsQuery.data ?? []}
             loading={merchantsQuery.isLoading}
             disabled={disabled}
-            onDone={onToast}
           />
           <AgentSection info={info} onRotate={() => setPanel("signer")} disabled={disabled} />
         </div>
@@ -228,14 +212,12 @@ function CardDetailsInner({
         address={address}
         info={info}
         owner={owner}
-        onDone={onToast}
       />
       <RenameModal
         open={panel === "rename"}
         onClose={() => setPanel(null)}
         address={address}
         info={info}
-        onDone={onToast}
       />
       <PolicyModal
         open={panel === "policy"}
@@ -243,14 +225,12 @@ function CardDetailsInner({
         address={address}
         info={info}
         nowUnix={now}
-        onDone={onToast}
       />
       <SignerModal
         open={panel === "signer"}
         onClose={() => setPanel(null)}
         address={address}
         info={info}
-        onDone={onToast}
       />
       <WithdrawModal
         open={panel === "withdraw"}
@@ -258,14 +238,12 @@ function CardDetailsInner({
         address={address}
         info={info}
         owner={owner}
-        onDone={onToast}
       />
       <CancelModal
         open={panel === "cancel"}
         onClose={() => setPanel(null)}
         address={address}
         info={info}
-        onDone={onToast}
       />
     </section>
   );

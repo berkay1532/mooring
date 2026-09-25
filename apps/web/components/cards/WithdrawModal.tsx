@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-import { useCardOp, type OpModalProps } from "@/components/cards/busy";
+import { opButtonLabel, useCardOp, type OpModalProps } from "@/components/cards/busy";
 import { exactAmount } from "@/components/cards/summary";
 import { TRUSTLINE_MISSING_COPY, TRUSTLINE_UNKNOWN_COPY, trustlineStatus } from "@/components/cards/trustline";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { TxStatus } from "@/components/ui/TxStatus";
 import { buildWithdraw } from "@/lib/chain/card";
-import { explorerTxUrl } from "@/lib/chain/rpc";
 import { formatUsdc, parseUsdc } from "@/lib/format/usdc";
 import { useUsdcBalance } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
@@ -28,7 +26,7 @@ export interface WithdrawModalProps extends OpModalProps {
  * through the 2-decimal display would let a card holding 11.0000001 refuse
  * its own balance — or offer 11.00 it cannot pay.
  */
-export function WithdrawModal({ open, onClose, address, info, owner, onDone }: WithdrawModalProps) {
+export function WithdrawModal({ open, onClose, address, info, owner }: WithdrawModalProps) {
   const [amount, setAmount] = useState("");
   useEffect(() => {
     if (open) setAmount("");
@@ -52,64 +50,55 @@ export function WithdrawModal({ open, onClose, address, info, owner, onDone }: W
 
   const op = useCardOp<bigint>("withdraw", (value, wallet) => buildWithdraw(address, value, wallet), {
     invalidates: () => [keys.info(address), keys.balance(owner)],
-    onDone: () => {
-      onDone("Withdrawal confirmed");
-      onClose();
-    },
+    label: (value) => `Withdraw ${formatUsdc(value)} USDC from ${info.label}`,
+    onDone: onClose,
   });
 
   const valid = parsed !== null && parsed > 0n && !tooMuch && trustline !== "missing";
 
   return (
     <Modal open={open} onClose={onClose} title="Withdraw to my wallet">
-      <p className="mt-2 text-sm text-text-lo">
-        Card balance{" "}
-        <span className="text-text-hi" title={`${formatUsdc(info.balance, { full: true })} USDC`}>
-          {formatUsdc(info.balance)} USDC
-        </span>
-        .
-      </p>
-
-      <Field
-        label="Amount"
-        value={amount}
-        inputMode="decimal"
-        unit="USDC"
-        onChange={(event) => setAmount(event.target.value)}
-        error={error}
-      />
-      <div className="mt-2 flex gap-2">
-        <Button
-          variant="ghost"
-          className="px-2.5 py-1 text-[11px]"
-          title={`${formatUsdc(info.balance, { full: true })} USDC`}
-          onClick={() => setAmount(exactAmount(info.balance))}
-        >
-          Max
-        </Button>
-      </div>
-
-      {trustline === "missing" || trustline === "unknown" ? (
-        <p className="mt-3 rounded-[14px] border border-amber/30 bg-bg-raised px-4 py-3 text-xs text-text-lo">
-          {trustline === "missing" ? TRUSTLINE_MISSING_COPY : TRUSTLINE_UNKNOWN_COPY}
+      <fieldset disabled={op.mine} className="min-w-0">
+        <p className="mt-2 text-sm text-text-lo">
+          Card balance{" "}
+          <span className="text-text-hi" title={`${formatUsdc(info.balance, { full: true })} USDC`}>
+            {formatUsdc(info.balance)} USDC
+          </span>
+          .
         </p>
-      ) : null}
 
-      <TxStatus
-        className="mt-4"
-        state={op.state}
-        hash={op.hash ?? undefined}
-        error={op.error ?? undefined}
-        explorerUrl={op.hash ? explorerTxUrl(op.hash) : undefined}
-        details={op.details ?? undefined}
-      />
+        <Field
+          label="Amount"
+          value={amount}
+          inputMode="decimal"
+          unit="USDC"
+          onChange={(event) => setAmount(event.target.value)}
+          error={error}
+        />
+        <div className="mt-2 flex gap-2">
+          <Button
+            variant="ghost"
+            className="px-2.5 py-1 text-[11px]"
+            title={`${formatUsdc(info.balance, { full: true })} USDC`}
+            onClick={() => setAmount(exactAmount(info.balance))}
+          >
+            Max
+          </Button>
+        </div>
+
+        {trustline === "missing" || trustline === "unknown" ? (
+          <p className="mt-3 rounded-[14px] border border-amber/30 bg-bg-raised px-4 py-3 text-xs text-text-lo">
+            {trustline === "missing" ? TRUSTLINE_MISSING_COPY : TRUSTLINE_UNKNOWN_COPY}
+          </p>
+        ) : null}
+      </fieldset>
 
       <div className="mt-5 flex justify-end gap-2.5">
         <Button variant="ghost" onClick={onClose} disabled={op.mine}>
           Close
         </Button>
         <Button onClick={() => void op.run(parsed as bigint)} loading={op.mine} disabled={!valid || op.locked}>
-          Withdraw
+          {opButtonLabel(op.state, "Withdraw")}
         </Button>
       </div>
     </Modal>

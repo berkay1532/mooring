@@ -36,7 +36,7 @@ app verifies on-chain that the address is a Mooring card owned by the connected 
 apps/web/
   app/            App Router routes (/, /cards, /cards/new, /dev/gallery), fonts, providers
   components/
-    ui/           Button, Field, Modal, Sheet, Toggle, Pill, Stat, Toast, TxStatus
+    ui/           Button, Field, Modal, Sheet, Toggle, Pill, Stat, Toast, TxToast
     card/         MooringCard (3 sizes x 4 states), CardCarousel, CardList
     cards/        details sections: policy, merchants, agent, danger zone, fund, modals
     wizard/       wizard steps and the live preview card
@@ -71,9 +71,15 @@ confirmation — never optimistically.
 **Action state machine.** One hook, `useContractAction`, drives every write:
 `idle → preparing → signing → submitted → confirmed | failed`. It simulates once, detects a
 failed simulation before asking for a signature (so a policy violation never reaches the
-wallet), fails fast on `TRY_AGAIN_LATER`, and cancels cleanly if the component unmounts. The
-shared `TxStatus` component renders those states, the transaction hash, and the translated
-error. Only one action per card can be in flight; the rest are disabled while it runs.
+wallet), fails fast on `TRY_AGAIN_LATER`, and cancels cleanly if the component unmounts. Each
+write gets its own toast in one global stack (bottom-right, `TxToastProvider` in
+`app/providers.tsx`, so toasts survive navigation): the four-step progress while in flight,
+with a collapsed **Details** toggle showing the contract, function, arguments and envelope XDR
+before the wallet prompt; the hash and an explorer link once confirmed (dismissed after 10 s);
+the translated error on failure (kept until closed). Modals and sheets close themselves on
+confirmation; while a write is in flight their form is disabled and the primary button says
+what it waits for. Only one action per card can be in flight; the rest are disabled while it
+runs.
 
 **Generated bindings.** `packages/contracts-ts` holds `stellar contract bindings typescript`
 output for the card and factory, pinned to the workspace's exact `@stellar/stellar-sdk` 17.0.1.

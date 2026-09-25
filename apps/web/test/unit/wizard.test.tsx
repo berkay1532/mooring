@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import NewCardPage from "../../app/cards/new/page";
+import { TxToastProvider } from "../../components/ui/TxToast";
 import { CardDetails } from "../../components/cards/CardDetails";
 import { FundDeepLink } from "../../components/cards/FundDeepLink";
 import type { CardInfo } from "../../lib/chain/card";
@@ -157,7 +158,11 @@ function info(): CardInfo {
 
 function Wrapper({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }));
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <TxToastProvider>{children}</TxToastProvider>
+    </QueryClientProvider>
+  );
 }
 
 function wizard() {
@@ -519,6 +524,14 @@ describe("new-card wizard · step 3 (confirm)", () => {
     expect(runCalls[1].args).toMatchObject({ card: expected(), merchant: MERCHANT });
     expect(runCalls[2].args).toMatchObject({ card: expected(), merchant: MERCHANT_2 });
     await waitFor(() => expect(push).toHaveBeenCalledWith("/cards?fund=1"));
+
+    // One toast per transaction, in order, each confirmed.
+    const toasts = screen.getAllByTestId("tx-toast");
+    expect(toasts).toHaveLength(3);
+    expect(toasts[0]).toHaveTextContent("Create card inference-agent");
+    expect(toasts[1]).toHaveTextContent(/Add merchant GAIR…CF6M \(1 of 2\)/);
+    expect(toasts[2]).toHaveTextContent(/\(2 of 2\)/);
+    for (const toast of toasts) expect(toast).toHaveAttribute("data-state", "confirmed");
   });
 });
 
@@ -550,7 +563,7 @@ describe("fund deep link", () => {
         nowUnix={NOW}
         fundSignal={1}
         onFundOpened={onFundOpened}
-        onToast={() => {}}
+       
         onRemoved={() => {}}
       />,
       { wrapper: Wrapper },
@@ -561,7 +574,7 @@ describe("fund deep link", () => {
 
   it("does not open the fund sheet for the next card once the signal is consumed", async () => {
     render(
-      <CardDetails address={CARD} owner={OWNER} nowUnix={NOW} fundSignal={0} onToast={() => {}} onRemoved={() => {}} />,
+      <CardDetails address={CARD} owner={OWNER} nowUnix={NOW} fundSignal={0} onRemoved={() => {}} />,
       { wrapper: Wrapper },
     );
     await waitFor(() => expect(screen.getByText(/inference-agent/i)).toBeInTheDocument());

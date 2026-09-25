@@ -4,7 +4,7 @@ import { GalleryClient } from "./GalleryClient";
 
 /**
  * Dev-only visual gallery of every design-system primitive, `MooringCard`
- * (all sizes × states), and `TxStatus` (all states) with mock data — so a
+ * (all sizes × states), and `TxToast` (all states) with mock data — so a
  * reviewer or the owner can eyeball fidelity against the mockups without
  * wiring up a wallet or a card. Deliberately outside `NetworkGuard`.
  *

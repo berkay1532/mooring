@@ -74,10 +74,18 @@ test.describe("new-card wizard", () => {
 
     await page.getByRole("button", { name: "Create with Freighter" }).click();
 
+    // The transaction reports on a toast, from before the wallet prompt on.
+    const toast = page.getByTestId("tx-toast").first();
+    await expect(toast).toContainText("Create card ops-agent");
+
     const fundSheet = page.getByRole("dialog", { name: "Fund the card" });
     await expect(fundSheet).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(/\/cards$/);
     await expect(fundSheet).toContainText("ops-agent");
+
+    // The toast lives above the routes: it survives the navigation, confirmed.
+    await expect(toast).toHaveAttribute("data-state", "confirmed");
+    await expect(page.getByTestId("tx-toast")).toHaveCount(1);
 
     expect(rpc.submitted.map((call) => call.fn)).toEqual(["create_card"]);
     expect(rpc.cards.map((card) => card.label)).toContain("ops-agent");

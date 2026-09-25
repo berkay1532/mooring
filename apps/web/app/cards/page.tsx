@@ -14,7 +14,7 @@ import { totals, useCardSummaries } from "@/components/cards/summary";
 import { HeaderBar } from "@/components/layout/HeaderBar";
 import { NetworkGuard } from "@/components/layout/NetworkGuard";
 import { Button } from "@/components/ui/Button";
-import { Toast } from "@/components/ui/Toast";
+import { useTxToasts } from "@/components/ui/TxToast";
 import { Toggle } from "@/components/ui/Toggle";
 import { formatUsdc } from "@/lib/format/usdc";
 import { getSelected, getViewMode, removeCard, setSelected, setViewMode, type ViewMode } from "@/lib/prefs";
@@ -57,7 +57,7 @@ function CardsScreen() {
   const [selected, setSelectedCard] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("grid");
   const [adding, setAdding] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const { notify } = useTxToasts();
   // Bumped by `?fund=1` (the new-card wizard lands here), which tells the
   // details panel below to open the Fund sheet for the selected card.
   const [fundSignal, setFundSignal] = useState(0);
@@ -117,9 +117,9 @@ function CardsScreen() {
       // this dashboard no longer lists.
       setSelected(owner, next);
       void queryClient.invalidateQueries({ queryKey: keys.cards(owner) });
-      setToast("Card removed from this browser");
+      notify("Card removed from this browser");
     },
-    [owner, addresses, queryClient],
+    [owner, addresses, queryClient, notify],
   );
 
   const onAdded = useCallback(
@@ -127,9 +127,9 @@ function CardsScreen() {
       if (!owner) return;
       void queryClient.invalidateQueries({ queryKey: keys.cards(owner) });
       select(address);
-      setToast("Card added");
+      notify("Card added");
     },
-    [owner, queryClient, select],
+    [owner, queryClient, select, notify],
   );
 
   const hasCards = addresses.length > 0;
@@ -213,25 +213,19 @@ function CardsScreen() {
             owner={owner as string}
             fundSignal={fundSignal}
             onFundOpened={() => setFundSignal(0)}
-            onToast={setToast}
             onRemoved={handleRemoved}
           />
         ) : null}
       </div>
 
       <Suspense fallback={null}>
-        <FundDeepLink
-          onFund={() => {
-            setFundSignal((n) => n + 1);
-            // `?fund=1` is only ever set by the new-card wizard, which
-            // cannot show this itself: its own toast would be unmounted by
-            // the navigation that brings the owner here.
-            setToast("Card created");
-          }}
-        />
+        {/* `?fund=1` is only ever set by the new-card wizard. Its
+            transaction toasts (create, then each merchant) live in the
+            global stack, so they are still on screen here — no separate
+            "Card created" notice. */}
+        <FundDeepLink onFund={() => setFundSignal((n) => n + 1)} />
       </Suspense>
       <AddCardModal open={adding} onClose={() => setAdding(false)} owner={owner ?? ""} onAdded={onAdded} />
-      {toast ? <Toast message={toast} tone="success" onDismiss={() => setToast(null)} /> : null}
     </main>
   );
 }

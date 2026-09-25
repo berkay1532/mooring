@@ -3,7 +3,7 @@
 import { StrKey } from "@stellar/stellar-sdk";
 import { useState } from "react";
 
-import { useCardOp } from "@/components/cards/busy";
+import { opButtonLabel, useCardOp } from "@/components/cards/busy";
 import {
   KV_CLASS,
   SECTION_HEAD_CLASS,
@@ -13,9 +13,7 @@ import {
 } from "@/components/cards/PolicySection";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
-import { TxStatus } from "@/components/ui/TxStatus";
 import { buildAddMerchant, buildRemoveMerchant } from "@/lib/chain/card";
-import { explorerTxUrl } from "@/lib/chain/rpc";
 import { shortAddress } from "@/lib/format/address";
 import { keys } from "@/lib/query/keys";
 
@@ -33,7 +31,6 @@ export interface MerchantsSectionProps {
    * the panel would promise something it does not keep.
    */
   disabled?: boolean;
-  onDone: (message: string) => void;
 }
 
 function isValidMerchant(value: string): boolean {
@@ -42,10 +39,10 @@ function isValidMerchant(value: string): boolean {
 
 /**
  * The merchant allowlist: who the card is allowed to pay. Adding and
- * removing are both owner transactions, so each renders the shared
- * {@link TxStatus} in place and participates in the per-card busy lock.
+ * removing are both owner transactions, so each reports its progress on a
+ * toast (see `useCardOp`) and participates in the per-card busy lock.
  */
-export function MerchantsSection({ address, merchants, loading, disabled, onDone }: MerchantsSectionProps) {
+export function MerchantsSection({ address, merchants, loading, disabled }: MerchantsSectionProps) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -53,23 +50,22 @@ export function MerchantsSection({ address, merchants, loading, disabled, onDone
 
   const add = useCardOp<string>("merchant-add", (merchant, wallet) => buildAddMerchant(address, merchant, wallet), {
     invalidates,
+    label: (merchant) => `Add merchant ${shortAddress(merchant)}`,
     onDone: () => {
       setDraft("");
       setAdding(false);
-      onDone("Merchant added");
     },
   });
   const remove = useCardOp<string>(
     "merchant-remove",
     (merchant, wallet) => buildRemoveMerchant(address, merchant, wallet),
-    { invalidates, onDone: () => onDone("Merchant removed") },
+    { invalidates, label: (merchant) => `Remove merchant ${shortAddress(merchant)}` },
   );
 
   const full = merchants.length >= MAX_MERCHANTS;
   const duplicate = merchants.includes(draft.trim());
   const draftValid = isValidMerchant(draft.trim()) && !duplicate;
   const busy = Boolean(disabled) || add.locked || remove.locked;
-  const op = add.state !== "idle" ? add : remove;
 
   return (
     <div className={SURFACE_CLASS}>
@@ -116,6 +112,7 @@ export function MerchantsSection({ address, merchants, loading, disabled, onDone
           <Field
             label="Merchant address"
             value={draft}
+            disabled={add.mine}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="G… or C…"
             error={draft && !draftValid ? (duplicate ? "This merchant is already allowed." : "Enter a Stellar address (G… or C…).") : undefined}
@@ -128,21 +125,10 @@ export function MerchantsSection({ address, merchants, loading, disabled, onDone
               loading={add.mine}
               disabled={!draftValid || busy || full}
             >
-              Add merchant
+              {opButtonLabel(add.state, "Add merchant")}
             </Button>
           </div>
         </div>
-      ) : null}
-
-      {op.state !== "idle" ? (
-        <TxStatus
-          className="mt-3"
-          state={op.state}
-          hash={op.hash ?? undefined}
-          error={op.error ?? undefined}
-          explorerUrl={op.hash ? explorerTxUrl(op.hash) : undefined}
-          details={op.details ?? undefined}
-        />
       ) : null}
     </div>
   );

@@ -4,9 +4,9 @@ import type { Card } from "@mooring/contracts-ts";
 
 import { periodLabel } from "@/components/cards/summary";
 import { Button } from "@/components/ui/Button";
-import { TxStatus, type TxDetailsProps, type TxError, type TxState } from "@/components/ui/TxStatus";
+import { opButtonLabel } from "@/components/cards/busy";
+import type { TxState } from "@/components/ui/TxToast";
 import { formatDate } from "@/components/wizard/PolicyStep";
-import { explorerTxUrl } from "@/lib/chain/rpc";
 import { config } from "@/lib/config";
 import { shortAddress } from "@/lib/format/address";
 import { formatDuration } from "@/lib/format/time";
@@ -22,9 +22,14 @@ export interface ConfirmStepProps {
   address?: string;
   /** Something went wrong working out the next free address. */
   addressError?: boolean;
-  /** Extra line under the status box, e.g. "Adding merchant 2 of 3". */
+  /** A progress line above the buttons, e.g. "Adding merchant 2 of 3". */
   progress?: string;
-  tx: { state: TxState; hash?: string; error?: TxError; details?: TxDetailsProps };
+  /**
+   * The state of the transaction in flight. Its progress, §7 details, hash
+   * and any error are on its toast (see `useCreateCard`); this step only
+   * needs the state for the button text and the skip offer.
+   */
+  tx: { state: TxState };
   /** Disabled until the expected address is known and nothing is in flight. */
   canCreate: boolean;
   creating: boolean;
@@ -136,15 +141,10 @@ export function ConfirmStep({
         </p>
       ) : null}
 
-      <TxStatus
-        className="mt-4"
-        state={tx.state}
-        hash={tx.hash}
-        error={tx.error}
-        explorerUrl={tx.hash ? explorerTxUrl(tx.hash) : undefined}
-        details={tx.details}
-      />
-      {progress ? <p className="mt-2 text-xs text-text-lo">{progress}</p> : null}
+      {progress ? <p className="mt-4 text-xs text-text-lo">{progress}</p> : null}
+      {tx.state === "failed" ? (
+        <p className="mt-2 text-xs text-danger-text">The last transaction did not go through — the notification has the details.</p>
+      ) : null}
       {tx.state === "failed" && onSkipMerchants ? (
         <div className="mt-2 flex justify-end">
           <Button variant="ghost" className="px-3.5 py-1.5 text-xs" onClick={onSkipMerchants}>
@@ -158,7 +158,7 @@ export function ConfirmStep({
           ← Back
         </Button>
         <Button onClick={onCreate} loading={creating} disabled={!canCreate}>
-          {submitLabel}
+          {creating ? opButtonLabel(tx.state, submitLabel) : submitLabel}
         </Button>
       </div>
     </div>

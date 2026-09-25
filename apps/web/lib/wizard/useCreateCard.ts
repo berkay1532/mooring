@@ -5,10 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Card } from "@mooring/contracts-ts";
 import type { AssembledTransaction } from "@stellar/stellar-sdk/contract";
 
+import { useTxToast } from "@/components/ui/TxToast";
 import { buildAddMerchant, buildCreateCard } from "@/lib/chain/card";
 import type { TranslatedError } from "@/lib/chain/errors";
 import { saltBytes } from "@/lib/chain/derive";
+import { explorerTxUrl } from "@/lib/chain/rpc";
 import { config } from "@/lib/config";
+import { shortAddress } from "@/lib/format/address";
 import { useContractAction, type ActionState, type TxDetails } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
 
@@ -75,6 +78,11 @@ function createdAddress(tx: AssembledTransaction<string> | null): string | null 
   } catch {
     return null;
   }
+}
+
+/** "Add merchant GAW3…M2KA (2 of 3)" — one merchant transaction's toast label. */
+function merchantLabel(merchants: readonly string[], index: number): string {
+  return `Add merchant ${shortAddress(merchants[index] ?? "")} (${index + 1} of ${merchants.length})`;
 }
 
 /**
@@ -153,6 +161,13 @@ export function useCreateCard(
     },
   );
 
+  // One toast per transaction (spec §3.3 + the toast stack): the card, then
+  // each merchant. Labels are fixed when each run starts.
+  const createToast = useTxToast(create, { explorerUrl: explorerTxUrl });
+  const merchantToast = useTxToast(addMerchant, { explorerUrl: explorerTxUrl });
+  const beginCreate = createToast.begin;
+  const beginMerchant = merchantToast.begin;
+
   const finish = useCallback(() => {
     if (finishedRef.current) return;
     const created = cardRef.current;
@@ -174,8 +189,9 @@ export function useCreateCard(
     }
     if (startedRef.current === merchantIndex) return;
     startedRef.current = merchantIndex;
+    beginMerchant(merchantLabel(merchants, merchantIndex));
     void runMerchant({ card, merchant: merchants[merchantIndex] });
-  }, [phase, merchantIndex, finish, runMerchant]);
+  }, [phase, merchantIndex, finish, runMerchant, beginMerchant]);
 
   const runCreate = create.run;
   const start = useCallback(() => {
@@ -191,15 +207,17 @@ export function useCreateCard(
     activeRef.current = next;
     setAddress(next.address);
     setPhase("card");
+    beginCreate(`Create card ${next.label}`);
     void runCreate(next);
-  }, [runCreate]);
+  }, [runCreate, beginCreate]);
 
   const retryMerchant = useCallback(() => {
     const card = cardRef.current;
     const merchants = activeRef.current?.merchants ?? [];
     if (!card || merchantIndex >= merchants.length) return;
+    beginMerchant(merchantLabel(merchants, merchantIndex));
     void runMerchant({ card, merchant: merchants[merchantIndex] });
-  }, [merchantIndex, runMerchant]);
+  }, [merchantIndex, runMerchant, beginMerchant]);
 
   // Whichever transaction the status box is about: the merchant one while
   // it is running, the card one before the first merchant starts (and when

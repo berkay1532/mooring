@@ -4,8 +4,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+import { useTxToast } from "@/components/ui/TxToast";
 import type { Wallet } from "@/lib/chain/card";
-import { useContractAction, type BuiltTransaction, type ContractActionResult } from "@/lib/query/hooks";
+import { explorerTxUrl } from "@/lib/chain/rpc";
+import {
+  useContractAction,
+  type ActionState,
+  type BuiltTransaction,
+  type ContractActionResult,
+} from "@/lib/query/hooks";
 
 interface BusyContextValue {
   /** True while *any* registered action on this card is in flight. */
@@ -54,8 +61,13 @@ export function useCardBusy(): BusyContextValue {
 export interface CardOpOptions<TArgs> {
   invalidates: (args: TArgs) => QueryKey[];
   /**
-   * Called a beat after the transaction confirms, so the user sees the
-   * "Confirmed" state before the sheet/modal closes and the toast appears.
+   * What the transaction does, for its toast ("Freeze inference-agent",
+   * "Fund 12.50 USDC"). Evaluated once per run, with that run's arguments.
+   */
+  label: string | ((args: TArgs) => string);
+  /**
+   * Called a beat after the transaction confirms (a sheet/modal closes
+   * itself here). The confirmation itself is on the transaction's toast.
    */
   onDone?: (hash: string) => void;
 }
@@ -71,9 +83,10 @@ export interface CardOpResult<TArgs> extends ContractActionResult<TArgs> {
 const DONE_DELAY_MS = 900;
 
 /**
- * One card write: `useContractAction` plus the per-card busy lock and the
- * "hold the confirmed state for a beat, then close" behaviour every sheet
- * and modal on this screen shares.
+ * One card write: `useContractAction` plus the per-card busy lock, the
+ * transaction's toast (progress, §7 details, confirmation or error — see
+ * `useTxToast`), and the "hold the confirmed state for a beat, then close"
+ * behaviour every sheet and modal on this screen shares.
  */
 export function useCardOp<TArgs>(
   id: string,
@@ -101,6 +114,22 @@ export function useCardOp<TArgs>(
     [],
   );
 
+  // Each run gets its own toast, labelled from that run's arguments, so it
+  // keeps describing what was actually signed.
+  const toast = useTxToast(action, { explorerUrl: explorerTxUrl });
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
+  const actionRun = action.run;
+  const begin = toast.begin;
+  const run = useCallback(
+    (args: TArgs) => {
+      const { label } = optsRef.current;
+      begin(typeof label === "function" ? label(args) : label);
+      return actionRun(args);
+    },
+    [actionRun, begin],
+  );
+
   const { busy, report } = useCardBusy();
   const mine = action.state === "preparing" || action.state === "signing" || action.state === "submitted";
 
@@ -109,7 +138,24 @@ export function useCardOp<TArgs>(
     return () => report(id, false);
   }, [id, mine, report]);
 
-  return { ...action, mine, locked: busy && !mine };
+  return { ...action, run, mine, locked: busy && !mine };
+}
+
+/**
+ * A primary button's text while its transaction is in flight — the
+ * progress itself is on the toast, the button just says what it waits for.
+ */
+export function opButtonLabel(state: ActionState, idle: string): string {
+  switch (state) {
+    case "preparing":
+      return "Preparing…";
+    case "signing":
+      return "Waiting for signature…";
+    case "submitted":
+      return "Submitting…";
+    default:
+      return idle;
+  }
 }
 
 /** The prop shape every owner-operation modal on this screen shares. */
@@ -118,6 +164,4 @@ export interface OpModalProps {
   onClose: () => void;
   address: string;
   info: import("@/lib/chain/card").CardInfo;
-  /** Called after a confirmed write, with the sentence for the toast. */
-  onDone: (message: string) => void;
 }

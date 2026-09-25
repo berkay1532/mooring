@@ -2,16 +2,14 @@
 
 import { useEffect, useState } from "react";
 
-import { useCardOp, type OpModalProps } from "@/components/cards/busy";
+import { opButtonLabel, useCardOp, type OpModalProps } from "@/components/cards/busy";
 import { exactAmount } from "@/components/cards/summary";
 import { TRUSTLINE_MISSING_COPY, trustlineStatus } from "@/components/cards/trustline";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { Toggle } from "@/components/ui/Toggle";
-import { TxStatus } from "@/components/ui/TxStatus";
 import { buildFundTransfer } from "@/lib/chain/card";
-import { explorerTxUrl } from "@/lib/chain/rpc";
 import { formatUsdc, parseUsdc } from "@/lib/format/usdc";
 import { useUsdcBalance } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
@@ -36,7 +34,7 @@ export interface FundSheetProps extends OpModalProps {
  * anywhere else. The transfer is a plain SAC `transfer(owner → card)` signed
  * by the owner — the card's own policy is not involved in funding it.
  */
-export function FundSheet({ open, onClose, address, info, owner, onDone }: FundSheetProps) {
+export function FundSheet({ open, onClose, address, info, owner }: FundSheetProps) {
   const [tab, setTab] = useState<FundTab>("wallet");
   const [amount, setAmount] = useState("");
   const [qr, setQr] = useState<string | null>(null);
@@ -92,10 +90,8 @@ export function FundSheet({ open, onClose, address, info, owner, onDone }: FundS
 
   const op = useCardOp<bigint>("fund", (value) => buildFundTransfer(owner, address, value), {
     invalidates: () => [keys.info(address), keys.balance(owner)],
-    onDone: () => {
-      onDone("Card funded");
-      onClose();
-    },
+    label: (value) => `Fund ${info.label} with ${formatUsdc(value)} USDC`,
+    onDone: onClose,
   });
 
   async function copy() {
@@ -117,56 +113,51 @@ export function FundSheet({ open, onClose, address, info, owner, onDone }: FundS
         <span title={`${formatUsdc(info.balance, { full: true })} USDC`}>{formatUsdc(info.balance)} USDC</span>
       </p>
 
-      <Toggle
-        className="mt-3.5"
-        shape="segment"
-        aria-label="Funding method"
-        options={TABS}
-        value={tab}
-        onChange={(value) => setTab(value as FundTab)}
-      />
+      <fieldset disabled={op.mine} className="min-w-0">
+        <Toggle
+          className="mt-3.5"
+          shape="segment"
+          aria-label="Funding method"
+          options={TABS}
+          value={tab}
+          onChange={(value) => setTab(value as FundTab)}
+        />
+      </fieldset>
 
       {tab === "wallet" ? (
         <>
-          <Field
-            label="Amount"
-            value={amount}
-            inputMode="decimal"
-            unit={available !== undefined ? `USDC · ${formatUsdc(available)} in wallet` : "USDC"}
-            onChange={(event) => setAmount(event.target.value)}
-            error={error}
-          />
-          <div className="mt-2 flex flex-wrap gap-2">
-            {quickPicks.map((pick) => (
-              <Button key={pick} variant="ghost" className="px-2.5 py-1 text-[11px]" onClick={() => setAmount(pick)}>
-                {pick}
+          <fieldset disabled={op.mine} className="min-w-0">
+            <Field
+              label="Amount"
+              value={amount}
+              inputMode="decimal"
+              unit={available !== undefined ? `USDC · ${formatUsdc(available)} in wallet` : "USDC"}
+              onChange={(event) => setAmount(event.target.value)}
+              error={error}
+            />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {quickPicks.map((pick) => (
+                <Button key={pick} variant="ghost" className="px-2.5 py-1 text-[11px]" onClick={() => setAmount(pick)}>
+                  {pick}
+                </Button>
+              ))}
+              <Button
+                variant="ghost"
+                className="px-2.5 py-1 text-[11px]"
+                disabled={available === undefined}
+                title={available !== undefined ? `${formatUsdc(available, { full: true })} USDC` : undefined}
+                onClick={() => available !== undefined && setAmount(exactAmount(available))}
+              >
+                Max
               </Button>
-            ))}
-            <Button
-              variant="ghost"
-              className="px-2.5 py-1 text-[11px]"
-              disabled={available === undefined}
-              title={available !== undefined ? `${formatUsdc(available, { full: true })} USDC` : undefined}
-              onClick={() => available !== undefined && setAmount(exactAmount(available))}
-            >
-              Max
-            </Button>
-          </div>
+            </div>
 
-          {trustline === "missing" ? (
-            <p className="mt-3 rounded-[14px] border border-amber/30 bg-bg-raised px-4 py-3 text-xs text-text-lo">
-              {TRUSTLINE_MISSING_COPY}
-            </p>
-          ) : null}
-
-          <TxStatus
-            className="mt-4"
-            state={op.state}
-            hash={op.hash ?? undefined}
-            error={op.error ?? undefined}
-            explorerUrl={op.hash ? explorerTxUrl(op.hash) : undefined}
-            details={op.details ?? undefined}
-          />
+            {trustline === "missing" ? (
+              <p className="mt-3 rounded-[14px] border border-amber/30 bg-bg-raised px-4 py-3 text-xs text-text-lo">
+                {TRUSTLINE_MISSING_COPY}
+              </p>
+            ) : null}
+          </fieldset>
 
           <div className="mt-5 flex justify-end gap-2.5">
             <Button variant="ghost" onClick={onClose} disabled={op.mine}>
@@ -180,7 +171,7 @@ export function FundSheet({ open, onClose, address, info, owner, onDone }: FundS
               // signature on it.
               disabled={parsed === null || parsed <= 0n || tooMuch || op.locked || trustline === "missing"}
             >
-              Send with my wallet
+              {opButtonLabel(op.state, "Send with my wallet")}
             </Button>
           </div>
         </>

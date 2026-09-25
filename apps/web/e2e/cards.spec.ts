@@ -48,24 +48,42 @@ test.describe("cards dashboard", () => {
     await expect(page.getByRole("region", { name: "Your cards" })).toHaveCount(0);
   });
 
-  test("freezing a card runs the timeline through to Confirmed", async ({ page, rpc }) => {
+  test("freezing a card reports its progress on a toast through to Confirmed", async ({ page, rpc }) => {
     await page.getByRole("button", { name: "Freeze", exact: true }).click();
 
-    const tx = page.locator('[role="status"][data-state]').first();
-    await expect(tx).toBeVisible();
-    await expect(tx).toHaveAttribute("data-state", "confirmed", { timeout: 30_000 });
-    await expect(tx).toContainText("Confirmed");
+    const toast = page.getByTestId("tx-toast").first();
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText(`Freeze ${CARD_ONE.label}`);
+    await expect(toast).toHaveAttribute("data-state", "confirmed", { timeout: 30_000 });
+    await expect(toast).toContainText("Confirmed");
 
-    // Every step of the timeline is done, not just the headline.
-    await expect(tx.locator("li[data-step]")).toHaveCount(4);
-    await expect(tx.locator('li[data-step-status="done"]')).toHaveCount(4);
+    // Every step of the progress is done, not just the headline.
+    await expect(toast.locator("li[data-step]")).toHaveCount(4);
+    await expect(toast.locator('li[data-step-status="done"]')).toHaveCount(4);
 
     // The write really went through the RPC — on this card, exactly once —
-    // and the card reads frozen after.
+    // and the toast carries its hash and explorer link.
     expect(rpc.submitted.map(({ contract, fn }) => ({ contract, fn }))).toEqual([
       { contract: CARD_ONE.address, fn: "freeze" },
     ]);
+    const { hash } = rpc.submitted[0];
+    await expect(toast).toContainText(`${hash.slice(0, 8)}…${hash.slice(-8)}`);
+    await expect(toast.getByRole("link", { name: /view transaction/i })).toHaveAttribute(
+      "href",
+      new RegExp(`${hash}$`),
+    );
+
+    // The §7 details are one toggle away.
+    await toast.getByRole("button", { name: /details/i }).click();
+    await expect(toast.getByTestId("tx-details")).toContainText("freeze");
+
+    // The panel itself shows no inline transaction box, and the card reads frozen after.
+    await expect(page.getByRole("region", { name: `${CARD_ONE.label} details` }).locator("[data-state]")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Unfreeze" })).toBeVisible();
+
+    // One toast per action: no separate "Card frozen" notice alongside it.
+    await expect(page.getByTestId("tx-toast")).toHaveCount(1);
+    await expect(page.getByText("Card frozen")).toHaveCount(0);
   });
 
   test("stays free of horizontal scroll at 400px", async ({ page }) => {

@@ -61,7 +61,7 @@ export interface ContractActionResult<TArgs> {
   error: TranslatedError | null;
   /**
    * What this action assembled, from `preparing` onward — the disclosure
-   * `TxStatus` shows before the wallet prompt. `null` while idle, or if the
+   * the transaction toast (`TxToast`) shows before the wallet prompt. `null` while idle, or if the
    * transaction could not be decoded.
    */
   details: TxDetails | null;

@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { useCardOp, type OpModalProps } from "@/components/cards/busy";
+import { opButtonLabel, useCardOp, type OpModalProps } from "@/components/cards/busy";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { TxStatus } from "@/components/ui/TxStatus";
 import { buildSetLabel } from "@/lib/chain/card";
-import { explorerTxUrl } from "@/lib/chain/rpc";
 import { keys } from "@/lib/query/keys";
 
 /** The contract bounds the label at 32 **bytes** of UTF-8, not 32 characters. */
@@ -23,7 +21,7 @@ function byteLength(value: string): number {
  * real transaction — and its limit is a byte limit: "ç" costs two of the 32
  * bytes, an emoji four, which is why the counter counts bytes (spec §3.3).
  */
-export function RenameModal({ open, onClose, address, info, onDone }: OpModalProps) {
+export function RenameModal({ open, onClose, address, info }: OpModalProps) {
   const [name, setName] = useState(info.label);
 
   // Reset to the on-chain label each time the modal opens — never while it
@@ -39,44 +37,35 @@ export function RenameModal({ open, onClose, address, info, onDone }: OpModalPro
 
   const op = useCardOp<string>("rename", (label, wallet) => buildSetLabel(address, label, wallet), {
     invalidates: () => [keys.info(address)],
-    onDone: () => {
-      onDone("Card renamed");
-      onClose();
-    },
+    label: (label) => `Rename ${info.label} to ${label}`,
+    onDone: onClose,
   });
 
   return (
     <Modal open={open} onClose={onClose} title="Rename card">
-      <Field
-        label="Card name"
-        value={name}
-        maxLength={64}
-        onChange={(event) => setName(event.target.value)}
-        error={bytes > MAX_LABEL_BYTES ? `A card name is at most ${MAX_LABEL_BYTES} bytes of UTF-8.` : undefined}
-        hint={bytes === 0 ? "A card name cannot be empty." : undefined}
-      />
-      <p className={`mt-1.5 font-mono text-xs ${bytes > MAX_LABEL_BYTES ? "text-danger-text" : "text-text-lo"}`}>
-        {bytes}/{MAX_LABEL_BYTES} bytes
-      </p>
-      <p className="mt-3 text-xs text-text-lo">
-        The name is stored on the card itself, so renaming is an on-chain transaction with a small network fee.
-      </p>
-
-      <TxStatus
-        className="mt-4"
-        state={op.state}
-        hash={op.hash ?? undefined}
-        error={op.error ?? undefined}
-        explorerUrl={op.hash ? explorerTxUrl(op.hash) : undefined}
-        details={op.details ?? undefined}
-      />
+      <fieldset disabled={op.mine} className="min-w-0">
+        <Field
+          label="Card name"
+          value={name}
+          maxLength={64}
+          onChange={(event) => setName(event.target.value)}
+          error={bytes > MAX_LABEL_BYTES ? `A card name is at most ${MAX_LABEL_BYTES} bytes of UTF-8.` : undefined}
+          hint={bytes === 0 ? "A card name cannot be empty." : undefined}
+        />
+        <p className={`mt-1.5 font-mono text-xs ${bytes > MAX_LABEL_BYTES ? "text-danger-text" : "text-text-lo"}`}>
+          {bytes}/{MAX_LABEL_BYTES} bytes
+        </p>
+        <p className="mt-3 text-xs text-text-lo">
+          The name is stored on the card itself, so renaming is an on-chain transaction with a small network fee.
+        </p>
+      </fieldset>
 
       <div className="mt-5 flex justify-end gap-2.5">
         <Button variant="ghost" onClick={onClose} disabled={op.mine}>
           Close
         </Button>
         <Button onClick={() => void op.run(name)} loading={op.mine} disabled={!valid || op.locked}>
-          Rename
+          {opButtonLabel(op.state, "Rename")}
         </Button>
       </div>
     </Modal>

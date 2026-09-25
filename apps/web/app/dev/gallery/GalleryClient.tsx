@@ -10,7 +10,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { Stat } from "@/components/ui/Stat";
 import { Toast } from "@/components/ui/Toast";
 import { Toggle } from "@/components/ui/Toggle";
-import { TxStatus, type TxState } from "@/components/ui/TxStatus";
+import { TxToast, type TxDetailsProps, type TxState } from "@/components/ui/TxToast";
 import { MooringCard, type MooringCardSize, type MooringCardState } from "@/components/card/MooringCard";
 
 const BASE = 10_000_000n;
@@ -20,6 +20,15 @@ const CARD_SIZES: MooringCardSize[] = ["carousel", "preview", "thumb"];
 const CARD_STATES: MooringCardState[] = ["active", "frozen", "expired", "cancelled", "draft"];
 const PILL_TONES: PillTone[] = ["active", "frozen", "expired", "cancelled"];
 const TX_STATES: TxState[] = ["idle", "preparing", "signing", "submitted", "confirmed", "failed"];
+
+const SAMPLE_HASH = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+
+const SAMPLE_DETAILS: TxDetailsProps = {
+  contract: "CAJPWJRJPFIY6XYYQIVCC3XLYFYQVNJIJ6XVPTUY4EBLNQ3CFN2AHCJ",
+  fn: "freeze",
+  args: [],
+  xdr: "AAAAAgAAAAB…",
+};
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -32,7 +41,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 /**
  * The interactive body of `/dev/gallery` — every design-system primitive,
- * `MooringCard` in every size/state, and `TxStatus` in every state, with
+ * `MooringCard` in every size/state, and `TxToast` in every state, with
  * mock data. Not wrapped in `NetworkGuard`: this route never talks to a
  * wallet or the chain.
  */
@@ -49,7 +58,7 @@ export function GalleryClient() {
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-amber">Dev only</p>
         <h1 className="mt-2 font-display text-4xl text-text-hi">Design-system gallery</h1>
         <p className="mt-2 max-w-2xl text-sm text-text-lo">
-          Every primitive, the card face in each size and state, and the transaction-status timeline in each
+          Every primitive, the card face in each size and state, and the transaction toast in each
           state — for visual review against the approved mockups.
         </p>
       </header>
@@ -209,30 +218,32 @@ export function GalleryClient() {
         />
       </Section>
 
-      <Section title="TxStatus — states">
-        <div className="w-full max-w-md space-y-6">
-          {TX_STATES.map((state) => (
+      <Section title="TxToast — states">
+        <div className="w-full max-w-[360px] space-y-6">
+          {TX_STATES.filter((state): state is Exclude<TxState, "idle"> => state !== "idle").map((state) => (
             <div key={state}>
               <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo">{state}</p>
-              {state === "confirmed" ? (
-                <TxStatus
-                  state={state}
-                  hash="a1b2c3d4"
-                  explorerUrl="https://stellar.expert/explorer/testnet/tx/a1b2c3d4"
-                />
-              ) : state === "failed" ? (
-                <TxStatus
-                  state={state}
-                  error={{
-                    title: "Policy rejected",
-                    detail: "Per-tx limit cannot exceed the period budget (code #11).",
-                    next: "Fix the policy",
-                  }}
-                  onNext={() => {}}
-                />
-              ) : (
-                <TxStatus state={state} />
-              )}
+              <TxToast
+                onDismiss={() => {}}
+                toast={{
+                  label: "Freeze inference-agent",
+                  state,
+                  hash: state === "submitted" || state === "confirmed" ? SAMPLE_HASH : undefined,
+                  explorerUrl:
+                    state === "submitted" || state === "confirmed"
+                      ? `https://stellar.expert/explorer/testnet/tx/${SAMPLE_HASH}`
+                      : undefined,
+                  details: state === "preparing" ? undefined : SAMPLE_DETAILS,
+                  error:
+                    state === "failed"
+                      ? {
+                          title: "Policy rejected",
+                          detail: "Per-tx limit cannot exceed the period budget (code #11).",
+                          next: "Fix the policy",
+                        }
+                      : undefined,
+                }}
+              />
             </div>
           ))}
         </div>
