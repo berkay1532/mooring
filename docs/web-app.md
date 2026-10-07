@@ -234,6 +234,7 @@ simulated or estimated.
 | Withdraw 0.5 USDC | `withdraw`; balance drops by 0.50, owner's USDC balance rises | [`a4c244fc…4bdc15`](https://stellar.expert/explorer/testnet/tx/a4c244fc3053fb5f3f413632fb3cd28a857bb950d33162565d90d42cef4bdc15) | not captured |
 | Cancel (typed confirmation) | `cancel`; state Cancelled (state = 2), balance 0 — remaining balance swept to the owner | [`2bd31d0b…245d81`](https://stellar.expert/explorer/testnet/tx/2bd31d0b8d0462a48c7c8ffb84e423cfabe653104086f25f5313e9164e245d81) | [cancelled, balance 0](screenshots/15-cancelled.jpg) |
 | `mooring pay` above the per-tx cap (`/premium`, 20 USDC) | Denied locally at precheck (`over_per_tx_cap`); nothing signed or submitted | — | CLI output only |
+| Frozen card paid against (2026-10-07, legacy card `CBOO…UH5W`) | `freeze` → `Denied (frozen) at simulate` with the precheck off → `unfreeze` | [`4cea427d…6ce5d9`](https://stellar.expert/explorer/testnet/tx/4cea427db6f5acf3b78f07ebd5c64c75a17d60c30933424396f3d902556ce5d9) · [`ab5d94de…4ff047`](https://stellar.expert/explorer/testnet/tx/ab5d94de677dba80e92f210a56be23a1fa85b876765320824ea4d44f584ff047) | CLI output only (see `docs/testnet.md`) |
 
 **Run of 2026-09-25** (owner with Freighter on a local `next dev`, testnet): all eleven owner
 transactions above succeeded in the order listed (Horizon history of `GCJJ…KKBD`, 17:33–17:43 UTC),
