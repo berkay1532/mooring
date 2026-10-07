@@ -123,6 +123,7 @@ real testnet transactions; they are never run in CI.
 
 ## Documentation
 
+- [`docs/instaward-evidence.md`](docs/instaward-evidence.md) — SCF Instaward #2 evidence index (one entry per SOW row).
 - `docs/design.md` — architecture and product scope
 - `docs/spike-w1-auth-mechanism.md` — why the card authorizes a plain SAC `transfer`
 - `docs/x402-integration.md` — how a card pays an x402 API: flow, denial semantics, setup
