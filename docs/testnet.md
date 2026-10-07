@@ -342,3 +342,18 @@ history in order:
 
 `mooring pay` against `/premium` (20 USDC, above the 5 USDC per-tx cap) was refused by the
 client's local precheck (`over_per_tx_cap`) before anything was signed. Screenshots are linked from the checklist table in `docs/web-app.md` (`docs/screenshots/`).
+
+**Rejected payment while frozen (2026-10-07).** To pair the D3 flow with an on-chain policy
+rejection, the legacy card `CBOOOQDW…UH5W` (`inference-agent`, 11.30 USDC, merchant allowlisted)
+was frozen from the owner key, paid against, and unfrozen:
+
+| Step | Result | Tx |
+|---|---|---|
+| `freeze` | state → Frozen (`StateChanged`, state 1) | [`4cea427d…6ce5d9`](https://stellar.expert/explorer/testnet/tx/4cea427db6f5acf3b78f07ebd5c64c75a17d60c30933424396f3d902556ce5d9) |
+| `mooring pay /weather` with the local precheck | `Denied (frozen) at precheck` — nothing signed | — |
+| `mooring pay /weather --no-precheck` | `Denied (frozen) at simulate` — `__check_auth` refused the transfer in simulation, nothing submitted | — (no transaction exists; the refusal is the evidence) |
+| `unfreeze` | state → Active (`StateChanged`, state 0) | [`ab5d94de…4ff047`](https://stellar.expert/explorer/testnet/tx/ab5d94de677dba80e92f210a56be23a1fa85b876765320824ea4d44f584ff047) |
+
+The same run against the cancelled `inference-agent-2` card gives `Denied (cancelled) at precheck`;
+with the precheck disabled the SAC refuses first (`Error(Contract, #10)`, zero balance after the
+cancel sweep), so the frozen card is the cleaner evidence.
