@@ -4,7 +4,7 @@
 > v1 on testnet; mainnet follows a security audit. See "Product roadmap" below.
 
 Status: **D1, D2 and D3 delivered (see `docs/testnet.md` and `docs/web-app.md`); the web app is
-live at https://mooring-web.vercel.app and the testnet checklist was run on 2026-09-25.** Agreed via brainstorming
+live at https://app.mooring.live and the testnet checklist was run on 2026-09-25.** Agreed via brainstorming
 (2026-08); W1 spike **resolved 2026-09-08** — see `docs/spike-w1-auth-mechanism.md`. The x402
 integration is documented in `docs/x402-integration.md`.
 

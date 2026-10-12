@@ -76,7 +76,7 @@ D1/D2 addresses earlier in the same file.
 - **W3 (done):** `@mooring/x402-client` npm package + `mooring` CLI + allowlist.
 - **W4 (done):** web app (`apps/web` — card panel, wizard, owner ops; 257 unit tests + 20
   Playwright flows in CI), documented (`docs/web-app.md`), deployed to Vercel
-  (https://mooring-web.vercel.app), live testnet checklist run on 2026-09-25 (hashes + screenshots
+  (https://app.mooring.live), live testnet checklist run on 2026-09-25 (hashes + screenshots
   in `docs/web-app.md` / `docs/testnet.md`), merged in PR #4.
 
 **All three deliverables are delivered** (D1 in PR #1, D2 in PR #2, D3-A in PR #3, D3-B in PR #4) —

@@ -138,7 +138,9 @@ run from the repo root (it builds `@mooring/contracts-ts` and `@mooring/x402-cli
 `apps/web/vercel.json` carries exactly that install and build command; the rest is project
 settings.
 
-**Status: deployed.** Production is live at https://mooring-web.vercel.app (Vercel project `mooring-web`,
+**Status: deployed.** Production is live at https://app.mooring.live — custom domain `mooring.live`
+(registered at Namecheap, A/CNAME records to Vercel; `www` redirects to the apex; the Vercel-provided
+`mooring-web.vercel.app` alias keeps working) — (Vercel project `mooring-web`,
 root directory `apps/web`, deployed 2026-09-14 with `vercel deploy --prod`). The steps below
 reproduce the setup; the project's `NEXT_PUBLIC_*` values match `apps/web/.env.example`
 (`NEXT_PUBLIC_WALLET` is deliberately unset in production, so the mock adapter is excluded from
@@ -172,7 +174,7 @@ Project settings that matter:
 `.vercel/` (the local link and project id the CLI writes) is git-ignored and must never be
 committed.
 
-**Deployed URL:** https://mooring-web.vercel.app — verified after deploy: `/`, `/cards` and `/cards/new` return 200, the factory address is inlined in the client chunks, and `__mooringMock` is absent.
+**Deployed URL:** https://app.mooring.live — verified after deploy: `/`, `/cards` and `/cards/new` return 200, the factory address is inlined in the client chunks, and `__mooringMock` is absent.
 
 The same build runs locally and in CI, so a failure here would be a Vercel configuration
 problem, not an application one:
