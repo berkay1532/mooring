@@ -49,7 +49,7 @@ PR #1, D2 in PR #2.
 - **Web app** (`apps/web`) — built: connect Freighter, create and fund cards, live
   budget and balance, freeze / unfreeze / withdraw / cancel, rename, policy edit,
   merchant allowlist, agent signer rotation. Covered by 244 unit tests and 19
-  Playwright flows in CI. Live at https://mooring-web.vercel.app — see [`docs/web-app.md`](docs/web-app.md).
+  Playwright flows in CI. Live at https://app.mooring.live — see [`docs/web-app.md`](docs/web-app.md).
   The manual testnet checklist (hashes + screenshots) is pending the repository owner.
 - **Evidence package** — delivered: `docs/testnet.md` (D1–D3 hashes), `docs/web-app.md` (checklist + screenshots), CI on every PR.
 

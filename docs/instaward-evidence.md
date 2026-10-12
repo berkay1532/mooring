@@ -9,8 +9,8 @@ denial semantics) and `docs/web-app.md` (web app, checklist, screenshots).
 |---|---|
 | Repository | https://github.com/berkay1532/mooring (Apache-2.0, `LICENSE`) |
 | CI | GitHub Actions on every PR — jobs `contracts` (Rust tests, fmt), `scripts` (TypeScript packages, unit tests), `web` (unit + Playwright + build); see the checks on PRs #1–#6 |
-| Web app (live) | https://mooring-web.vercel.app |
-| Landing page (live) | https://mooring-landing.vercel.app |
+| Web app (live) | https://app.mooring.live |
+| Landing page (live) | https://mooring.live |
 | Network | Stellar testnet; USDC SAC `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` |
 
 ## Deliverable 1 — card contract: repo + testnet tx hashes + CI
@@ -48,7 +48,7 @@ Details: `docs/testnet.md` ("D2 evidence", "D3-A e2e re-run"), `docs/x402-integr
 
 ## Deliverable 3 — web app: live link + docs + repo
 
-Live: https://mooring-web.vercel.app (Freighter, testnet). Flow covered: create and fund a card →
+Live: https://app.mooring.live (Freighter, testnet). Flow covered: create and fund a card →
 agent payment → live budget/balance → freeze/unfreeze, withdraw, cancel → rejected payment.
 Merged in PR #4 (257 unit tests, 20 Playwright flows in CI). Docs: quickstart `README.md` and
 `docs/web-app.md` ("Run locally"), architecture `docs/design.md` and `docs/web-app.md`

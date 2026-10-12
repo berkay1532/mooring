@@ -315,7 +315,7 @@ card".
 
 | Item | Value |
 |---|---|
-| Deployed URL | https://mooring-web.vercel.app (Vercel project `mooring-web`, deployed 2026-09-14; steps in `docs/web-app.md`) |
+| Deployed URL | https://app.mooring.live (Vercel project `mooring-web`, deployed 2026-09-14; steps in `docs/web-app.md`) |
 | Automated coverage | 244 vitest unit/component tests + 19 Playwright flows, both in the `web` CI job; neither touches testnet |
 | Manual testnet checklist | `docs/web-app.md` → "Manual testnet checklist" |
 
