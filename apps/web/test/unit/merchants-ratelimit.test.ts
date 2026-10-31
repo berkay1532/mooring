@@ -12,4 +12,13 @@ describe("createRateLimiter", () => {
     t += 60_000
     expect(l.take("a")).toBe(true)
   })
+
+  it("evicts the oldest key beyond maxKeys", () => {
+    const l = createRateLimiter({ limit: 1, windowMs: 60_000, now: () => 0, maxKeys: 2 })
+    expect(l.take("a")).toBe(true)
+    expect(l.take("b")).toBe(true)
+    expect(l.take("c")).toBe(true) // evicts "a"
+    expect(l.take("b")).toBe(false)
+    expect(l.take("a")).toBe(true) // forgotten, fresh again
+  })
 })

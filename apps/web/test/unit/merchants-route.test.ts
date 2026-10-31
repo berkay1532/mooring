@@ -2,10 +2,11 @@
 import { describe, expect, it } from "vitest"
 import { createHandler } from "@/lib/merchants/handler"
 import { createRateLimiter } from "@/lib/merchants/ratelimit"
+import { rateKey } from "@/lib/merchants/handler"
 import { config } from "@/lib/config"
 
 const h = Buffer.from(
-  JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: config.network, asset: config.usdc, payTo: "GPAY", amount: "1" }] }),
+  JSON.stringify({ x402Version: 2, accepts: [{ scheme: "exact", network: config.network, asset: config.usdc, payTo: "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP", amount: "1" }] }),
 ).toString("base64")
 
 function handler() {
@@ -37,7 +38,7 @@ describe("POST /api/resolve-merchant", () => {
     const res = await handler()(req({ url: "https://api.example.com/w" }))
     expect(res.status).toBe(200)
     expect(res.headers.get("cache-control")).toBe("no-store")
-    expect(await res.json()).toMatchObject({ ok: true, payTo: "GPAY", amount: "1" })
+    expect(await res.json()).toMatchObject({ ok: true, payTo: "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP", amount: "1" })
   })
 
   it("429 on the 31st request from one ip", async () => {
@@ -48,5 +49,27 @@ describe("POST /api/resolve-merchant", () => {
     expect(last.headers.get("retry-after")).toBe("60")
     expect(await last.json()).toEqual({ ok: false, code: "unreachable", message: "Too many lookups, try again in a minute." })
     expect((await p(req({ url: "https://api.example.com/w" }, "2.2.2.2"))).status).toBe(200)
+  })
+
+  it("answers 200 unreachable when the resolver throws", async () => {
+    const p = createHandler({
+      fetch: fetch as never,
+      lookup: async () => [],
+      allowLocal: false,
+      limiter: createRateLimiter({ limit: 30, windowMs: 60_000 }),
+      resolve: async () => {
+        throw new Error("boom")
+      },
+    })
+    const res = await p(req({ url: "https://api.example.com/w" }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: false, code: "unreachable" })
+  })
+
+  it("buckets IPv6 clients to their /64", () => {
+    expect(rateKey("2001:db8:1:2:aaaa::1")).toBe(rateKey("2001:db8:1:2:bbbb::2"))
+    expect(rateKey("2001:db8:1:3::1")).not.toBe(rateKey("2001:db8:1:2::1"))
+    expect(rateKey("1.2.3.4")).toBe("1.2.3.4")
+    expect(rateKey(undefined)).toBe("local")
   })
 })

@@ -4,6 +4,7 @@
  * the SSRF guard and (when `dispatcherFor` is given) pinned to the addresses
  * the guard validated, so DNS cannot change between check and connect.
  */
+import { StrKey } from "@stellar/stellar-sdk"
 import { assertHostAllowed, validateUrl } from "./guard"
 import { parsePaymentRequired, selectTerms, type MerchantTerms, type ServiceMeta } from "./terms"
 
@@ -45,7 +46,7 @@ export interface ResolveDeps {
   asset: string
   allowLocal: boolean
   userAgent: string
-  /** Per-hop timeout, default 5000. */
+  /** Per-hop deadline (DNS lookup plus request), default 10000 ms: free-tier sellers cold-start slowly. */
   timeoutMs?: number
   /** Builds a connection-pinning dispatcher for a hop; omitted in tests. */
   dispatcherFor?: (hostname: string, addresses: string[]) => unknown
@@ -63,6 +64,9 @@ const NETWORK_NAMES: Record<string, string> = {
   "stellar:pubnet": "Stellar mainnet",
 }
 const networkName = (id: string) => NETWORK_NAMES[id] ?? id
+
+const validPayTo = (a: string) => StrKey.isValidEd25519PublicKey(a) || StrKey.isValidContract(a)
+const slim = ({ network, asset, payTo, amount }: MerchantTerms) => ({ network, asset, payTo, amount })
 
 const fail = (code: ResolveErrCode, message: string, found?: ResolveErr["found"]): ResolveErr =>
   found ? { ok: false, code, message, found } : { ok: false, code, message }
@@ -99,26 +103,39 @@ export async function resolveMerchant(rawUrl: string, deps: ResolveDeps): Promis
   let status = 0
 
   for (;;) {
+    // One deadline per hop covers the DNS lookup and the request.
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), deps.timeoutMs ?? 10_000)
+    const expired = new Promise<never>((_, reject) =>
+      ctrl.signal.addEventListener("abort", () => reject(new Error("timeout"))),
+    )
+    expired.catch(() => {})
     // One lookup per hop: the guard and the pinned connection share its answer.
     let addrs: string[] | undefined
-    const lookup = async (host: string) => (addrs ??= await deps.lookup(host))
+    const lookup = async (host: string) =>
+      (addrs ??= await Promise.race([deps.lookup(host), expired]))
     const denied = await assertHostAllowed(url, { allowLocal: deps.allowLocal, lookup })
-    if (denied) return fail(denied.code, denied.message)
+    if (denied) {
+      clearTimeout(timer)
+      return fail(denied.code, denied.message)
+    }
 
     let dispatcher: unknown
     if (deps.dispatcherFor) {
       const bare = url.hostname.replace(/^\[|\]$/g, "")
       try {
         const pinned = /^[\d.]+$|:/.test(bare) ? [bare] : await lookup(url.hostname)
-        if (pinned.length === 0) return fail("unreachable", UNREACHABLE)
+        if (pinned.length === 0) {
+          clearTimeout(timer)
+          return fail("unreachable", UNREACHABLE)
+        }
         dispatcher = deps.dispatcherFor(url.hostname, pinned)
       } catch {
+        clearTimeout(timer)
         return fail("unreachable", UNREACHABLE)
       }
     }
 
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), deps.timeoutMs ?? 5000)
     const headers: Record<string, string> = { Accept: "application/json", "User-Agent": deps.userAgent }
     if (method === "POST") headers["Content-Type"] = "application/json"
     const init: Record<string, unknown> = { method, headers, redirect: "manual", signal: ctrl.signal }
@@ -191,7 +208,7 @@ async function interpret(res: Response, url: URL, deps: ResolveDeps): Promise<Re
     return fail(
       "ambiguous",
       "This service lists more than one address for this network — add it by address instead.",
-      sel.found.map(({ network, asset, payTo, amount }) => ({ network, asset, payTo, amount })),
+      sel.found.filter((t) => validPayTo(t.payTo)).map(slim),
     )
   }
   if (sel.kind === "none") {
@@ -199,10 +216,11 @@ async function interpret(res: Response, url: URL, deps: ResolveDeps): Promise<Re
     return fail(
       "no_match",
       `This service accepts ${nets}; this card holds ${networkName(deps.network)} USDC.`,
-      parsed.accepts.map(({ network, asset, payTo, amount }) => ({ network, asset, payTo, amount })),
+      parsed.accepts.filter((t) => validPayTo(t.payTo)).map(slim),
     )
   }
   const { terms } = sel
+  if (!validPayTo(terms.payTo)) return notX402
   const ok: ResolveOk = {
     ok: true,
     url: url.href,

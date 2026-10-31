@@ -4,7 +4,7 @@ import { resolveMerchant, type ResolveDeps } from "@/lib/merchants/resolve"
 
 const NET = "stellar:testnet"
 const USDC = "CUSDC"
-const PAY = "GPAYTO"
+const PAY = "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP"
 
 function header(accepts: unknown[], extra: Record<string, unknown> = {}): string {
   return Buffer.from(JSON.stringify({ x402Version: 2, accepts, ...extra })).toString("base64")
@@ -123,16 +123,44 @@ describe("resolveMerchant", () => {
   })
 
   it("returns ambiguous for several entries on the card network", async () => {
-    const { deps } = setup([r402(header([entry(), { ...entry(), payTo: "GOTHER" }]))])
+    const { deps } = setup([r402(header([entry(), { ...entry(), payTo: "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7" }]))])
     const r = await resolveMerchant("https://api.example.com/x", deps)
     expect(r).toMatchObject({ ok: false, code: "ambiguous" })
   })
 
-  it("treats a body over 64 KiB with no header as not_x402", async () => {
-    const big = JSON.stringify({ x402Version: 1, accepts: [], pad: "a".repeat(70_000) })
-    const { deps } = setup([r402(null, big), r402(null, big)])
+  it("stops reading a body past 64 KiB and reports not_x402", async () => {
+    const payable = { scheme: "exact", network: NET, asset: USDC, payTo: PAY, maxAmountRequired: "10000" }
+    const big = JSON.stringify({ x402Version: 1, accepts: [payable], pad: "a".repeat(1_000_000) })
+    const bytes = new TextEncoder().encode(big)
+    const CHUNK = 16 * 1024
+    let pulled = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (pulled >= bytes.length) return c.close()
+        c.enqueue(bytes.slice(pulled, pulled + CHUNK))
+        pulled += CHUNK
+      },
+    }, { highWaterMark: 0 })
+    const { deps } = setup([new Response(body, { status: 402 })])
     const r = await resolveMerchant("https://api.example.com/x", deps)
     expect(r).toMatchObject({ ok: false, code: "not_x402" })
+    expect(pulled).toBeLessThan(bytes.length)
+    expect(pulled).toBeLessThanOrEqual(64 * 1024 + 2 * CHUNK)
+  })
+
+  it("rejects a selected entry whose payTo is not a StrKey and drops bad found entries", async () => {
+    const bad = setup([r402(header([{ ...entry(), payTo: "not-an-address" }]))])
+    const r = await resolveMerchant("https://api.example.com/x", bad.deps)
+    expect(r).toMatchObject({ ok: false, code: "not_x402", message: "That URL did not answer with usable x402 payment terms." })
+    const mixed = setup([r402(header([entry("stellar:pubnet"), { ...entry("stellar:pubnet"), payTo: "bogus" }]))])
+    const n = await resolveMerchant("https://api.example.com/x", mixed.deps)
+    expect(n).toMatchObject({ ok: false, code: "no_match" })
+    expect(!n.ok && n.found).toHaveLength(1)
+  })
+
+  it("times out a DNS lookup that never resolves", async () => {
+    const { deps } = setup([], { timeoutMs: 20, lookup: () => new Promise<string[]>(() => {}) })
+    expect(await resolveMerchant("https://api.example.com/x", deps)).toMatchObject({ ok: false, code: "unreachable" })
   })
 
   it("reads a v1 body when there is no header", async () => {

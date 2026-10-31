@@ -43,7 +43,7 @@ export function pinnedDispatcher(hostname: string, addresses: string[]): Dispatc
 /** undici's `fetch`, which honours the `dispatcher` init option. */
 export const pinnedFetch = undiciFetch as unknown as typeof globalThis.fetch
 
-/** Closes a dispatcher built by `pinnedDispatcher`. */
+/** Destroys a dispatcher built by `pinnedDispatcher`, so teardown never outlives the hop timeout. */
 export async function closePinned(dispatcher: unknown): Promise<void> {
-  await (dispatcher as Dispatcher).close()
+  await (dispatcher as Dispatcher).destroy()
 }
