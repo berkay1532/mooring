@@ -90,6 +90,7 @@ describe("MerchantResolver", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
     expect(screen.getByLabelText("Service URL")).toHaveFocus();
+    expect(screen.getByLabelText("Service URL")).toHaveAttribute("aria-invalid", "true");
     fireEvent.change(screen.getByLabelText("Service URL"), { target: { value: `${URL_}x` } });
     expect(screen.queryByText("No payment option matches this card.")).toBeNull();
     expect(screen.queryByText(/This service accepts:/)).toBeNull();

@@ -7,6 +7,8 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   label: string;
   hint?: string;
   error?: string;
+  /** Marks the field invalid (error border + `aria-invalid`) without rendering a message. */
+  invalid?: boolean;
   /** A short suffix shown inside the input box, e.g. "USDC" (mockup's `.in .unit`). */
   unit?: string;
   id?: string;
@@ -19,6 +21,7 @@ export function Field({
   label,
   hint,
   error,
+  invalid,
   unit,
   id,
   className,
@@ -41,12 +44,12 @@ export function Field({
       </label>
       <div
         className={`mt-1.5 flex items-center justify-between rounded-[10px] border bg-bg-raised px-3.5 py-2.5 ${
-          error ? "border-danger/60" : "border-text-hi/[0.12]"
+          error || invalid ? "border-danger/60" : "border-text-hi/[0.12]"
         }`}
       >
         <input
           id={inputId}
-          aria-invalid={error ? true : undefined}
+          aria-invalid={error || invalid ? true : undefined}
           aria-describedby={describedBy}
           className={`w-full min-w-0 bg-transparent font-body text-sm text-text-hi outline-none placeholder:text-text-lo/60 ${inputClassName ?? ""}`}
           {...props}

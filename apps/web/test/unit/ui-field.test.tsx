@@ -13,6 +13,13 @@ describe("Field", () => {
     expect(screen.getByText("USDC")).toBeInTheDocument();
   });
 
+  it("invalid sets aria-invalid and the error border without a message", () => {
+    const { container } = render(<Field label="URL" invalid />);
+    expect(screen.getByLabelText("URL")).toHaveAttribute("aria-invalid", "true");
+    expect(container.querySelector(".border-danger\\/60")).not.toBeNull();
+    expect(container.querySelector("p")).toBeNull();
+  });
+
   it("renders an error with aria-invalid and aria-describedby pointing at it", () => {
     render(<Field label="Per-tx cap" error="Cannot exceed the period budget." />);
     const input = screen.getByLabelText("Per-tx cap");

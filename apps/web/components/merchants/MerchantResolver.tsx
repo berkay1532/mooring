@@ -143,7 +143,7 @@ export function MerchantResolver({
         placeholder="https://api.example.com/weather"
         value={url}
         disabled={resolving || disabled}
-        aria-invalid={state.kind === "error" ? true : undefined}
+        invalid={state.kind === "error"}
         onChange={(e) => {
           setUrl(e.target.value);
           seq.current++;
