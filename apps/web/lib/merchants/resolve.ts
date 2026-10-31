@@ -5,6 +5,7 @@
  * the guard validated, so DNS cannot change between check and connect.
  */
 import { StrKey } from "@stellar/stellar-sdk"
+import { describeTerms } from "./describe"
 import { assertHostAllowed, validateUrl } from "./guard"
 import { parsePaymentRequired, selectTerms, type MerchantTerms, type ServiceMeta } from "./terms"
 
@@ -33,7 +34,7 @@ export type ResolveErr = {
   ok: false
   code: ResolveErrCode
   message: string
-  found?: Array<Pick<MerchantTerms, "network" | "asset" | "payTo" | "amount">>
+  found?: Array<Pick<MerchantTerms, "network" | "asset" | "payTo" | "amount" | "scheme">>
 }
 /** Outcome of `resolveMerchant`. */
 export type ResolveResult = ResolveOk | ResolveErr
@@ -59,14 +60,8 @@ const MAX_BODY = 64 * 1024
 const REDIRECTS = new Set([301, 302, 303, 307, 308])
 const UNREACHABLE = "Could not reach that service."
 
-const NETWORK_NAMES: Record<string, string> = {
-  "stellar:testnet": "Stellar testnet",
-  "stellar:pubnet": "Stellar mainnet",
-}
-const networkName = (id: string) => NETWORK_NAMES[id] ?? id
-
 const validPayTo = (a: string) => StrKey.isValidEd25519PublicKey(a) || StrKey.isValidContract(a)
-const slim = ({ network, asset, payTo, amount }: MerchantTerms) => ({ network, asset, payTo, amount })
+const slim = ({ network, asset, payTo, amount, scheme }: MerchantTerms) => ({ network, asset, payTo, amount, scheme })
 
 const fail = (code: ResolveErrCode, message: string, found?: ResolveErr["found"]): ResolveErr =>
   found ? { ok: false, code, message, found } : { ok: false, code, message }
@@ -212,10 +207,9 @@ async function interpret(res: Response, url: URL, deps: ResolveDeps): Promise<Re
     )
   }
   if (sel.kind === "none") {
-    const nets = [...new Set(parsed.accepts.map((a) => a.network))].map(networkName).join(", ")
     return fail(
       "no_match",
-      `This service accepts ${nets}; this card holds ${networkName(deps.network)} USDC.`,
+      describeTerms(parsed.accepts, deps.network, deps.asset).message,
       parsed.accepts.filter((t) => validPayTo(t.payTo)).map(slim),
     )
   }

@@ -86,7 +86,7 @@ describe("MerchantResolver", () => {
     await lookUp();
     expect(await screen.findByText("No payment option matches this card.")).toBeInTheDocument();
     expect(
-      screen.getByText(`This service accepts: Stellar mainnet USDC → ${PAY_TO.slice(0, 4)}…${PAY_TO.slice(-4)}`),
+      screen.getByText(`This service accepts: Stellar mainnet · token CX → ${PAY_TO.slice(0, 4)}…${PAY_TO.slice(-4)}`),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
     expect(screen.getByLabelText("Service URL")).toHaveFocus();
@@ -94,6 +94,26 @@ describe("MerchantResolver", () => {
     fireEvent.change(screen.getByLabelText("Service URL"), { target: { value: `${URL_}x` } });
     expect(screen.queryByText("No payment option matches this card.")).toBeNull();
     expect(screen.queryByText(/This service accepts:/)).toBeNull();
+  });
+
+  it("names each offered entry's token: USDC only when it is the card's own", async () => {
+    const { config } = await import("../../lib/config");
+    const other = "CBXHE6IOGUVDJEKAHPJGFXRPYSI7H6UFWQE2AYTE5HOSEOWFEXWJ6ULP";
+    const resolve = vi.fn().mockResolvedValue({
+      ok: false,
+      code: "no_match",
+      message: "This service asks for a different token or scheme on Stellar testnet; this card holds USDC.",
+      found: [
+        { network: "stellar:testnet", asset: other, payTo: PAY_TO, amount: "1", scheme: "exact" },
+        { network: "stellar:testnet", asset: config.usdc, payTo: PAY_TO, amount: "1", scheme: "upto" },
+      ],
+    });
+    setup({ resolve });
+    await lookUp();
+    const short = `${PAY_TO.slice(0, 4)}…${PAY_TO.slice(-4)}`;
+    expect(await screen.findByText(`This service accepts: Stellar testnet · token CBXH…6ULP → ${short}`)).toBeInTheDocument();
+    expect(screen.getByText(`This service accepts: Stellar testnet · USDC → ${short}`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
   });
 
   it("adds the link-origin sentence only when linkOrigin", async () => {

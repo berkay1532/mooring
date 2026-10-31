@@ -44,13 +44,14 @@ async function stubResolveNoMatch(page: Page) {
       body: JSON.stringify({
         ok: false,
         code: "no_match",
-        message: "This service accepts Stellar mainnet USDC; this card holds Stellar testnet USDC.",
+        message: "This service accepts Stellar mainnet; this card holds Stellar testnet USDC.",
         found: [
           {
             network: "stellar:pubnet",
             asset: "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
             payTo: "GDK3AVW3YE6UL3J4WLNKBMP65KSY32YPUKIOC6PXW65XJ3LEG3YIDXXB",
             amount: "10000",
+            scheme: "exact",
           },
         ],
       }),
@@ -165,8 +166,9 @@ test.describe("adding a merchant by URL", () => {
     await lookUpOnCard(page);
 
     await expect(
-      page.getByText("This service accepts Stellar mainnet USDC; this card holds Stellar testnet USDC."),
+      page.getByText("This service accepts Stellar mainnet; this card holds Stellar testnet USDC."),
     ).toBeVisible();
+    await expect(page.getByText("This service accepts: Stellar mainnet · token CCW6…MI75 → GDK3…DXXB")).toBeVisible();
     await expect(page.getByRole("button", { name: /^Allow / })).toHaveCount(0);
     expect(rpc.submitted).toEqual([]);
   });

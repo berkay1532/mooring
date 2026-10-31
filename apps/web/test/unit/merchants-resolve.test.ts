@@ -122,6 +122,26 @@ describe("resolveMerchant", () => {
     }
   })
 
+  it("returns no_match naming a different token on the card's network", async () => {
+    const { deps } = setup([r402(header([{ ...entry(), asset: "CXLM" }]))])
+    const r = await resolveMerchant("https://api.example.com/x", deps)
+    expect(r).toMatchObject({ ok: false, code: "no_match" })
+    if (!r.ok) {
+      expect(r.message).toBe("This service asks for a different token or scheme on Stellar testnet; this card holds USDC.")
+      expect(r.found?.[0]).toMatchObject({ network: NET, asset: "CXLM", scheme: "exact" })
+    }
+  })
+
+  it("returns no_match naming a different scheme on the card's network", async () => {
+    const { deps } = setup([r402(header([{ ...entry(), scheme: "upto" }]))])
+    const r = await resolveMerchant("https://api.example.com/x", deps)
+    expect(r).toMatchObject({ ok: false, code: "no_match" })
+    if (!r.ok) {
+      expect(r.message).toBe("This service asks for a different token or scheme on Stellar testnet; this card holds USDC.")
+      expect(r.found?.[0]).toMatchObject({ asset: USDC, scheme: "upto" })
+    }
+  })
+
   it("returns ambiguous for several entries on the card network", async () => {
     const { deps } = setup([r402(header([entry(), { ...entry(), payTo: "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7" }]))])
     const r = await resolveMerchant("https://api.example.com/x", deps)

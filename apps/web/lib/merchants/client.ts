@@ -6,12 +6,7 @@ const UNREACHABLE: ResolveResult = {
   message: "Could not reach the lookup service.",
 };
 
-/** Human label for a CAIP-2 network id; unknown ids are returned verbatim. */
-export function networkLabel(network: string): string {
-  if (network === "stellar:testnet") return "Stellar testnet";
-  if (network === "stellar:pubnet") return "Stellar mainnet";
-  return network;
-}
+export { networkLabel } from "@/lib/merchants/describe";
 
 /**
  * Asks the server to look up a service URL (`POST /api/resolve-merchant`).

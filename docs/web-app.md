@@ -278,7 +278,9 @@ resolver.
   card's network paying in this card's USDC. The preview shows the service name, price per
   request, network and the `payTo` address; **Look up** resolves, **Allow `<host>`** (card
   screen, `/allow`) or **Add to list** (wizard) confirms. A service that accepts a different
-  network or token is refused with what it does accept, and no confirm button is shown.
+  network, token or scheme is refused with what it does accept — one line per entry,
+  `<network> · <token> → <payTo>`, where the token reads `USDC` only when it is exactly this
+  card's USDC contract — and no confirm button is shown.
 - **Server-side limits.** The fetch runs on the server, so it is guarded against SSRF: only
   public `https:` hosts, every address a name resolves to is checked, and each redirect hop is
   re-checked. 10 s per hop, at most 3 redirects, and a rate limit of 30 lookups per minute.

@@ -9,7 +9,8 @@ import { Field } from "@/components/ui/Field";
 import { config } from "@/lib/config";
 import { shortAddress } from "@/lib/format/address";
 import { formatUsdc } from "@/lib/format/usdc";
-import { networkLabel, resolveMerchantUrl } from "@/lib/merchants/client";
+import { resolveMerchantUrl } from "@/lib/merchants/client";
+import { describeTerms, networkLabel } from "@/lib/merchants/describe";
 import type { ResolveErr, ResolveOk } from "@/lib/merchants/resolve";
 import { seedServices } from "@/lib/merchants/seed";
 
@@ -159,10 +160,8 @@ export function MerchantResolver({
             <p className="mt-1.5 text-xs text-danger-text">{state.result.message}</p>
             {state.result.found?.length ? (
               <ul className="mt-2 space-y-1 text-xs text-text-lo">
-                {state.result.found.map((f, i) => (
-                  <li key={i}>
-                    This service accepts: {networkLabel(f.network)} USDC → {shortAddress(f.payTo)}
-                  </li>
+                {describeTerms(state.result.found, config.network, config.usdc).lines.map((line, i) => (
+                  <li key={i}>This service accepts: {line}</li>
                 ))}
               </ul>
             ) : null}
