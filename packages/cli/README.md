@@ -1,6 +1,6 @@
-# @mooring/cli
+# @mooring-live/cli
 
-Command-line companion to [`@mooring/x402-client`](https://www.npmjs.com/package/@mooring/x402-client):
+Command-line companion to [`@mooring-live/x402-client`](https://www.npmjs.com/package/@mooring-live/x402-client):
 generate an agent key, inspect a Mooring spending card, and pay an [x402](https://x402.org)-protected
 API from it. A card is a Soroban custom account on Stellar that holds USDC and enforces a periodic
 budget, a per-payment cap, a merchant allowlist and an expiry inside its authorization path.
@@ -8,7 +8,7 @@ budget, a per-payment cap, a merchant allowlist and an expiry inside its authori
 Apache-2.0. **Stellar testnet only** — not audited, not on mainnet.
 
 ```sh
-npm i -g @mooring/cli
+npm i -g @mooring-live/cli
 
 mooring keygen --hex                        # a new agent keypair (--hex prints the signer bytes)
 mooring status --card C… --json             # label, policy, period, remaining budget, allowlist

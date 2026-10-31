@@ -14,7 +14,7 @@ import {
   type CardInfo,
   type Settlement,
   type StellarNetwork,
-} from "@mooring/x402-client";
+} from "@mooring-live/x402-client";
 
 /** Everything `buildProgram` needs from the outside world; tests inject fakes. */
 export interface CliDeps {
@@ -186,7 +186,7 @@ function realOrResolved(p: string): string {
 // Robust equivalent of `import.meta.url === \`file://${process.argv[1]}\``:
 // resolves both sides through symlinks before comparing, so it works when the
 // CLI is invoked through its installed bin symlink (npm links `mooring` into
-// `node_modules/.bin`, which points at the package under `node_modules/@mooring/cli`,
+// `node_modules/.bin`, which points at the package under `node_modules/@mooring-live/cli`,
 // itself a workspace symlink — `fileURLToPath(import.meta.url)` follows all of
 // that back to the real `dist/index.js`, but `process.argv[1]` does not unless
 // resolved the same way). Never runs `parseAsync` when the module is only imported.

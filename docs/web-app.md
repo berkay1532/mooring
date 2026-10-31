@@ -108,7 +108,7 @@ Next.js and the production bundle would throw on load while `next dev` kept work
 
 ```sh
 npm ci
-npm run build -w @mooring/contracts-ts -w @mooring/x402-client   # workspace deps the app imports
+npm run build -w @mooring/contracts-ts -w @mooring-live/x402-client   # workspace deps the app imports
 cp apps/web/.env.example apps/web/.env.local
 npm run dev -w @mooring/web                                      # http://localhost:3000
 ```
@@ -134,7 +134,7 @@ pull request and uploads the Playwright report when it fails.
 ## Deploy (Vercel)
 
 The app is a normal Next.js 15 project inside an npm-workspaces monorepo, so the build has to
-run from the repo root (it builds `@mooring/contracts-ts` and `@mooring/x402-client` first).
+run from the repo root (it builds `@mooring/contracts-ts` and `@mooring-live/x402-client` first).
 `apps/web/vercel.json` carries exactly that install and build command; the rest is project
 settings.
 

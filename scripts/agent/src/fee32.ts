@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { Keypair, rpc } from "@stellar/stellar-sdk";
-import { readCardInfo } from "@mooring/x402-client";
+import { readCardInfo } from "@mooring-live/x402-client";
 import {
   agentKeypair,
   buildCardTransfer,

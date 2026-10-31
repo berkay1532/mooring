@@ -1,7 +1,7 @@
 // The subpath export, not the package root: the root barrel also re-exports
 // the payment client and its scheme (and with them `@x402/*`), none of which
 // this table needs.
-import { CARD_ERRORS } from "@mooring/x402-client/errors";
+import { CARD_ERRORS } from "@mooring-live/x402-client/errors";
 
 /** A user-facing translation of a thrown wallet/RPC/contract error. */
 export interface TranslatedError {

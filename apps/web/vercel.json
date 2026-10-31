@@ -2,5 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "cd ../.. && npm ci",
-  "buildCommand": "cd ../.. && npm run build -w @mooring/contracts-ts -w @mooring/x402-client && npm run build:web -w @mooring/web"
+  "buildCommand": "cd ../.. && npm run build -w @mooring/contracts-ts -w @mooring-live/x402-client && npm run build:web -w @mooring/web"
 }

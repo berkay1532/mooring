@@ -1,6 +1,6 @@
 import { Card, Factory } from "@mooring/contracts-ts";
-import { readCardInfo, readMerchants as readCardMerchants } from "@mooring/x402-client";
-import type { CardInfo } from "@mooring/x402-client";
+import { readCardInfo, readMerchants as readCardMerchants } from "@mooring-live/x402-client";
+import type { CardInfo } from "@mooring-live/x402-client";
 import {
   Address,
   Operation,

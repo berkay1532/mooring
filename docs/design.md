@@ -74,7 +74,7 @@ x402 services per request within limits the network enforces.
      trace, so the agent client reports them to the indexer). (Post-sprint.)
    - *Merchant side* — x402 provider registration, receiving address, incoming payments.
      (Post-sprint.)
-5. **Distribution** — `@mooring/x402-client` npm package (card signer + x402 client scheme +
+5. **Distribution** — `@mooring-live/x402-client` npm package (card signer + x402 client scheme +
    local policy pre-check, plugs into `@x402/fetch`), a `mooring` CLI (`keygen`, `status`, `pay`),
    and a hosted example merchant API anyone can pay with a card.
 

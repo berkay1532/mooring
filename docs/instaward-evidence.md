@@ -32,7 +32,7 @@ Details, fee measurements and the migration to v2: `docs/testnet.md` ("Evidence"
 
 ## Deliverable 2 — x402 integration: CLI walkthrough + tx hashes + repo
 
-`@mooring/x402-client` (`packages/x402-client`, 73 tests), the `mooring` CLI (`packages/cli`:
+`@mooring-live/x402-client` (`packages/x402-client`, 73 tests), the `mooring` CLI (`packages/cli`:
 `keygen`, `status`, `pay`) and the example merchant server (`examples/merchant-server`, `@x402/express`
 + `@x402/stellar`, OpenZeppelin Channels testnet facilitator). Merged in PR #2. Walkthrough:
 `README.md` → "Pay an API from a card" and `docs/x402-integration.md` → "From the CLI".

@@ -41,7 +41,7 @@ PR #1, D2 in PR #2.
 - **Testnet deployment v2** — `scripts/testnet/deploy.sh` deploys the labelled
   factory and card; `scripts/agent` signs card authorization entries and
   submits payments. See `docs/testnet.md`.
-- **x402 integration** — implemented: `@mooring/x402-client` (the card pays
+- **x402 integration** — implemented: `@mooring-live/x402-client` (the card pays
   x402-protected APIs, with a local policy pre-check and typed denials),
   the `mooring` CLI, and an example `@x402/express` merchant server. A card
   payment settled on testnet through the OpenZeppelin Channels facilitator;
@@ -57,7 +57,7 @@ PR #1, D2 in PR #2.
 
 ```ts
 import { Keypair } from "@stellar/stellar-sdk";
-import { CardPolicyDenied, createMooringFetch, getSettlement } from "@mooring/x402-client";
+import { CardPolicyDenied, createMooringFetch, getSettlement } from "@mooring-live/x402-client";
 
 const fetchWithPayment = createMooringFetch({
   card: "CAJPWJBF…AHCJ",                                 // card contract address (the payer)
@@ -74,7 +74,7 @@ try {
 }
 ```
 
-Or from the CLI (`npm i -g @mooring/cli`, or from the workspace after `npm ci && npm run build`
+Or from the CLI (`npm i -g @mooring-live/cli`, or from the workspace after `npm ci && npm run build`
 with `alias mooring="node $PWD/packages/cli/dist/index.js"`):
 
 ```sh
@@ -112,7 +112,7 @@ test from the repo root:
 
 ```sh
 npm ci
-npm run build      # @mooring/x402-client, then @mooring/cli, then the rest
+npm run build      # @mooring-live/x402-client, then @mooring-live/cli, then the rest
 npm run typecheck
 npm test           # unit tests (vitest); no network
 ```
