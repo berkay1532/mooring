@@ -109,11 +109,20 @@ export function MerchantResolver({
     [resolve],
   );
 
+  // Runs on mount and whenever `initialUrl` changes; the ref guards against
+  // StrictMode's double invocation by remembering the last URL it handled.
+  const handledUrl = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (autoResolve && initialUrl && !autoStarted.current) {
-      autoStarted.current = true;
-      void lookUp(initialUrl);
+    if (handledUrl.current === initialUrl) return;
+    const first = handledUrl.current === undefined && !autoStarted.current;
+    handledUrl.current = initialUrl;
+    autoStarted.current = true;
+    if (!first) {
+      seq.current++;
+      setUrl(initialUrl ?? "");
+      setState({ kind: "idle" });
     }
+    if (autoResolve && initialUrl) void lookUp(initialUrl);
   }, [autoResolve, initialUrl, lookUp]);
 
   useEffect(() => {
@@ -133,8 +142,8 @@ export function MerchantResolver({
         label="Service URL"
         placeholder="https://api.example.com/weather"
         value={url}
-        disabled={resolving}
-        error={state.kind === "error" ? state.result.message : undefined}
+        disabled={resolving || disabled}
+        aria-invalid={state.kind === "error" ? true : undefined}
         onChange={(e) => {
           setUrl(e.target.value);
           seq.current++;
@@ -144,17 +153,24 @@ export function MerchantResolver({
           if (e.key === "Enter") void lookUp(url);
         }}
       />
-      {state.kind === "error" && state.result.found?.length ? (
-        <ul className="mt-2 space-y-1 text-xs text-text-lo">
-          {state.result.found.map((f, i) => (
-            <li key={i}>
-              This service accepts: {networkLabel(f.network)} USDC → {shortAddress(f.payTo)}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <div role="status" aria-live="polite">
+        {state.kind === "error" ? (
+          <>
+            <p className="mt-1.5 text-xs text-danger-text">{state.result.message}</p>
+            {state.result.found?.length ? (
+              <ul className="mt-2 space-y-1 text-xs text-text-lo">
+                {state.result.found.map((f, i) => (
+                  <li key={i}>
+                    This service accepts: {networkLabel(f.network)} USDC → {shortAddress(f.payTo)}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        ) : null}
+      </div>
       <div className="mt-3">
-        <Button variant="ghost" className={SMALL_BUTTON_CLASS} loading={resolving} disabled={!url.trim()} onClick={() => void lookUp(url)}>
+        <Button variant="ghost" className={SMALL_BUTTON_CLASS} loading={resolving} disabled={disabled || !url.trim()} onClick={() => void lookUp(url)}>
           Look up
         </Button>
       </div>
@@ -225,19 +241,43 @@ type PreviewProps = { result: ResolveOk } & Pick<
 function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabled, linkOrigin }: PreviewProps) {
   const m = toMerchant(result);
   const already = existing.includes(m.payTo);
+  const inFlight = useRef(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(copiedTimer.current), []);
+
+  async function confirm() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await onConfirm(m);
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
+  function copy() {
+    const p = navigator.clipboard?.writeText(m.payTo);
+    p?.then(() => {
+      setCopied(true);
+      clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
   return (
     <div role="group" aria-label={`Service ${m.name}`} className="mt-4 rounded-[10px] border border-text-hi/[0.12] p-3.5">
       <p className="text-sm font-bold text-text-hi">{m.name}</p>
-      {m.description ? <p className="mt-1 text-xs text-text-lo">{m.description.slice(0, 200)}</p> : null}
+      {m.description ? <p className="mt-1 text-xs text-text-lo">{m.description.slice(0, 280)}</p> : null}
       <p className="mt-2 font-mono text-sm text-text-hi">{price(m.amount)} USDC / request</p>
       <div className="mt-1 flex items-center gap-2 text-xs text-text-lo">
         <span>{networkLabel(m.network)}</span>
         <span className="font-mono" title={m.payTo}>
           {shortAddress(m.payTo)}
         </span>
-        <Button variant="ghost" className={SMALL_BUTTON_CLASS} onClick={() => void navigator.clipboard?.writeText(m.payTo)}>
+        <Button variant="ghost" className={SMALL_BUTTON_CLASS} aria-label="Copy address" onClick={copy}>
           Copy
         </Button>
+        <span role="status">{copied ? "Copied" : ""}</span>
       </div>
       {linkOrigin ? (
         <p className="mt-3 text-xs text-text-hi">
@@ -251,7 +291,7 @@ function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabl
         {already ? (
           <Button disabled>Already allowed</Button>
         ) : (
-          <Button loading={confirming} disabled={disabled} onClick={() => void onConfirm(m)}>
+          <Button loading={confirming} disabled={disabled} onClick={() => void confirm()}>
             {confirmLabel(m.host)}
           </Button>
         )}

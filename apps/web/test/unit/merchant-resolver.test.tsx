@@ -152,6 +152,56 @@ describe("MerchantResolver", () => {
     expect(await screen.findByRole("button", { name: "Allow demo.rail402.dev" })).toBeDisabled();
   });
 
+  it("calls onConfirm once on a rapid double click", async () => {
+    let release: () => void = () => {};
+    const onConfirm = vi.fn(() => new Promise<void>((r) => (release = r)));
+    setup({ onConfirm });
+    await lookUp();
+    const btn = await screen.findByRole("button", { name: "Allow demo.rail402.dev" });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it("resets and re-resolves when initialUrl changes", async () => {
+    const resolve = vi.fn().mockResolvedValue(ok());
+    const props = { existing: [], onConfirm: vi.fn(), confirmLabel: (h: string) => `Allow ${h}`, resolve, autoResolve: true };
+    const { rerender } = render(<MerchantResolver {...props} initialUrl={URL_} />);
+    await screen.findByRole("group");
+    rerender(<MerchantResolver {...props} initialUrl="https://other.example/x" />);
+    await waitFor(() => expect(resolve).toHaveBeenCalledWith("https://other.example/x"));
+    expect(screen.getByLabelText("Service URL")).toHaveValue("https://other.example/x");
+  });
+
+  it("announces failures in a polite status region", async () => {
+    setup({
+      resolve: vi.fn().mockResolvedValue({
+        ok: false,
+        code: "no_match",
+        message: "Nope.",
+        found: [{ network: "stellar:pubnet", asset: "CX", payTo: PAY_TO, amount: "1" }],
+      }),
+    });
+    await lookUp();
+    const msg = await screen.findByText("Nope.");
+    const region = msg.closest('[role="status"]');
+    expect(region).toHaveAttribute("aria-live", "polite");
+    expect(region).toHaveTextContent("This service accepts:");
+  });
+
+  it("disables the field and Look up when disabled", () => {
+    setup({ disabled: true, initialUrl: URL_ });
+    expect(screen.getByLabelText("Service URL")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Look up" })).toBeDisabled();
+  });
+
+  it("labels the copy button", async () => {
+    setup();
+    await lookUp();
+    expect(await screen.findByRole("button", { name: "Copy address" })).toBeInTheDocument();
+  });
+
   it("adds by address through the disclosure", async () => {
     const onAddByAddress = vi.fn();
     setup({ onAddByAddress, existing: [] });
