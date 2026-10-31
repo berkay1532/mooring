@@ -4,7 +4,7 @@
  * imports undici.
  */
 import { isIP } from "node:net"
-import { Agent, type Dispatcher } from "undici"
+import { Agent, fetch as undiciFetch, type Dispatcher } from "undici"
 
 type LookupCallback = (
   err: Error | null,
@@ -38,4 +38,12 @@ export function pinnedLookup(hostname: string, addresses: string[]) {
 /** A fresh undici Agent that connects to `hostname` only via `addresses`. */
 export function pinnedDispatcher(hostname: string, addresses: string[]): Dispatcher {
   return new Agent({ connect: { lookup: pinnedLookup(hostname, addresses) as never } })
+}
+
+/** undici's `fetch`, which honours the `dispatcher` init option. */
+export const pinnedFetch = undiciFetch as unknown as typeof globalThis.fetch
+
+/** Closes a dispatcher built by `pinnedDispatcher`. */
+export async function closePinned(dispatcher: unknown): Promise<void> {
+  await (dispatcher as Dispatcher).close()
 }
