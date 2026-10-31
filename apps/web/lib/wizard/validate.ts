@@ -282,6 +282,8 @@ export interface WizardDraft {
   expiryDate: string;
   agentKey: string;
   merchants: string[];
+  /** Display names of merchants added by URL, keyed by `payTo`; absent for bare addresses. */
+  merchantNames: Record<string, { name: string; url: string }>;
 }
 
 /** A fresh draft: a daily budget expiring in 30 days, nothing filled in. */
@@ -296,6 +298,7 @@ export function emptyDraft(): WizardDraft {
     expiryDate: "",
     agentKey: "",
     merchants: [],
+    merchantNames: {},
   };
 }
 

@@ -11,13 +11,15 @@ import { FundDeepLink } from "../../components/cards/FundDeepLink";
 import type { CardInfo } from "../../lib/chain/card";
 import { deriveCardAddress, saltBytes } from "../../lib/chain/derive";
 import { config } from "../../lib/config";
-import { getSelected } from "../../lib/prefs";
+import { getMerchantLabels, getSelected } from "../../lib/prefs";
 
 const OWNER = "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD";
 const AGENT = "GDHDJL3RT6S3OABSHLOEOCBH4BMMAKLVOR5FPEHXG5ZW2DDJDRRJJSM7";
 const MERCHANT = "GAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCF6M";
 const MERCHANT_2 = "CAZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGMZTGGJH";
 const CARD = "CBXHE6IOGUVDJEKAHPJGFXRPYSI7H6UFWQE2AYTE5HOSEOWFEXWJ6ULP";
+const RAIL_PAY = "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP";
+const RAIL_URL = "https://demo.rail402.dev/weather";
 const BASE = 10_000_000n;
 const NOW = 1_800_000_000;
 
@@ -43,6 +45,20 @@ vi.mock("@/lib/wallet/context", () => ({
     connect: vi.fn(),
     disconnect: vi.fn(),
     adapter: {},
+  }),
+}));
+
+vi.mock("@/lib/merchants/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/merchants/client")>()),
+  resolveMerchantUrl: async (url: string) => ({
+    ok: true,
+    url,
+    payTo: RAIL_PAY,
+    network: "stellar:testnet",
+    asset: "USDC",
+    amount: "10000",
+    scheme: "exact",
+    service: { name: "Rail402 demo" },
   }),
 }));
 
@@ -182,6 +198,21 @@ function fillPolicy(over: { label?: string; budget?: string; perTx?: string } = 
   click(/continue/i);
 }
 
+/** Adds a bare address through the "Add by address instead" disclosure. */
+function addByAddress(address: string) {
+  if (!screen.queryByLabelText(/merchant address/i)) click(/add by address instead/i);
+  type(/merchant address/i, address);
+  click(/^add$/i);
+}
+
+/** Looks a service URL up on step 2 and approves it. */
+async function addByUrl(url = RAIL_URL) {
+  type(/service url/i, url);
+  click(/look up/i);
+  await screen.findByRole("group", { name: /service rail402 demo/i });
+  click(/add to list/i);
+}
+
 /** Fills a valid step 2 and advances to step 3. */
 function fillAgent() {
   type(/agent public key/i, AGENT);
@@ -303,17 +334,48 @@ describe("new-card wizard · step 2 (agent & merchants)", () => {
   it("deduplicates merchants and removes them from the chip list", async () => {
     wizard();
     fillPolicy();
-    type(/merchant address/i, MERCHANT);
-    click(/add merchant/i);
-    type(/merchant address/i, MERCHANT);
-    click(/add merchant/i);
+    addByAddress(MERCHANT);
+    addByAddress(MERCHANT);
 
     const list = screen.getByRole("list", { name: /merchants/i });
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
-    expect(screen.getByText(/already/i)).toBeInTheDocument();
+    // The resolver's own Add button refuses an address that is already listed.
+    expect(screen.getByRole("button", { name: /^add$/i })).toBeDisabled();
 
     fireEvent.click(within(list).getByRole("button", { name: /remove merchant/i }));
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+  });
+
+  it("adds a service by URL and shows its name above the short address", async () => {
+    wizard();
+    fillPolicy();
+    await addByUrl();
+    const list = screen.getByRole("list", { name: /merchants/i });
+    const item = within(list).getByRole("listitem");
+    expect(item).toHaveTextContent("Rail402 demo");
+    expect(item).toHaveTextContent("GBSV…ELYP");
+    expect(item).not.toHaveTextContent(RAIL_PAY);
+
+    type(/service url/i, RAIL_URL);
+    click(/look up/i);
+    expect(await screen.findByRole("button", { name: /already allowed/i })).toBeDisabled();
+  });
+
+  it("forgets a service's name when it is removed", async () => {
+    wizard();
+    fillPolicy();
+    await addByUrl();
+    fireEvent.click(screen.getByRole("button", { name: /remove merchant/i }));
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+    await addByUrl();
+    expect(within(screen.getByRole("list", { name: /merchants/i })).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("still adds a bare address through the disclosure, shown in full", () => {
+    wizard();
+    fillPolicy();
+    addByAddress(MERCHANT);
+    expect(within(screen.getByRole("list", { name: /merchants/i })).getByText(MERCHANT)).toBeInTheDocument();
   });
 
   it("warns that an empty allowlist cannot pay anyone", () => {
@@ -427,8 +489,7 @@ describe("new-card wizard · step 3 (confirm)", () => {
     confirmImmediately = true;
     wizard();
     fillPolicy();
-    type(/merchant address/i, MERCHANT);
-    click(/add merchant/i);
+    addByAddress(MERCHANT);
     fillAgent();
     await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
 
@@ -506,14 +567,44 @@ describe("new-card wizard · step 3 (confirm)", () => {
     expect((runCalls[1].args as { salt: number; address: string }).address).toBe(expected());
   });
 
+  it("shows the name and the responsibility notice once on the confirm step", async () => {
+    wizard();
+    fillPolicy();
+    await addByUrl();
+    addByAddress(MERCHANT);
+    fillAgent();
+    expect(screen.getByText("Rail402 demo")).toBeInTheDocument();
+    expect(screen.getAllByText(/does not vouch for the service/i)).toHaveLength(1);
+  });
+
+  it("omits the notice when there are no merchants", () => {
+    wizard();
+    fillPolicy();
+    fillAgent();
+    expect(screen.queryByText(/does not vouch for the service/i)).not.toBeInTheDocument();
+  });
+
+  it("stores the service's label once its add_merchant transaction confirms", async () => {
+    confirmImmediately = true;
+    wizard();
+    fillPolicy();
+    await addByUrl();
+    addByAddress(MERCHANT);
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+    click(/create with freighter/i);
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/cards?fund=1"));
+    expect(getMerchantLabels(OWNER, expected())).toEqual({
+      [RAIL_PAY]: { name: "Rail402 demo", url: RAIL_URL },
+    });
+  });
+
   it("adds each collected merchant in its own transaction after the card exists", async () => {
     confirmImmediately = true;
     wizard();
     fillPolicy();
-    type(/merchant address/i, MERCHANT);
-    click(/add merchant/i);
-    type(/merchant address/i, MERCHANT_2);
-    click(/add merchant/i);
+    addByAddress(MERCHANT);
+    addByAddress(MERCHANT_2);
     fillAgent();
     await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
 

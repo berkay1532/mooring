@@ -18,6 +18,8 @@ export interface ConfirmStepProps {
   policy: Card.Policy;
   agentKey: string;
   merchants: readonly string[];
+  /** Display names for merchants added by URL, keyed by `payTo`. */
+  merchantNames?: Record<string, { name: string; url: string }>;
   /** The address the card will be deployed at, once discovery has answered. */
   address?: string;
   /** Something went wrong working out the next free address. */
@@ -62,6 +64,7 @@ export function ConfirmStep({
   policy,
   agentKey,
   merchants,
+  merchantNames,
   address,
   addressError,
   progress,
@@ -133,6 +136,31 @@ export function ConfirmStep({
           config.factory,
         )}) from your own account, carrying the policy and agent key above. Your wallet pays the network fee; no USDC moves in this transaction.`}
       </p>
+      {count > 0 ? (
+        <div className="mt-3.5">
+          <p className="text-xs leading-relaxed text-text-lo">
+            Mooring only checked that this service accepts payments from this card&apos;s network and token. It does not vouch for the service. Allowing it lets your agent pay it up to the card&apos;s limits — whether to trust it is your decision.
+          </p>
+          <ul aria-label="Allowed merchants" className="mt-2">
+            {merchants.map((merchant) => (
+              <li key={merchant} className="mt-1 text-xs text-text-hi">
+                {merchantNames?.[merchant] ? (
+                  <>
+                    <span>{merchantNames[merchant].name}</span>{" "}
+                    <span className="font-mono text-text-lo" title={merchant}>
+                      {shortAddress(merchant)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-mono" title={merchant}>
+                    {shortAddress(merchant)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {count > 0 ? (
         <p className="mt-1.5 text-xs leading-relaxed text-text-lo">
           {`You'll sign one transaction to create the card, then ${count} more to put ${
