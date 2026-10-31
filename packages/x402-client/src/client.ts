@@ -12,6 +12,7 @@ import {
   classifyContractError,
   type DenialReason,
   type DenialStage,
+  isAbsoluteHttpUrl,
   stripQuery,
 } from "./denial.js";
 import { precheck } from "./precheck.js";
@@ -269,7 +270,10 @@ export function createMooringFetch(
   const transport = opts.fetch ?? globalThis.fetch;
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const box = new FailureBox();
-    const requestUrl = stripQuery(input instanceof Request ? input.url : String(input));
+    // Only an absolute http(s) URL can become an allow link; anything else
+    // (a relative path, another scheme) is left off the denial entirely.
+    const rawUrl = input instanceof Request ? input.url : String(input);
+    const requestUrl = isAbsoluteHttpUrl(rawUrl) ? stripQuery(rawUrl) : undefined;
     const wrapped = wrapFetchWithPayment(transport, createMooringClient(opts, box, requestUrl));
     try {
       const res = await wrapped(input, init);

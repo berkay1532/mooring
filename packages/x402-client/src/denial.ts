@@ -100,13 +100,28 @@ export interface DeniedMerchant { payTo: string; url?: string; amount?: string; 
 /** The hosted Mooring web app, used to build "allow this merchant" links. */
 export const DEFAULT_APP_URL = "https://app.mooring.live";
 
-/** `origin + pathname` of an absolute URL (drops query and fragment); anything unparseable is returned unchanged. */
+/**
+ * `origin + pathname` of an absolute URL (drops query and fragment). Input
+ * that does not parse (a relative URL, say) is cut at its first `?` or `#`,
+ * so a query string can never pass through.
+ */
 export function stripQuery(url: string): string {
   try {
     const u = new URL(url);
     return u.origin + u.pathname;
   } catch {
-    return url;
+    const cut = url.search(/[?#]/);
+    return cut === -1 ? url : url.slice(0, cut);
+  }
+}
+
+/** True for an absolute `http:` / `https:` URL. */
+export function isAbsoluteHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
   }
 }
 

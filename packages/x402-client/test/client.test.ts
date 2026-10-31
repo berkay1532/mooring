@@ -202,6 +202,26 @@ describe("createMooringFetch", () => {
     );
   });
 
+  it("omits the url and the allow link when the request URL is not absolute http(s)", async () => {
+    // A browser resolves a relative Request against the page; Node does not,
+    // so stand in a Request that does, as a page on http://api.test would.
+    const NodeRequest = globalThis.Request;
+    class PageRequest extends NodeRequest {
+      constructor(input: RequestInfo | URL, init?: RequestInit) {
+        super(typeof input === "string" ? new URL(input, "http://api.test/") : input, init);
+      }
+    }
+    vi.stubGlobal("Request", PageRequest);
+    const f = createMooringFetch({ ...opts(), fetch: fakeServer({ amount: "10000", payTo: "GOTHER" }) });
+    const err = await f("/weather?key=SECRET")
+      .catch((e: unknown) => e as any)
+      .finally(() => vi.unstubAllGlobals());
+    expect(err.name).toBe("CardPolicyDenied");
+    expect(err.merchant).toEqual({ payTo: "GOTHER", amount: "10000", network: "stellar:testnet" });
+    expect(err.message).not.toContain("/allow");
+    expect(err.message).not.toContain("SECRET");
+  });
+
   it("attaches merchant at the verify stage", async () => {
     const f = createMooringFetch({
       ...opts(),

@@ -5,6 +5,8 @@ import {
   CardPolicyDenied,
   DEFAULT_APP_URL,
   allowMerchantUrl,
+  isAbsoluteHttpUrl,
+  stripQuery,
   PaymentError,
   cardDenialFromEvents,
   classifyContractError,
@@ -104,6 +106,29 @@ describe("cardDenialFromEvents", () => {
       code: 42,
       reason: "unknown",
     });
+  });
+});
+
+describe("stripQuery", () => {
+  it("keeps origin + path of an absolute URL", () => {
+    expect(stripQuery("https://api.x.dev/weather?key=SECRET#frag")).toBe("https://api.x.dev/weather");
+  });
+
+  it("cuts unparseable input at the first ? or #", () => {
+    expect(stripQuery("/weather?key=SECRET")).toBe("/weather");
+    expect(stripQuery("weather#frag?x")).toBe("weather");
+    expect(stripQuery("api.x.dev/w?key=SECRET#f")).toBe("api.x.dev/w");
+    expect(stripQuery("/plain")).toBe("/plain");
+  });
+});
+
+describe("isAbsoluteHttpUrl", () => {
+  it("accepts only absolute http(s) URLs", () => {
+    expect(isAbsoluteHttpUrl("https://api.x.dev/w")).toBe(true);
+    expect(isAbsoluteHttpUrl("http://localhost:3001/w")).toBe(true);
+    expect(isAbsoluteHttpUrl("/weather")).toBe(false);
+    expect(isAbsoluteHttpUrl("ftp://x/y")).toBe(false);
+    expect(isAbsoluteHttpUrl("data:text/plain,hi")).toBe(false);
   });
 });
 
