@@ -1,1 +1,1 @@
-export { signCardAuthEntries } from "@mooring/x402-client";
+export { signCardAuthEntries } from "@mooring-live/x402-client";

@@ -1,4 +1,4 @@
-# @mooring/x402-client
+# @mooring-live/x402-client
 
 Pay [x402](https://x402.org)-protected APIs from a **Mooring spending card** on Stellar.
 
@@ -18,11 +18,11 @@ Apache-2.0. **Stellar testnet only** — not audited, not on mainnet.
 ## Install
 
 ```sh
-npm i @mooring/x402-client @stellar/stellar-sdk
+npm i @mooring-live/x402-client @stellar/stellar-sdk
 ```
 
 `@stellar/stellar-sdk` is a dependency of the client, but you import `Keypair` from it yourself,
-so install it alongside. The CLI (`npm i -g @mooring/cli`) wraps the same client for shell use.
+so install it alongside. The CLI (`npm i -g @mooring-live/cli`) wraps the same client for shell use.
 
 Requires Node.js 20+.
 
@@ -30,7 +30,7 @@ Requires Node.js 20+.
 
 ```ts
 import { Keypair } from "@stellar/stellar-sdk";
-import { CardPolicyDenied, PaymentError, createMooringFetch, getSettlement } from "@mooring/x402-client";
+import { CardPolicyDenied, PaymentError, createMooringFetch, getSettlement } from "@mooring-live/x402-client";
 
 const fetchWithPayment = createMooringFetch({
   card: "CAJPWJBF…AHCJ",                                 // card contract address (the payer)

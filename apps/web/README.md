@@ -12,7 +12,7 @@ the owner pastes the agent's **public** key.
 
 ```sh
 npm ci                                                           # from the repo root
-npm run build -w @mooring/contracts-ts -w @mooring/x402-client   # workspace deps
+npm run build -w @mooring/contracts-ts -w @mooring-live/x402-client   # workspace deps
 cp apps/web/.env.example apps/web/.env.local
 npm run dev -w @mooring/web                                      # http://localhost:3000
 ```

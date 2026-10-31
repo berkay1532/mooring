@@ -1,5 +1,5 @@
 {
-  "name": "@mooring/cli",
+  "name": "@mooring-live/cli",
   "version": "0.1.0",
   "description": "CLI for Mooring spending cards on Stellar: generate an agent key, inspect a card, pay an x402 API from it.",
   "private": false,
@@ -42,7 +42,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@mooring/x402-client": "0.1.0",
+    "@mooring-live/x402-client": "0.1.0",
     "@stellar/stellar-sdk": "17.0.1",
     "commander": "^12.1.0"
   },

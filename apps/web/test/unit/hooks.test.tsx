@@ -62,7 +62,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   };
 });
 
-import { CARD_ERRORS } from "@mooring/x402-client";
+import { CARD_ERRORS } from "@mooring-live/x402-client";
 
 import { addCard } from "../../lib/prefs";
 import { config } from "../../lib/config";

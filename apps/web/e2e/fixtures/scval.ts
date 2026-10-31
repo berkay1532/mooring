@@ -3,7 +3,7 @@
  * `./rpc-mock.ts`).
  *
  * The app decodes a simulation's `results[0].xdr` with the SDK's own
- * `scValToNative` (`@mooring/x402-client`'s `readCardInfo`) or with the
+ * `scValToNative` (`@mooring-live/x402-client`'s `readCardInfo`) or with the
  * generated bindings' `Spec.funcResToNative`, so the canned results here are
  * built as real `xdr.ScVal`s and serialized to base64 — never hand-written
  * strings. A contract struct is an `ScMap` keyed by symbols, which is exactly

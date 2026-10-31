@@ -73,7 +73,7 @@ D1/D2 addresses earlier in the same file.
 ### Weekly plan
 - **W1 (done):** facilitator/settlement spike + card contract core + TDD tests + testnet deploy.
 - **W2 (done):** x402 server + settlement wiring (card as payer) + e2e integration test.
-- **W3 (done):** `@mooring/x402-client` npm package + `mooring` CLI + allowlist.
+- **W3 (done):** `@mooring-live/x402-client` npm package + `mooring` CLI + allowlist.
 - **W4 (done):** web app (`apps/web` — card panel, wizard, owner ops; 257 unit tests + 20
   Playwright flows in CI), documented (`docs/web-app.md`), deployed to Vercel
   (https://app.mooring.live), live testnet checklist run on 2026-09-25 (hashes + screenshots

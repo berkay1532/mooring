@@ -7,8 +7,8 @@ The pieces:
 
 | Piece | Where | What it is |
 |---|---|---|
-| `@mooring/x402-client` | `packages/x402-client` | x402 client whose payer is a card (`C…`), plus the local policy mirror and typed denials |
-| `@mooring/cli` | `packages/cli` | `mooring keygen` / `status` / `pay` |
+| `@mooring-live/x402-client` | `packages/x402-client` | x402 client whose payer is a card (`C…`), plus the local policy mirror and typed denials |
+| `@mooring-live/cli` | `packages/cli` | `mooring keygen` / `status` / `pay` |
 | Example merchant server | `examples/merchant-server` | stock `@x402/express` + `@x402/stellar` resource server |
 | Facilitator | OpenZeppelin Channels | unmodified; verifies and settles, sponsors the Stellar fee |
 
@@ -198,7 +198,7 @@ on-chain card label).
 
 ```ts
 import { Keypair } from "@stellar/stellar-sdk";
-import { CardPolicyDenied, createMooringFetch, getSettlement } from "@mooring/x402-client";
+import { CardPolicyDenied, createMooringFetch, getSettlement } from "@mooring-live/x402-client";
 
 const fetchWithPayment = createMooringFetch({
   card: "CAJPWJBF…AHCJ",                              // the card contract address
@@ -239,7 +239,7 @@ Options:
 x402's own USD-based spend controls are switched off (`spendControls: false`): the card enforces
 the limits on-chain, and a second, unrelated cap in the client would only get in the way.
 
-`readCardInfo` (also exported from `@mooring/x402-client`) returns the same `CardInfo` the
+`readCardInfo` (also exported from `@mooring-live/x402-client`) returns the same `CardInfo` the
 pre-check reads: `owner`, `signer`, `token`, `label` (the card's on-chain, owner-settable label),
 `policy`, `state`, `period`, `remaining`, `balance`, `allow_count` — a plain read-only simulation,
 no signing or fees. The label is opaque bytes (1..=32); consumers must treat it as untrusted text
@@ -247,7 +247,7 @@ no signing or fees. The label is opaque bytes (1..=32); consumers must treat it 
 
 ### From the CLI
 
-Install it with `npm i -g @mooring/cli`, or run it from the workspace
+Install it with `npm i -g @mooring-live/cli`, or run it from the workspace
 (`npm ci && npm run build`, then `alias mooring="node $PWD/packages/cli/dist/index.js"`).
 
 ```sh
