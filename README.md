@@ -1,5 +1,7 @@
 # Mooring
 
+[![@mooring-live/x402-client](https://img.shields.io/npm/v/%40mooring-live%2Fx402-client?label=%40mooring-live%2Fx402-client)](https://www.npmjs.com/package/@mooring-live/x402-client) [![@mooring-live/cli](https://img.shields.io/npm/v/%40mooring-live%2Fcli?label=%40mooring-live%2Fcli)](https://www.npmjs.com/package/@mooring-live/cli)
+
 **Programmable spending allowances for AI agents on Stellar.**
 
 Mooring lets you delegate spending to an autonomous agent with hard, on-chain

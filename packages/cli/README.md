@@ -1,5 +1,7 @@
 # @mooring-live/cli
 
+[![npm](https://img.shields.io/npm/v/%40mooring-live%2Fcli)](https://www.npmjs.com/package/@mooring-live/cli)
+
 Command-line companion to [`@mooring-live/x402-client`](https://www.npmjs.com/package/@mooring-live/x402-client):
 generate an agent key, inspect a Mooring spending card, and pay an [x402](https://x402.org)-protected
 API from it. A card is a Soroban custom account on Stellar that holds USDC and enforces a periodic
