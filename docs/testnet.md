@@ -387,3 +387,18 @@ Third-party sellers on Stellar testnet were found through Rail402's discovery en
 (`https://testnet.rail402.dev/discovery/resources`); the same shape (`accepts[].payTo`,
 `network`, `asset`) is what a merchant directory in the web app would read instead of asking
 the owner to type an address.
+
+## npm release 0.1.0 (2026-10-31)
+
+`@mooring-live/x402-client@0.1.0` and `@mooring-live/cli@0.1.0` are published to npm under the
+`mooring-live` organization (the `mooring` scope was taken). Verified from a clean directory
+outside the workspace, against the registry only:
+
+| Check | Result |
+|---|---|
+| `npm i @mooring-live/x402-client@0.1.0`, import `.` and `./errors` | 15 + 6 exports; `readCardInfo` / `readMerchants` read the legacy card from testnet |
+| `npm i -g @mooring-live/cli@0.1.0` into a temp prefix | `mooring --version` → 0.1.0; `mooring status` prints the card |
+| `mooring pay https://demo.rail402.dev/weather` with the installed CLI | HTTP 200, 0.001 USDC settled by Rail402's facilitator — [`68d68866…79fad8`](https://stellar.expert/explorer/testnet/tx/68d68866615567867f532f4f4d5ccee2f9819af23e014dc101da21d7f479fad8) |
+
+Right after publishing, npm served a `0.0.0-stage` placeholder for a few minutes and a cached
+metadata read made `npm i …@0.1.0` fail with `ETARGET`; `--prefer-online` (or waiting) resolves it.

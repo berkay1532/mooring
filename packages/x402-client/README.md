@@ -1,5 +1,7 @@
 # @mooring-live/x402-client
 
+[![npm](https://img.shields.io/npm/v/%40mooring-live%2Fx402-client)](https://www.npmjs.com/package/@mooring-live/x402-client)
+
 Pay [x402](https://x402.org)-protected APIs from a **Mooring spending card** on Stellar.
 
 A card is a Soroban custom account (`__check_auth`) that holds USDC and enforces a spending
