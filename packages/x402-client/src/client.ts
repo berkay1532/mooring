@@ -6,11 +6,13 @@ import { readCardInfo, readMerchants } from "./card.js";
 import {
   CARD_ERROR_CODES,
   CardPolicyDenied,
+  DEFAULT_APP_URL,
   PaymentError,
   cardDenialFromEvents,
   classifyContractError,
   type DenialReason,
   type DenialStage,
+  stripQuery,
 } from "./denial.js";
 import { precheck } from "./precheck.js";
 import { reconcileSettlement } from "./reconcile.js";
@@ -23,6 +25,8 @@ export interface MooringClientOptions {
   rpcUrl?: string;
   /** Run the local policy pre-check before signing (default true). */
   precheck?: boolean;
+  /** Base URL of the Mooring app used in the allow link on a denial (default `DEFAULT_APP_URL`). */
+  appUrl?: string;
   /** Called whenever the card's policy denies a payment, at any stage. */
   onDenial?: (denial: CardPolicyDenied) => void;
   /** Called whenever a payment fails for a reason that is *not* the card's policy. */
@@ -77,6 +81,7 @@ class FailureBox {
 export function createMooringClient(
   opts: MooringClientOptions,
   box: FailureBox = new FailureBox(),
+  requestUrl?: string,
 ): x402Client {
   const rpcUrl = getRpcUrl(opts.network, opts.rpcUrl ? { url: opts.rpcUrl } : undefined);
   const passphrase = getNetworkPassphrase(opts.network);
@@ -85,11 +90,25 @@ export function createMooringClient(
     agent: opts.agent,
     network: opts.network,
     rpcUrl: opts.rpcUrl,
+    appUrl: opts.appUrl,
+    requestUrl,
     // A failure raised inside the scheme (the card refusing the enforcing
     // simulation, or the CAP-71 credential guard) travels out as a thrown
     // error, but it must reach the hooks and the box like every other stage.
     onDenial: (denial) => box.set(denial, opts),
     onPaymentError: (error) => box.set(error, opts),
+  });
+
+  /** What a denial carries so the owner can allow the merchant: its terms, the card and the app. */
+  const denialContext = (req: PaymentRequirements) => ({
+    merchant: {
+      payTo: req.payTo,
+      amount: req.amount,
+      network: req.network,
+      ...(requestUrl ? { url: requestUrl } : {}),
+    },
+    card: opts.card,
+    appUrl: opts.appUrl ?? DEFAULT_APP_URL,
   });
 
   const evaluate = async (req: PaymentRequirements): Promise<DenialReason | null> => {
@@ -127,6 +146,7 @@ export function createMooringClient(
       return new CardPolicyDenied(parsed.reason, stage, {
         contractError: parsed.code,
         detail: text || undefined,
+        ...denialContext(req),
       });
     }
     let reason: DenialReason | null = null;
@@ -135,9 +155,11 @@ export function createMooringClient(
     } catch {
       /* the card could not be read; fall through to the reason string */
     }
-    if (reason) return new CardPolicyDenied(reason, stage, { detail: text || undefined });
+    if (reason) {
+      return new CardPolicyDenied(reason, stage, { detail: text || undefined, ...denialContext(req) });
+    }
     if (text.includes("simulation_failed")) {
-      return new CardPolicyDenied("unknown", stage, { detail: text || undefined });
+      return new CardPolicyDenied("unknown", stage, { detail: text || undefined, ...denialContext(req) });
     }
     return new PaymentError({ kind: "rejected", detail: text || undefined });
   };
@@ -189,6 +211,7 @@ export function createMooringClient(
     return new CardPolicyDenied(parsed?.reason ?? "unknown", "settle", {
       contractError: parsed?.code,
       detail: `${reason} tx=${hash}`,
+      ...denialContext(req),
     });
   };
 
@@ -206,11 +229,11 @@ export function createMooringClient(
     } catch (err) {
       // Fail closed: a card we cannot read is a card we cannot spend from.
       const detail = `pre-check unavailable: ${err instanceof Error ? err.message : String(err)}`;
-      box.set(new CardPolicyDenied("unknown", "precheck", { detail }), opts);
+      box.set(new CardPolicyDenied("unknown", "precheck", { detail, ...denialContext(selectedRequirements) }), opts);
       return { abort: true, reason: detail };
     }
     if (reason) {
-      box.set(new CardPolicyDenied(reason, "precheck"), opts);
+      box.set(new CardPolicyDenied(reason, "precheck", denialContext(selectedRequirements)), opts);
       return { abort: true, reason };
     }
   });
@@ -246,7 +269,8 @@ export function createMooringFetch(
   const transport = opts.fetch ?? globalThis.fetch;
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const box = new FailureBox();
-    const wrapped = wrapFetchWithPayment(transport, createMooringClient(opts, box));
+    const requestUrl = stripQuery(input instanceof Request ? input.url : String(input));
+    const wrapped = wrapFetchWithPayment(transport, createMooringClient(opts, box, requestUrl));
     try {
       const res = await wrapped(input, init);
       // Verify and settle failures come back as a non-2xx response, not a

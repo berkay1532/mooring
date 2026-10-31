@@ -295,6 +295,36 @@ describe("CardExactStellarScheme enforcing simulation", () => {
     expect(onDenial).toHaveBeenCalledWith(err);
   });
 
+  it("attaches the merchant terms (no url) and the card to a simulate denial", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+    });
+    stubFailingResimulation(scheme, cardRejection(6));
+
+    const err: any = await scheme.createPaymentPayload(2, reqs() as never).catch((e: unknown) => e);
+
+    expect(err.merchant).toEqual({ payTo: MERCHANT, amount: "10000", network: "stellar:testnet" });
+    expect(err.merchant.url).toBeUndefined();
+    expect(err.message).not.toContain("/allow");
+  });
+
+  it("links the request url when the scheme was given one", async () => {
+    const scheme = new CardExactStellarScheme({
+      card: CARD,
+      agent: Keypair.random(),
+      network: "stellar:testnet",
+      requestUrl: "https://api.test/weather",
+    });
+    stubFailingResimulation(scheme, cardRejection(6));
+
+    const err: any = await scheme.createPaymentPayload(2, reqs() as never).catch((e: unknown) => e);
+
+    expect(err.merchant.url).toBe("https://api.test/weather");
+    expect(err.message).toContain("/allow?card=" + CARD);
+  });
+
   it("leaves a token-level failure a plain error, even when it names the card", async () => {
     const onDenial = vi.fn();
     const scheme = new CardExactStellarScheme({

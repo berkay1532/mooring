@@ -1,6 +1,6 @@
 {
   "name": "@mooring-live/x402-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pay x402-protected APIs from a Mooring spending card on Stellar.",
   "license": "Apache-2.0",
   "repository": {

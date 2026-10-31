@@ -7,6 +7,8 @@ import { getNetworkPassphrase, getRpcUrl } from "@x402/stellar";
 import { Command, Option } from "commander";
 import {
   CardPolicyDenied,
+  DEFAULT_APP_URL,
+  allowMerchantUrl,
   createMooringFetch,
   getSettlement,
   readCardInfo,
@@ -54,7 +56,7 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
   program
     .name("mooring")
     .description("CLI for Mooring spending cards (Soroban custom accounts on Stellar)")
-    .version("0.1.0");
+    .version("0.2.0");
 
   program
     .command("keygen")
@@ -157,6 +159,9 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
         } catch (err) {
           if (err instanceof CardPolicyDenied) {
             deps.stdout(`Denied (${err.reason}) at ${err.stage}`);
+            if (err.merchant?.url) {
+              deps.stdout(`Allow it: ${allowMerchantUrl(DEFAULT_APP_URL, opts.card, err.merchant.url)}`);
+            }
             process.exitCode = 2;
             return;
           }

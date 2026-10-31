@@ -51,6 +51,10 @@ export interface CardSchemeOptions {
   network: StellarNetwork;
   /** Required on pubnet; optional on testnet. */
   rpcUrl?: string;
+  /** Base URL of the Mooring app used in the allow link (default `DEFAULT_APP_URL`). */
+  appUrl?: string;
+  /** The (query-stripped) URL being paid for; lets a denial carry the allow link. */
+  requestUrl?: string;
   /** Called when the card rejects the payment in the enforcing simulation. */
   onDenial?: (denial: CardPolicyDenied) => void;
   /** Called when the payment fails for a reason that is not the card's policy. */
@@ -74,6 +78,8 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
   private readonly network: StellarNetwork;
   private readonly rpcUrl: string;
   private readonly passphrase: string;
+  private readonly appUrl?: string;
+  private readonly requestUrl?: string;
   private readonly onDenial?: (denial: CardPolicyDenied) => void;
   private readonly onPaymentError?: (error: PaymentError) => void;
 
@@ -81,6 +87,8 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
     this.card = opts.card;
     this.agent = opts.agent;
     this.network = opts.network;
+    this.appUrl = opts.appUrl;
+    this.requestUrl = opts.requestUrl;
     this.onDenial = opts.onDenial;
     this.onPaymentError = opts.onPaymentError;
     this.rpcUrl = getRpcUrl(opts.network, opts.rpcUrl ? { url: opts.rpcUrl } : undefined);
@@ -134,7 +142,7 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
       await tx.simulate({ useUpgradedAuth: false });
       assertSimulationOk(tx.simulation);
     } catch (err) {
-      const denial = this.denialFromCard(err);
+      const denial = this.denialFromCard(err, req);
       if (!denial) throw err;
       this.onDenial?.(denial);
       throw denial;
@@ -162,7 +170,7 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
    * so the reason is taken from that fragment and nowhere else. Anything that
    * does not match stays an ordinary error.
    */
-  private denialFromCard(err: unknown): CardPolicyDenied | null {
+  private denialFromCard(err: unknown, req: PaymentRequirements): CardPolicyDenied | null {
     const text = err instanceof Error ? err.message : String(err);
     const fragment = new RegExp(
       `failed account authentication with error"?,\\s*${this.card}\\s*,[^\\]]*`,
@@ -173,6 +181,14 @@ export class CardExactStellarScheme implements SchemeNetworkClient {
     return new CardPolicyDenied(parsed.reason, "simulate", {
       contractError: parsed.code,
       detail: text.split("\n")[0],
+      merchant: {
+        payTo: req.payTo,
+        amount: req.amount,
+        network: req.network,
+        ...(this.requestUrl ? { url: this.requestUrl } : {}),
+      },
+      card: this.card,
+      appUrl: this.appUrl,
     });
   }
 
