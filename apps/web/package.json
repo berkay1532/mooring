@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "MOORING_RESOLVER_ALLOW_LOCAL=1 next dev",
     "build:web": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
