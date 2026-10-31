@@ -128,6 +128,15 @@ Reasons (`DenialReason`):
 | `insufficient_balance` | — | the card's USDC balance is below the amount (pre-check only) |
 | `unknown` | — | the card refused, but the client could not read *which* rule — it is not a policy verdict, only an unclassified one. It covers a card that could not be read at pre-check, a facilitator `simulation_failed` the re-run pre-check no longer explains (typically a race), and an on-chain failure whose diagnostics do not name the card. |
 
+### Allowing a merchant from a denial
+
+A `not_allowlisted` denial carries `err.merchant` (`{ payTo, url?, amount?, network? }`), the
+merchant the payment was addressed to, and its message ends with `— allow it: <link>`. The link
+opens the web app's `/allow` screen for this card and service (`appUrl` in the client options
+overrides the default `https://app.mooring.live`); the query string of the service URL is
+stripped from it. The owner approves there in one transaction and the agent's next request
+succeeds. The CLI prints the same link as a second line, `Allow it: <link>`.
+
 ### `PaymentError` — everything that is not the card's verdict
 
 ```ts
@@ -255,6 +264,11 @@ Install it with `npm i -g @mooring-live/cli`, or run it from the workspace
 mooring keygen --hex                       # new agent keypair (--hex prints the BytesN<32> signer)
 mooring status --card C… --json            # label, on-chain policy, period, remaining budget, allowlist
 AGENT_SECRET=S… mooring pay http://localhost:3001/weather --card C…
+```
+
+```
+Denied (not_allowlisted) at precheck
+Allow it: https://app.mooring.live/allow?card=C…&url=http%3A%2F%2Flocalhost%3A3001%2Fweather
 ```
 
 `mooring pay` prints the HTTP status, the settlement transaction hash and the body. A policy

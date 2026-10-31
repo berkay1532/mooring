@@ -87,7 +87,7 @@ AGENT_SECRET=S… mooring pay http://localhost:3001/weather --card C…
 ```
 
 A policy denial exits with code 2 and names the reason and the stage it was caught
-at. See [`packages/x402-client/README.md`](packages/x402-client/README.md) and
+at. A `not_allowlisted` denial prints an `Allow it:` link that opens the approval screen in the web app. See [`packages/x402-client/README.md`](packages/x402-client/README.md) and
 [`docs/x402-integration.md`](docs/x402-integration.md) — which also covers running
 the example merchant server in `examples/merchant-server`.
 
