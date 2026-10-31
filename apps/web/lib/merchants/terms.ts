@@ -54,10 +54,9 @@ function str(v: unknown): string | undefined {
 }
 
 function amountOf(e: Obj): string | undefined {
-  for (const raw of [e.amount, e.maxAmountRequired]) {
-    if (typeof raw === "string" && /^[0-9]+$/.test(raw)) return raw;
-    if (typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0) return String(raw);
-  }
+  const raw = e.amount !== undefined ? e.amount : e.maxAmountRequired;
+  if (typeof raw === "string" && /^[0-9]+$/.test(raw)) return raw;
+  if (typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0) return String(raw);
   return undefined;
 }
 
@@ -75,7 +74,7 @@ function normaliseEntry(raw: unknown): MerchantTerms | null {
 function clean(v: unknown, max: number): string | undefined {
   if (typeof v !== "string") return undefined;
   // eslint-disable-next-line no-control-regex
-  const out = v.replace(/[\u0000-\u001F\u007F]/g, "").slice(0, max);
+  const out = v.replace(/[\u0000-\u001F\u007F]/g, "").slice(0, max).trim();
   return out === "" ? undefined : out;
 }
 

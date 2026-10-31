@@ -78,6 +78,16 @@ describe("parsePaymentRequired", () => {
     expect(p.accepts.map((a) => a.amount)).toEqual(["5"]);
   });
 
+  it("does not fall back to maxAmountRequired when amount is invalid", () => {
+    const body = JSON.stringify({ accepts: [entry({ amount: "0.5", maxAmountRequired: "10" })] });
+    expect(parsePaymentRequired(null, body)!.accepts).toEqual([]);
+  });
+
+  it("treats whitespace-only names as missing", () => {
+    const p = parsePaymentRequired(header({ resource: { url: "u", serviceName: " \t " } }), null)!;
+    expect(p.service.name).toBeUndefined();
+  });
+
   it("caps and sanitises service strings", () => {
     const p = parsePaymentRequired(
       header({
