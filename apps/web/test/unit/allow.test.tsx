@@ -16,12 +16,13 @@ const state = vi.hoisted(() => ({
     isLoading: boolean;
     error: unknown;
   },
+  merchants: { data: [] as string[] | undefined, isLoading: false },
   add: { run: vi.fn(), onDone: undefined as undefined | (() => void) },
 }));
 
 vi.mock("@/lib/query/hooks", () => ({
   useCardInfo: () => state.info,
-  useMerchants: () => ({ data: [], isLoading: false }),
+  useMerchants: () => state.merchants,
 }));
 vi.mock("@/lib/wallet/context", () => ({ useWallet: () => ({ address: OWNER }) }));
 vi.mock("@/components/cards/busy", () => ({
@@ -39,6 +40,7 @@ vi.mock("@/lib/merchants/client", async (importOriginal) => ({
 
 beforeEach(() => {
   localStorage.clear();
+  state.merchants = { data: [], isLoading: false };
   state.info = { data: { owner: OWNER, label: "Research", state: 0 }, isLoading: false, error: null };
   state.add.run.mockReset().mockResolvedValue(undefined);
   resolveMerchantUrl.mockReset().mockResolvedValue({
@@ -103,5 +105,21 @@ describe("AllowScreen", () => {
     expect(getSelected(OWNER)).toBe(CARD);
     expect(screen.getByText("Merchant allowed.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open card" }).getAttribute("href")).toBe("/cards");
+  });
+
+  it("keeps Allow disabled until the allowlist has loaded", async () => {
+    state.merchants = { data: undefined, isLoading: true };
+    render(<AllowScreen card={CARD} url={URL_} />);
+    const button = await screen.findByRole("button", { name: "Allow demo.rail402.dev" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("drops the pending label when the add fails", async () => {
+    state.add.run.mockRejectedValue(new Error("rejected"));
+    render(<AllowScreen card={CARD} url={URL_} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    await waitFor(() => expect(state.add.run).toHaveBeenCalled());
+    act(() => state.add.onDone?.());
+    expect(getMerchantLabels(OWNER, CARD)).toEqual({});
   });
 });

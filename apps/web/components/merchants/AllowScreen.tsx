@@ -126,10 +126,16 @@ function AllowCard({ card, url }: { card: string; url: string | null }) {
           confirmLabel={(host) => `Allow ${host}`}
           onConfirm={async (m) => {
             pendingLabel.current = m;
-            await add.run(m.payTo);
+            try {
+              await add.run(m.payTo);
+            } catch {
+              // The failure is on the transaction toast; drop the label so a
+              // later, unrelated confirmation cannot store it.
+              pendingLabel.current = null;
+            }
           }}
           confirming={add.mine}
-          disabled={disabled}
+          disabled={disabled || merchantsQuery.data === undefined}
         />
       )}
     </main>
