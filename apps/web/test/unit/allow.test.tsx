@@ -17,11 +17,17 @@ const state = vi.hoisted(() => ({
     error: unknown;
   },
   merchants: { data: [] as string[] | undefined, isLoading: false },
+  code: { data: true, error: null } as { data?: boolean; error: unknown },
   add: { run: vi.fn(), state: "idle", onDone: undefined as undefined | (() => void) },
 }));
 
+const useCardInfo = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/query/hooks", () => ({
-  useCardInfo: () => state.info,
+  useIsMooringCard: () => state.code,
+  useCardInfo: (address: string) => {
+    useCardInfo(address);
+    return state.info;
+  },
   useMerchants: () => state.merchants,
 }));
 vi.mock("@/lib/wallet/context", () => ({ useWallet: () => ({ address: OWNER }) }));
@@ -41,6 +47,8 @@ vi.mock("@/lib/merchants/client", async (importOriginal) => ({
 beforeEach(() => {
   localStorage.clear();
   state.add.state = "idle";
+  state.code = { data: true, error: null };
+  useCardInfo.mockReset();
   state.merchants = { data: [], isLoading: false };
   state.info = { data: { owner: OWNER, label: "Research", state: 0 }, isLoading: false, error: null };
   state.add.run.mockReset().mockResolvedValue(undefined);
@@ -65,6 +73,29 @@ describe("AllowScreen", () => {
     cleanup();
     render(<AllowScreen card="nope" url={null} />);
     expect(screen.getByText("This link does not name a valid card.")).toBeTruthy();
+  });
+
+  it("refuses a contract that does not run the Mooring card code, before reading info()", () => {
+    state.code = { data: false, error: null };
+    render(<AllowScreen card={CARD} url={URL_} />);
+    expect(screen.getByText("This link does not point to a Mooring card.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Go to my cards" }).getAttribute("href")).toBe("/cards");
+    expect(screen.queryByText(/belongs to/)).toBeNull();
+    expect(screen.queryByText("Research")).toBeNull();
+    expect(useCardInfo).not.toHaveBeenCalled();
+    expect(resolveMerchantUrl).not.toHaveBeenCalled();
+  });
+
+  it("shows a loading line while the card code is checked, and an error line if it cannot be", () => {
+    state.code = { data: undefined, error: null };
+    render(<AllowScreen card={CARD} url={URL_} />);
+    expect(screen.getByText("Loading card…")).toBeTruthy();
+    expect(useCardInfo).not.toHaveBeenCalled();
+    cleanup();
+    state.code = { data: undefined, error: new Error("rpc down") };
+    render(<AllowScreen card={CARD} url={URL_} />);
+    expect(screen.getByText("Could not read this card.")).toBeTruthy();
+    expect(resolveMerchantUrl).not.toHaveBeenCalled();
   });
 
   it("shows a loading line and an error line", () => {

@@ -18,7 +18,9 @@ npm run dev -w @mooring/web                                      # http://localh
 ```
 
 `.env.example` holds the testnet configuration (network, RPC, passphrase, factory, USDC SAC,
-docs link). `NEXT_PUBLIC_WALLET=mock` swaps in an in-memory wallet for tests and unlocks
+card WASM hash `NEXT_PUBLIC_CARD_WASM_HASH`, docs link). The card WASM hash is how the app
+proves an address runs the Mooring card code before trusting its `info()` (`/allow`, "Add
+existing card"). `NEXT_PUBLIC_WALLET=mock` swaps in an in-memory wallet for tests and unlocks
 `/dev/gallery`; never set it on a deployment.
 
 ## Scripts

@@ -29,7 +29,10 @@ Card discovery has no indexer behind it: the factory derives a card address from
 the factory does, and checks existence with `getLedgerEntries`. Cards created **before** the app
 existed used a random salt — the live v2 card `CBOOOQDW4YA7JHDW4ELMKRFUUBJFBOJZGB4IXZJTHSAGUE4TWKJXUH5W`
 among them — so those are not auto-discovered. Import them once with **Add existing card**; the
-app verifies on-chain that the address is a Mooring card owned by the connected account.
+app verifies on-chain that the address is a Mooring card owned by the connected account. It
+first reads the contract's instance entry and requires its WASM hash to equal
+`NEXT_PUBLIC_CARD_WASM_HASH`, and only then reads `info()`: any contract can answer `info()`
+with any owner, so the owner field means nothing until the code is known to be Mooring's.
 
 ## Architecture
 
@@ -98,6 +101,7 @@ Copy `apps/web/.env.example` to `apps/web/.env.local`. Every value is read once 
 | `NEXT_PUBLIC_NETWORK_PASSPHRASE` | `Test SDF Network ; September 2015` |
 | `NEXT_PUBLIC_FACTORY_ADDRESS` | `CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE` (deployment v2) |
 | `NEXT_PUBLIC_USDC_SAC` | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` |
+| `NEXT_PUBLIC_CARD_WASM_HASH` | `158b6acf3cde928e2c9c18c9e0f79fd29f7b847b7c73908c3972ef923c85d20f` (deployment v2 card WASM, `card_wasm_hash` in `deployed.testnet.json`). A contract is treated as a card — its `info()` trusted — only when its instance runs this code. |
 | `NEXT_PUBLIC_DOCS_URL` | link shown in the header; defaults to `docs/x402-integration.md` on GitHub |
 | `NEXT_PUBLIC_WALLET` | `freighter` (default). **`mock` is for tests only** — it replaces the wallet with an in-memory stub and unlocks `/dev/gallery`. Never set it on a deployment. |
 
@@ -153,9 +157,10 @@ npx vercel link                        # from the repo root; project name e.g. m
                                        # set Root Directory = apps/web when asked
                                        # (or later: Project Settings -> Build & Deployment)
 
-# the six NEXT_PUBLIC_* values from apps/web/.env.example, for production and preview:
+# the seven NEXT_PUBLIC_* values from apps/web/.env.example, for production and preview:
 for v in NEXT_PUBLIC_STELLAR_NETWORK NEXT_PUBLIC_RPC_URL NEXT_PUBLIC_NETWORK_PASSPHRASE \
-         NEXT_PUBLIC_FACTORY_ADDRESS NEXT_PUBLIC_USDC_SAC NEXT_PUBLIC_DOCS_URL; do
+         NEXT_PUBLIC_FACTORY_ADDRESS NEXT_PUBLIC_USDC_SAC NEXT_PUBLIC_CARD_WASM_HASH \
+         NEXT_PUBLIC_DOCS_URL; do
   npx vercel env add "$v" production
   npx vercel env add "$v" preview
 done
@@ -290,7 +295,11 @@ resolver.
   "Rail402 demo", `https://demo.rail402.dev/weather`). It only fills the URL field; the owner
   still looks up and confirms.
 - **The `/allow` link.** When the agent is denied with `not_allowlisted`, the client prints a
-  link to `/allow?card=<card>&url=<service url>`. The screen requires the connected wallet to
+  link to `/allow?card=<card>&url=<service url>`. The screen first proves the address runs the
+  Mooring card code (its instance's WASM hash must equal `NEXT_PUBLIC_CARD_WASM_HASH`); any
+  other contract gets "This link does not point to a Mooring card." with no resolver and no
+  owner comparison, because a malicious contract could report the visitor as its owner and
+  make its `add_merchant` do something else. It then requires the connected wallet to
   own the card, resolves the URL and shows "This request came from a link. Make sure it is a
   service your agent is meant to use." Link data is never trusted: the card and URL are only
   inputs, the terms come from a fresh resolve, and nothing is added without the owner's

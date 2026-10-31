@@ -137,6 +137,28 @@ test.describe("adding a merchant by URL", () => {
     expect(rpc.submitted.map((call) => call.fn)).toEqual(["add_merchant"]);
   });
 
+  test("/allow refuses a contract that does not run the Mooring card code", async ({ page, rpc }) => {
+    let resolverCalls = 0;
+    await page.route("**/api/resolve-merchant", (route) => {
+      resolverCalls += 1;
+      return route.abort();
+    });
+    await connectWallet(page);
+    // Not in the RPC mock's card set, so it has no Mooring card instance.
+    const stranger = "CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR";
+    await page.evaluate((href) => {
+      (window as unknown as { next: { router: { push(href: string): void } } }).next.router.push(href);
+    }, `/allow?card=${stranger}&url=${encodeURIComponent(SERVICE_URL)}`);
+    await page.waitForURL("**/allow?**");
+
+    await expect(page.getByText("This link does not point to a Mooring card.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Go to my cards" })).toHaveAttribute("href", "/cards");
+    await expect(page.getByRole("button", { name: /^Allow / })).toHaveCount(0);
+    expect(resolverCalls).toBe(0);
+    expect(rpc.simulated.filter((call) => call.contract === stranger)).toEqual([]);
+    expect(rpc.submitted).toEqual([]);
+  });
+
   test("a service on another network is refused with no Allow button", async ({ page, rpc }) => {
     await stubResolveNoMatch(page);
     await connectWallet(page);

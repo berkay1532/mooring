@@ -7,7 +7,10 @@
  * uses:
  *
  * - `getLedgerEntries` — card discovery (contract-instance probes for
- *   `saltBytes(0..)`) and the SDK's own `getAccount` before a write.
+ *   `saltBytes(0..)`), the card-code check (the instance carries
+ *   `NEXT_PUBLIC_CARD_WASM_HASH`; any address not in the fixture set has no
+ *   entry, so it is not a Mooring card) and the SDK's own `getAccount`
+ *   before a write.
  * - `simulateTransaction` — every read (`info()`, `merchants()`, the SAC's
  *   `balance()`) and the first leg of every write. The transaction is decoded
  *   to find the invoked contract and function, so one handler serves them all.
@@ -26,6 +29,7 @@ import type { Page, Route } from "@playwright/test";
 import { Address, TransactionBuilder, scValToNative, xdr, type Transaction } from "@stellar/stellar-sdk";
 
 import {
+  CARD_WASM_HASH,
   DEFAULT_CARDS,
   DEFAULT_OWNER_BALANCE,
   FACTORY,
@@ -289,7 +293,7 @@ export async function installRpcMock(page: Page, options: RpcMockOptions = {}): 
         const entries = keys.flatMap((key) => {
           const card = byKey.get(key);
           if (card) {
-            return [{ key, xdr: contractInstanceEntryB64(card), lastModifiedLedgerSeq: LATEST_LEDGER }];
+            return [{ key, xdr: contractInstanceEntryB64(card, CARD_WASM_HASH), lastModifiedLedgerSeq: LATEST_LEDGER }];
           }
           if (key === ownerKey) {
             return [{ key, xdr: accountEntryB64(OWNER, "4242424242"), lastModifiedLedgerSeq: LATEST_LEDGER }];

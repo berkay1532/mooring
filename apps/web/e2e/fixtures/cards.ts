@@ -11,7 +11,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 
 import { deriveCardAddress, saltBytes } from "../../lib/chain/derive";
 
-export { FACTORY, NETWORK_PASSPHRASE, RPC_URL, USDC } from "./env";
+export { CARD_WASM_HASH, FACTORY, NETWORK_PASSPHRASE, RPC_URL, USDC } from "./env";
 import { FACTORY, NETWORK_PASSPHRASE } from "./env";
 
 /** The address `lib/wallet/mock.ts` always connects to. */

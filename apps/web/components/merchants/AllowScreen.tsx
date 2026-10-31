@@ -9,7 +9,7 @@ import { MerchantResolver, type ResolvedMerchant } from "@/components/merchants/
 import { buildAddMerchant } from "@/lib/chain/card";
 import { shortAddress } from "@/lib/format/address";
 import { addCard, setMerchantLabel, setSelected } from "@/lib/prefs";
-import { useCardInfo, useMerchants } from "@/lib/query/hooks";
+import { useCardInfo, useIsMooringCard, useMerchants } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
 import { useWallet } from "@/lib/wallet/context";
 
@@ -36,7 +36,10 @@ function BackToCards() {
 /**
  * The landing page of an agent's "not allowlisted" link: shows the named card
  * and resolves the service URL so the owner can allow that merchant in one
- * confirmation. Only the card's owner sees the resolver.
+ * confirmation. Only the card's owner sees the resolver, and only once the
+ * address is proven to run the Mooring card code: `info()` is answered by
+ * whatever contract the link names, so an arbitrary contract could otherwise
+ * claim the visitor as its owner and have them sign its `add_merchant`.
  */
 export function AllowScreen({ card, url }: AllowScreenProps) {
   if (!card || !StrKey.isValidContract(card)) {
@@ -49,8 +52,31 @@ export function AllowScreen({ card, url }: AllowScreenProps) {
   }
   return (
     <CardBusyProvider>
-      <AllowCard card={card} url={url} />
+      <AllowCheckedCard card={card} url={url} />
     </CardBusyProvider>
+  );
+}
+
+/** Proves the card code before anything the contract answers is shown. */
+function AllowCheckedCard({ card, url }: { card: string; url: string | null }) {
+  const codeQuery = useIsMooringCard(card);
+  if (codeQuery.data === true) return <AllowCard card={card} url={url} />;
+  return (
+    <main className="px-6 py-10 text-sm text-text-lo">
+      {codeQuery.data === false ? (
+        <>
+          <p>This link does not point to a Mooring card.</p>
+          <BackToCards />
+        </>
+      ) : codeQuery.error ? (
+        <>
+          <p>Could not read this card.</p>
+          <BackToCards />
+        </>
+      ) : (
+        <p>Loading card…</p>
+      )}
+    </main>
   );
 }
 

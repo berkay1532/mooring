@@ -15,6 +15,7 @@ import { AssembledTransaction, DEFAULT_TIMEOUT } from "@stellar/stellar-sdk/cont
 
 import { config } from "../config";
 import { getRpcServer, type AccountRpc } from "./rpc";
+import { assertMooringCard } from "./verify";
 
 export type { CardInfo };
 
@@ -103,12 +104,22 @@ export async function readBalance(address: string, token: string = config.usdc):
   return tx.result;
 }
 
+/** {@link assertMooringCard} against the shared RPC and the configured card WASM hash. */
+export function assertConfiguredCard(address: string): Promise<void> {
+  return assertMooringCard(getRpcServer(), address, config.cardWasmHash);
+}
+
 /**
- * Confirms `address` is both a valid contract address and a card owned by
- * `owner`, returning its `info()` in the same call. `read` defaults to
- * {@link readInfo}; tests inject a fake to avoid a network round trip.
+ * Confirms `address` is a valid contract address, runs the Mooring card code
+ * (its instance's WASM hash is `config.cardWasmHash`), and is owned by
+ * `owner`, returning its `info()` in the same call. The code check comes
+ * first: `info()` is answered by whatever contract the address names, so its
+ * `owner` field means nothing until the code is known to be ours. `read`
+ * defaults to {@link readInfo} and `assertCard` to
+ * {@link assertConfiguredCard}; tests inject fakes to avoid the network.
  *
  * @throws if `address` is not a valid Stellar contract (`C...`) address.
+ * @throws `Error("This address is not a Mooring card.")` if its code differs.
  * @throws `Error("This card belongs to another owner")` if the card's owner
  *   does not match `owner`.
  */
@@ -116,10 +127,12 @@ export async function verifyOwnedCard(
   address: string,
   owner: string,
   read: (address: string) => Promise<CardInfo> = readInfo,
+  assertCard: (address: string) => Promise<void> = assertConfiguredCard,
 ): Promise<CardInfo> {
   if (!StrKey.isValidContract(address)) {
     throw new Error(`"${address}" is not a valid Stellar contract address`);
   }
+  await assertCard(address);
   const info = await read(address);
   if (info.owner !== owner) {
     throw new Error("This card belongs to another owner");
