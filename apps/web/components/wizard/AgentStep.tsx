@@ -14,7 +14,7 @@ export interface AgentStepProps {
   /** Agent-key message, already gated on "has the user touched this?". */
   agentError?: string;
   agentValid: boolean;
-  /** True while the card is being created: the merchant list cannot change. */
+  /** True while the card is being created: the merchant list cannot change (add and remove are both disabled). */
   locked?: boolean;
   onBack: () => void;
   onContinue: () => void;
@@ -100,8 +100,9 @@ export function AgentStep({ draft, patch, agentError, agentValid, locked, onBack
               <button
                 type="button"
                 onClick={() => remove(merchant)}
+                disabled={locked}
                 aria-label={`Remove merchant ${shortAddress(merchant)}`}
-                className="shrink-0 rounded font-body text-xs text-danger-text transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+                className="shrink-0 rounded font-body text-xs text-danger-text transition disabled:cursor-not-allowed disabled:opacity-50 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
               >
                 ×
               </button>

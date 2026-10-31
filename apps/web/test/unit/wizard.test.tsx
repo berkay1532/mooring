@@ -80,6 +80,8 @@ let failWith: { title: string; detail?: string; next?: string } | null = null;
  * answered, and the wizard reads exactly that to decide the step lock.
  */
 let failBeforeSubmit = false;
+/** Runs while an `add_merchant` transaction is being built (lets a test fail only that run). */
+let onAddMerchantBuild: (() => void) | null = null;
 /** What the factory's simulated `create_card` returns, if anything. */
 let factoryResult: string | undefined;
 
@@ -95,6 +97,7 @@ vi.mock("@/lib/chain/card", async (importOriginal) => {
     },
     buildAddMerchant: async (address: string, merchant: string) => {
       addMerchantCalls.push([address, merchant]);
+      onAddMerchantBuild?.();
       return { result: undefined };
     },
   };
@@ -228,6 +231,7 @@ beforeEach(() => {
   confirmImmediately = false;
   failWith = null;
   failBeforeSubmit = false;
+  onAddMerchantBuild = null;
   factoryResult = undefined;
   discoverCardsMock.mockClear();
   discoverCardsMock.mockResolvedValue([]);
@@ -367,8 +371,11 @@ describe("new-card wizard · step 2 (agent & merchants)", () => {
     await addByUrl();
     fireEvent.click(screen.getByRole("button", { name: /remove merchant/i }));
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
-    await addByUrl();
-    expect(within(screen.getByRole("list", { name: /merchants/i })).getAllByRole("listitem")).toHaveLength(1);
+    // The same payTo again, now as a bare address: no stale name comes back.
+    addByAddress(RAIL_PAY);
+    const item = within(screen.getByRole("list", { name: /merchants/i })).getByRole("listitem");
+    expect(item).toHaveTextContent(RAIL_PAY);
+    expect(item).not.toHaveTextContent("Rail402 demo");
   });
 
   it("still adds a bare address through the disclosure, shown in full", () => {
@@ -597,6 +604,22 @@ describe("new-card wizard · step 3 (confirm)", () => {
     expect(getMerchantLabels(OWNER, expected())).toEqual({
       [RAIL_PAY]: { name: "Rail402 demo", url: RAIL_URL },
     });
+  });
+
+  it("stores no label when the add_merchant transaction fails", async () => {
+    confirmImmediately = true;
+    onAddMerchantBuild = () => {
+      failWith = { title: "Transaction failed" };
+    };
+    wizard();
+    fillPolicy();
+    await addByUrl();
+    fillAgent();
+    await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
+    click(/create with freighter/i);
+    await waitFor(() => expect(addMerchantCalls).toHaveLength(1));
+    await screen.findByText(/last transaction did not go through/i);
+    expect(getMerchantLabels(OWNER, expected())).toEqual({});
   });
 
   it("adds each collected merchant in its own transaction after the card exists", async () => {
