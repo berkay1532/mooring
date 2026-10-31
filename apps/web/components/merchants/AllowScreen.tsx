@@ -2,7 +2,7 @@
 
 import { StrKey } from "@stellar/stellar-sdk";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CardBusyProvider, useCardOp } from "@/components/cards/busy";
 import { MerchantResolver, type ResolvedMerchant } from "@/components/merchants/MerchantResolver";
@@ -75,6 +75,12 @@ function AllowCard({ card, url }: { card: string; url: string | null }) {
     },
   });
 
+  // A failed transaction is reported on its toast; drop the label so a later
+  // confirmation cannot store it.
+  useEffect(() => {
+    if (add.state === "failed") pendingLabel.current = null;
+  }, [add.state]);
+
   const info = infoQuery.data;
   if (!info) {
     return (
@@ -126,13 +132,7 @@ function AllowCard({ card, url }: { card: string; url: string | null }) {
           confirmLabel={(host) => `Allow ${host}`}
           onConfirm={async (m) => {
             pendingLabel.current = m;
-            try {
-              await add.run(m.payTo);
-            } catch {
-              // The failure is on the transaction toast; drop the label so a
-              // later, unrelated confirmation cannot store it.
-              pendingLabel.current = null;
-            }
+            await add.run(m.payTo);
           }}
           confirming={add.mine}
           disabled={disabled || merchantsQuery.data === undefined}

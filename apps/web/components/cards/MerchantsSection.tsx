@@ -84,6 +84,12 @@ export function MerchantsSection({ address, owner, merchants, loading, disabled 
     },
   );
 
+  // A failed add is reported on its toast; drop the label so a later
+  // confirmation cannot store it.
+  useEffect(() => {
+    if (add.state === "failed") pendingLabel.current = null;
+  }, [add.state]);
+
   const full = merchants.length >= MAX_MERCHANTS;
   const busy = Boolean(disabled) || add.locked || remove.locked;
 

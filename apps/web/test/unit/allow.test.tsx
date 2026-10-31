@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
     error: unknown;
   },
   merchants: { data: [] as string[] | undefined, isLoading: false },
-  add: { run: vi.fn(), onDone: undefined as undefined | (() => void) },
+  add: { run: vi.fn(), state: "idle", onDone: undefined as undefined | (() => void) },
 }));
 
 vi.mock("@/lib/query/hooks", () => ({
@@ -29,7 +29,7 @@ vi.mock("@/components/cards/busy", () => ({
   CardBusyProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useCardOp: (_id: string, _build: unknown, opts: { onDone?: () => void }) => {
     state.add.onDone = opts.onDone;
-    return { run: state.add.run, mine: false, locked: false, state: "idle" };
+    return { run: state.add.run, mine: false, locked: false, state: state.add.state };
   },
 }));
 const resolveMerchantUrl = vi.hoisted(() => vi.fn());
@@ -40,6 +40,7 @@ vi.mock("@/lib/merchants/client", async (importOriginal) => ({
 
 beforeEach(() => {
   localStorage.clear();
+  state.add.state = "idle";
   state.merchants = { data: [], isLoading: false };
   state.info = { data: { owner: OWNER, label: "Research", state: 0 }, isLoading: false, error: null };
   state.add.run.mockReset().mockResolvedValue(undefined);
@@ -114,11 +115,12 @@ describe("AllowScreen", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("drops the pending label when the add fails", async () => {
-    state.add.run.mockRejectedValue(new Error("rejected"));
-    render(<AllowScreen card={CARD} url={URL_} />);
+  it("drops the pending label when the add ends in the failed state", async () => {
+    const view = render(<AllowScreen card={CARD} url={URL_} />);
     fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
     await waitFor(() => expect(state.add.run).toHaveBeenCalled());
+    state.add.state = "failed";
+    view.rerender(<AllowScreen card={CARD} url={URL_} />);
     act(() => state.add.onDone?.());
     expect(getMerchantLabels(OWNER, CARD)).toEqual({});
   });

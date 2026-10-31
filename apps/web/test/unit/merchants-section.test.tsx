@@ -12,7 +12,7 @@ const OTHER = Keypair.random().publicKey();
 const URL_ = "https://demo.rail402.dev/weather";
 
 const ops = vi.hoisted(() => ({
-  add: { run: vi.fn(), onDone: undefined as undefined | (() => void) },
+  add: { run: vi.fn(), state: "idle", onDone: undefined as undefined | (() => void) },
   remove: { run: vi.fn(), onDone: undefined as undefined | (() => void) },
 }));
 
@@ -21,7 +21,7 @@ vi.mock("@/components/cards/busy", () => ({
   useCardOp: (id: string, _build: unknown, opts: { onDone?: () => void }) => {
     const op = id === "merchant-add" ? ops.add : ops.remove;
     op.onDone = opts.onDone;
-    return { run: op.run, mine: false, locked: false, state: "idle" };
+    return { run: op.run, mine: false, locked: false, state: id === "merchant-add" ? ops.add.state : "idle" };
   },
 }));
 
@@ -58,6 +58,7 @@ async function resolveAndAllow() {
 
 beforeEach(() => {
   localStorage.clear();
+  ops.add.state = "idle";
   ops.add.run.mockReset().mockResolvedValue(undefined);
   ops.remove.run.mockReset().mockResolvedValue(undefined);
   resolveMerchantUrl.mockReset().mockResolvedValue(ok());
@@ -65,6 +66,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("MerchantsSection", () => {
+  it("drops the pending label when the add ends in the failed state", async () => {
+    const view = section([]);
+    await resolveAndAllow();
+    await waitFor(() => expect(ops.add.run).toHaveBeenCalledWith(PAY_TO));
+    ops.add.state = "failed";
+    view.rerender(<MerchantsSection address={CARD} owner={OWNER} merchants={[]} />);
+    act(() => ops.add.onDone?.());
+    expect(getMerchantLabels(OWNER, CARD)).toEqual({});
+  });
+
   it("allows a resolved service and stores its label once the add confirms", async () => {
     section([]);
     await resolveAndAllow();
