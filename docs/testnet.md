@@ -357,3 +357,33 @@ was frozen from the owner key, paid against, and unfrozen:
 The same run against the cancelled `inference-agent-2` card gives `Denied (cancelled) at precheck`;
 with the precheck disabled the SAC refuses first (`Error(Contract, #10)`, zero balance after the
 cancel sweep), so the frozen card is the cleaner evidence.
+
+## Paying a third-party x402 merchant (2026-10-31)
+
+Every payment above went to Mooring's own example server. This run pays a merchant Mooring
+has no relationship with — Rail402's public demo seller — to show that a card settles against
+a stock x402 resource server behind a **different facilitator** (Rail402's hosted testnet
+facilitator, not OZ Channels), with no change on the merchant side.
+
+Merchant terms, read from the 402 at `https://demo.rail402.dev/weather`: `scheme: exact`,
+`network: stellar:testnet`, asset `CBIELTK6…DAMA` (the same USDC SAC the card holds),
+0.001 USDC to `GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP`, fees sponsored. Card:
+the legacy `CBOOOQDW…UH5W` (`inference-agent`), signed with its registered agent key.
+
+| Step | Result | Tx |
+|---|---|---|
+| `set_policy` (the card's policy had expired on 2026-10-13; expiry +30 days, budget and cap unchanged) | `PolicyChanged` | [`02d3e7fe…a0c410`](https://stellar.expert/explorer/testnet/tx/02d3e7fe7397f3635b824bb2eaef8e717779c452893c46c15e9eb776c6a0c410) |
+| `add_merchant` `GBSVTVRQ…ELYP` | `MerchantAdded`, allowlist 1 → 2 | [`6d6d72cb…45cb82`](https://stellar.expert/explorer/testnet/tx/6d6d72cb53527a2ce436e8f773ad4c8c99e7eac6f0cb7a6b2649c3739c45cb82) |
+| `mooring pay https://demo.rail402.dev/weather` | HTTP 200, body `{"city":"Istanbul","temperature":21,"conditions":"sunny"}`; on-chain `spent` 0 → 0.001 USDC, balance 11.297 → 11.296 | [`ef32cfdb…adbeaf`](https://stellar.expert/explorer/testnet/tx/ef32cfdb19bf51637fbff79b176e963486dd325de5be0c344233287a73adbeaf) |
+| `mooring pay https://try-cli-jukj.onrender.com/fortune` (another Rail402-listed seller, **not** on the allowlist) | `Denied (not_allowlisted) at precheck`, exit 2 — nothing signed | — |
+
+The settlement was submitted by Rail402's facilitator account (`GBI2AUZW…Y5OO`, fee-bumped by
+`GDKMZDQW…GH62`, 12 144 stroops charged), and the ledger shows `contract_debited` 0.001 USDC from
+the card and `account_credited` to the merchant. So a Mooring card is not tied to one
+facilitator: any facilitator built on `@x402/stellar` that re-simulates the payload accepts the
+card's custom-account authorization as-is.
+
+Third-party sellers on Stellar testnet were found through Rail402's discovery endpoint
+(`https://testnet.rail402.dev/discovery/resources`); the same shape (`accepts[].payTo`,
+`network`, `asset`) is what a merchant directory in the web app would read instead of asking
+the owner to type an address.
