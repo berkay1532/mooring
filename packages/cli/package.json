@@ -1,12 +1,42 @@
 {
   "name": "@mooring/cli",
   "version": "0.1.0",
+  "description": "CLI for Mooring spending cards on Stellar: generate an agent key, inspect a card, pay an x402 API from it.",
   "private": false,
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berkay1532/mooring.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://mooring.live",
+  "bugs": {
+    "url": "https://github.com/berkay1532/mooring/issues"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "x402",
+    "usdc",
+    "ai-agents",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
-  "bin": { "mooring": "./dist/index.js" },
-  "files": ["dist"],
+  "bin": {
+    "mooring": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run"

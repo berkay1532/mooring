@@ -9,20 +9,20 @@ policy locally, signs the payment with the agent key so the **card** is the paye
 refusal into a typed error instead of a bare `402` — `CardPolicyDenied` when the card's policy
 said no, `PaymentError` for everything else.
 
-The server side stays stock x402 (`@x402/express` + `@x402/stellar` + the OpenZeppelin Channels
-facilitator); only the client scheme is Mooring's, because the stock one cannot sign for a
-contract account.
+The server side stays stock x402 (`@x402/express` + `@x402/stellar` + any facilitator built on
+them — OpenZeppelin Channels and Rail402 are both verified); only the client scheme is Mooring's,
+because the stock one cannot sign for a contract account.
 
 Apache-2.0. **Stellar testnet only** — not audited, not on mainnet.
 
 ## Install
 
-Not published to npm yet. Use it from the workspace (`npm ci && npm run build` at the repo root),
-or add it as a file dependency:
-
 ```sh
-npm i file:../mooring/packages/x402-client @stellar/stellar-sdk
+npm i @mooring/x402-client @stellar/stellar-sdk
 ```
+
+`@stellar/stellar-sdk` is a dependency of the client, but you import `Keypair` from it yourself,
+so install it alongside. The CLI (`npm i -g @mooring/cli`) wraps the same client for shell use.
 
 Requires Node.js 20+.
 
