@@ -74,11 +74,10 @@ try {
 }
 ```
 
-Or from the CLI (not published to npm yet — run it from the workspace):
+Or from the CLI (`npm i -g @mooring/cli`, or from the workspace after `npm ci && npm run build`
+with `alias mooring="node $PWD/packages/cli/dist/index.js"`):
 
 ```sh
-npm ci && npm run build
-alias mooring="node $PWD/packages/cli/dist/index.js"
 
 mooring keygen --hex                        # a new agent keypair (--hex prints the signer bytes)
 mooring status --card C… --json             # label, policy, period, remaining budget, allowlist

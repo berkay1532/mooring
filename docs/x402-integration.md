@@ -247,11 +247,10 @@ no signing or fees. The label is opaque bytes (1..=32); consumers must treat it 
 
 ### From the CLI
 
-The CLI is not published to npm yet; run it from the workspace.
+Install it with `npm i -g @mooring/cli`, or run it from the workspace
+(`npm ci && npm run build`, then `alias mooring="node $PWD/packages/cli/dist/index.js"`).
 
 ```sh
-npm ci && npm run build
-alias mooring="node $PWD/packages/cli/dist/index.js"
 
 mooring keygen --hex                       # new agent keypair (--hex prints the BytesN<32> signer)
 mooring status --card C… --json            # label, on-chain policy, period, remaining budget, allowlist

@@ -3,17 +3,52 @@
   "version": "0.1.0",
   "description": "Pay x402-protected APIs from a Mooring spending card on Stellar.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berkay1532/mooring.git",
+    "directory": "packages/x402-client"
+  },
+  "homepage": "https://mooring.live",
+  "bugs": {
+    "url": "https://github.com/berkay1532/mooring/issues"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "x402",
+    "usdc",
+    "ai-agents",
+    "agentic-payments",
+    "spending-limits",
+    "custom-account"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./errors": { "types": "./dist/denial.d.ts", "import": "./dist/denial.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./errors": {
+      "types": "./dist/denial.d.ts",
+      "import": "./dist/denial.js"
+    }
   },
   "//exports": "./errors is the card error table on its own, so a consumer that only translates contract errors (the web app) does not pull the payment client, its scheme and the @x402/* packages into its bundle.",
   "sideEffects": false,
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
