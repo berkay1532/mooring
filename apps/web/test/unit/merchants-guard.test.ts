@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { assertHostAllowed, isBlockedAddress, validateUrl } from "@/lib/merchants/guard"
 
 describe("validateUrl", () => {
@@ -38,12 +38,12 @@ describe("isBlockedAddress", () => {
     "0.0.0.0", "0.1.2.3", "127.0.0.1", "10.1.2.3", "169.254.169.254", "172.16.0.1", "172.31.0.1",
     "192.168.0.1", "100.64.0.1", "100.127.255.255", "224.0.0.1", "239.1.1.1", "240.0.0.1", "255.255.255.255",
     "::", "::1", "fd00::1", "fc00::1", "fe80::1", "febf::1", "::ffff:192.168.0.1", "::ffff:c0a8:1",
-    "[::1]",
+    "[::1]", "::7f00:1", "64:ff9b::7f00:1", "::ffff:0:7f00:1", "::ffff:0:127.0.0.1",
   ])("blocks %s", (ip) => expect(isBlockedAddress(ip)).toBe(true))
 
   it.each([
     "93.184.216.34", "172.15.0.1", "172.32.0.1", "100.63.0.1", "100.128.0.1", "223.255.255.255",
-    "2606:4700::1", "::ffff:93.184.216.34", "fec0::1",
+    "2606:4700::1", "::ffff:93.184.216.34", "fec0::1", "64:ff9b::5db8:d822",
   ])("allows %s", (ip) => expect(isBlockedAddress(ip)).toBe(false))
 
   it("treats non-IPs as not blocked", () => {
@@ -89,5 +89,27 @@ describe("assertHostAllowed", () => {
     const lookup = async () => { throw new Error("no lookup") }
     expect(await assertHostAllowed(url("http://localhost:3000/"), { allowLocal: true, lookup })).toBeNull()
     expect(await assertHostAllowed(url("http://127.0.0.1/"), { allowLocal: true, lookup })).toBeNull()
+  })
+
+  it("blocks trailing-dot localhost without lookup", async () => {
+    const lookup = vi.fn(async () => ["93.184.216.34"])
+    for (const h of ["localhost.", "a.localhost."]) {
+      const e = await assertHostAllowed(url(`https://${h}/`), { allowLocal: false, lookup })
+      expect(e?.code).toBe("blocked_url")
+    }
+    expect(lookup).not.toHaveBeenCalled()
+  })
+  it("fails closed on a non-IP lookup answer", async () => {
+    const e = await assertHostAllowed(url("https://a.example/"), { allowLocal: false, lookup: async () => ["not-an-ip"] })
+    expect(e?.code).toBe("blocked_url")
+  })
+  it("blocks encoded loopback end to end", async () => {
+    const lookup = vi.fn(async () => ["93.184.216.34"])
+    for (const raw of ["https://2130706433/", "https://[0:0:0:0:0:ffff:127.0.0.1]/"]) {
+      const v = validateUrl(raw, { allowLocal: false })
+      expect(v.ok).toBe(true)
+      if (v.ok) expect((await assertHostAllowed(v.url, { allowLocal: false, lookup }))?.code).toBe("blocked_url")
+    }
+    expect(lookup).not.toHaveBeenCalled()
   })
 })

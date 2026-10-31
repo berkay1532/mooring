@@ -83,9 +83,13 @@ export function isBlockedAddress(ip: string): boolean {
   if (kind === 4) return v4Blocked(parseV4(addr))
   if (kind !== 6) return false
   const g = parseV6(addr)
-  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
-    return v4Blocked(((g[6] << 16) | g[7]) >>> 0)
-  }
+  const zeros = (from: number, to: number) => g.slice(from, to).every((x) => x === 0)
+  const embedsV4 =
+    (zeros(0, 4) && g[4] === 0 && g[5] === 0xffff) || // ::ffff:0:0/96 mapped
+    (zeros(0, 4) && g[4] === 0xffff && g[5] === 0) || // ::ffff:0:0:0/96 SIIT
+    zeros(0, 6) || // ::/96 IPv4-compatible
+    (g[0] === 0x64 && g[1] === 0xff9b && zeros(2, 6)) // 64:ff9b::/96 NAT64
+  if (embedsV4) return v4Blocked(((g[6] << 16) | g[7]) >>> 0)
   if (g.every((x) => x === 0)) return true // ::
   if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true // ::1
   if ((g[0] & 0xfe00) === 0xfc00) return true // fc00::/7
@@ -103,7 +107,8 @@ export async function assertHostAllowed(
   opts: { allowLocal: boolean; lookup: (host: string) => Promise<string[]> },
 ): Promise<GuardError | null> {
   if (opts.allowLocal) return null
-  const host = url.hostname.toLowerCase()
+  const lowered = url.hostname.toLowerCase()
+  const host = lowered.endsWith(".") ? lowered.slice(0, -1) : lowered
   if (host === "localhost" || host.endsWith(".localhost")) return BLOCKED
   const bare = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host
   if (isIP(bare) !== 0) return isBlockedAddress(bare) ? BLOCKED : null
@@ -114,5 +119,5 @@ export async function assertHostAllowed(
     return UNREACHABLE
   }
   if (addrs.length === 0) return UNREACHABLE
-  return addrs.some(isBlockedAddress) ? BLOCKED : null
+  return addrs.some((a) => isIP(a) === 0 || isBlockedAddress(a)) ? BLOCKED : null
 }
