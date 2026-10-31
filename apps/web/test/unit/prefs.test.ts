@@ -138,6 +138,17 @@ describe("merchant labels", () => {
     expect(getMerchantLabels(OWNER, CARD_A)).toEqual({});
   });
 
+  it("drops stored entries whose name or url is not a string", () => {
+    setMerchantLabel(OWNER, CARD_A, PAY_A, L1);
+    const key = Object.keys(localStorage).find((k) => k.endsWith(`merchants:${CARD_A}`))!;
+    const stored = JSON.parse(localStorage.getItem(key)!);
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...stored, [PAY_B]: { name: 42, url: "https://x" }, C: { name: "n" }, D: null, E: "str" }),
+    );
+    expect(getMerchantLabels(OWNER, CARD_A)).toEqual({ [PAY_A]: L1 });
+  });
+
   it("sets two labels and reads them keyed by payTo", () => {
     setMerchantLabel(OWNER, CARD_A, PAY_A, L1);
     setMerchantLabel(OWNER, CARD_A, PAY_B, L2);

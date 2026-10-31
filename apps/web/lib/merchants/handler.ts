@@ -31,6 +31,8 @@ export function rateKey(raw: string | undefined): string {
 }
 
 const NO_STORE = { "Cache-Control": "no-store" }
+/** A `{ "url": … }` body never needs more; the URL itself is capped at 2048. */
+const MAX_BODY_BYTES = 4 * 1024
 const json = (body: unknown, status: number, extra: Record<string, string> = {}) =>
   Response.json(body, { status, headers: { ...NO_STORE, ...extra } })
 
@@ -45,9 +47,23 @@ export function createHandler(deps: RouteDeps) {
         { "Retry-After": "60" },
       )
     }
+    const type = req.headers.get("content-type")?.split(";")[0].trim().toLowerCase()
+    if (type !== "application/json") {
+      return json({ ok: false, code: "invalid_url", message: "Send JSON." }, 400)
+    }
+    const tooLarge = () =>
+      json({ ok: false, code: "invalid_url", message: "That request is too large." }, 400)
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return tooLarge()
+    let text: string
+    try {
+      text = await req.text()
+    } catch {
+      text = ""
+    }
+    if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) return tooLarge()
     let url: unknown
     try {
-      url = ((await req.json()) as { url?: unknown } | null)?.url
+      url = (JSON.parse(text) as { url?: unknown } | null)?.url
     } catch {
       url = undefined
     }
@@ -65,7 +81,7 @@ export function createHandler(deps: RouteDeps) {
         userAgent: USER_AGENT,
         dispatcherFor: deps.dispatcherFor,
         closeDispatcher: deps.closeDispatcher,
-        })
+      })
     } catch {
       return json({ ok: false, code: "unreachable", message: "Could not reach that service." }, 200)
     }

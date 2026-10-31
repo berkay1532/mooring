@@ -7,6 +7,7 @@ import { getAddedCards, getMerchantLabels, getSelected } from "../../lib/prefs";
 const OWNER = "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD";
 const OTHER_OWNER = "GBSVQ6PHXQ6DGWCDZ6OOSSGPHNUXQNWRJRFZUOWSYIZ7P6RUV4I2ELYP";
 const CARD = "CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR";
+const CARD_2 = "CBXHE6IOGUVDJEKAHPJGFXRPYSI7H6UFWQE2AYTE5HOSEOWFEXWJ6ULP";
 const PAY_TO = "GBSVQ6PHXQ6DGWCDZ6OOSSGPHNUXQNWRJRFZUOWSYIZ7P6RUV4I2ELYP";
 const URL_ = "https://demo.rail402.dev/weather";
 
@@ -30,7 +31,8 @@ vi.mock("@/lib/query/hooks", () => ({
   },
   useMerchants: () => state.merchants,
 }));
-vi.mock("@/lib/wallet/context", () => ({ useWallet: () => ({ address: OWNER }) }));
+const wallet = vi.hoisted(() => ({ address: null as string | null }));
+vi.mock("@/lib/wallet/context", () => ({ useWallet: () => wallet }));
 vi.mock("@/components/cards/busy", () => ({
   CardBusyProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useCardOp: (_id: string, _build: unknown, opts: { onDone?: () => void }) => {
@@ -48,6 +50,7 @@ beforeEach(() => {
   localStorage.clear();
   state.add.state = "idle";
   state.code = { data: true, error: null };
+  wallet.address = OWNER;
   useCardInfo.mockReset();
   state.merchants = { data: [], isLoading: false };
   state.info = { data: { owner: OWNER, label: "Research", state: 0 }, isLoading: false, error: null };
@@ -114,7 +117,53 @@ describe("AllowScreen", () => {
     render(<AllowScreen card={CARD} url={URL_} />);
     expect(screen.getByText(/This card belongs to GBSV/)).toBeTruthy();
     expect(screen.getByText(/Connect that wallet to manage it\./)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Go to my cards" }).getAttribute("href")).toBe("/cards");
     expect(resolveMerchantUrl).not.toHaveBeenCalled();
+  });
+
+  it("refuses when no wallet is connected", () => {
+    wallet.address = null;
+    render(<AllowScreen card={CARD} url={URL_} />);
+    expect(screen.getByText(/This card belongs to GCJJ/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
+    expect(resolveMerchantUrl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a padded or lowercased card param", () => {
+    for (const card of [` ${CARD}`, `${CARD} `, CARD.toLowerCase()]) {
+      render(<AllowScreen card={card} url={URL_} />);
+      expect(screen.getByText("This link does not name a valid card.")).toBeTruthy();
+      cleanup();
+    }
+    expect(resolveMerchantUrl).not.toHaveBeenCalled();
+  });
+
+  it("disables the resolver for a cancelled card", async () => {
+    state.info = { data: { owner: OWNER, label: "Research", state: 2 }, isLoading: false, error: null };
+    render(<AllowScreen card={CARD} url={URL_} />);
+    const button = await screen.findByRole("button", { name: "Allow demo.rail402.dev" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Look up" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows Already allowed for a merchant already on the card", async () => {
+    state.merchants = { data: [PAY_TO], isLoading: false };
+    render(<AllowScreen card={CARD} url={URL_} />);
+    const button = await screen.findByRole("button", { name: "Already allowed" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Allow demo.rail402.dev" })).toBeNull();
+  });
+
+  it("starts fresh when the link changes to another card", async () => {
+    const view = render(<AllowScreen card={CARD} url={URL_} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    await waitFor(() => expect(state.add.run).toHaveBeenCalled());
+    act(() => state.add.onDone?.());
+    expect(screen.getByText("Merchant allowed.")).toBeTruthy();
+
+    view.rerender(<AllowScreen card={CARD_2} url={URL_} />);
+    expect(screen.queryByText("Merchant allowed.")).toBeNull();
+    expect(await screen.findByRole("button", { name: "Allow demo.rail402.dev" })).toBeTruthy();
   });
 
   it("resolves the linked URL on mount and offers to allow it", async () => {

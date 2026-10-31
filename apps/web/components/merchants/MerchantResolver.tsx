@@ -6,7 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { SMALL_BUTTON_CLASS, SURFACE_CLASS } from "@/components/cards/PolicySection";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
-import { config } from "@/lib/config";
+import { config, isDev } from "@/lib/config";
 import { shortAddress } from "@/lib/format/address";
 import { formatUsdc } from "@/lib/format/usdc";
 import { resolveMerchantUrl } from "@/lib/merchants/client";
@@ -131,7 +131,9 @@ export function MerchantResolver({
   }, [state.kind, inputId]);
 
   const resolving = state.kind === "resolving";
-  const seeds = state.kind === "idle" ? seedServices(config.network, config.walletMode === "mock") : [];
+  // The local example seller only makes sense where the resolver may reach
+  // loopback: the mock-wallet e2e build and `next dev`.
+  const seeds = state.kind === "idle" ? seedServices(config.network, config.walletMode === "mock" || isDev) : [];
   const addressOk =
     (StrKey.isValidEd25519PublicKey(address) || StrKey.isValidContract(address)) &&
     !existing.includes(address);

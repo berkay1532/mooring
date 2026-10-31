@@ -283,7 +283,10 @@ resolver.
   card's USDC contract — and no confirm button is shown.
 - **Server-side limits.** The fetch runs on the server, so it is guarded against SSRF: only
   public `https:` hosts, every address a name resolves to is checked, and each redirect hop is
-  re-checked. 10 s per hop, at most 3 redirects, and a rate limit of 30 lookups per minute.
+  re-checked (a hop to `http:` or a URL with credentials is refused: "That service redirected
+  somewhere Mooring will not follow."). 10 s per hop, at most 3 redirects, and a rate limit of
+  30 lookups per minute. The route only accepts a `Content-Type: application/json` body of at
+  most 4 KiB.
 - **Responsibility notice.** The preview always says: "Mooring only checked that this service
   accepts payments from this card's network and token. It does not vouch for the service.
   Allowing it lets your agent pay it up to the card's limits — whether to trust it is your
@@ -294,8 +297,9 @@ resolver.
   (`mooring:<owner>:merchants:<card>`) and shown above the shortened address. The chain only
   stores the address, so a name does not follow the owner to another browser.
 - **Examples.** An empty resolver shows a seed row, "Examples, not recommendations." (currently
-  "Rail402 demo", `https://demo.rail402.dev/weather`). It only fills the URL field; the owner
-  still looks up and confirms.
+  "Rail402 demo", `https://demo.rail402.dev/weather`; outside a production build — `next dev`
+  or the mock-wallet test build — also "Example merchant (local)", `http://localhost:3001/weather`).
+  It only fills the URL field; the owner still looks up and confirms.
 - **The `/allow` link.** When the agent is denied with `not_allowlisted`, the client prints a
   link to `/allow?card=<card>&url=<service url>`. The screen first proves the address runs the
   Mooring card code (its instance's WASM hash must equal `NEXT_PUBLIC_CARD_WASM_HASH`); any

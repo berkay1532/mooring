@@ -34,6 +34,40 @@ describe("POST /api/resolve-merchant", () => {
     }
   })
 
+  it("400 Send JSON. without a JSON content type", async () => {
+    const p = handler()
+    const variants: Array<Record<string, string>> = [{}, { "content-type": "text/plain" }, { "content-type": "application/x-www-form-urlencoded" }]
+    for (const headers of variants) {
+      const res = await p(
+        new Request("http://x/api/resolve-merchant", {
+          method: "POST",
+          headers: { "x-forwarded-for": "1.1.1.1", ...headers },
+          body: JSON.stringify({ url: "https://api.example.com/w" }),
+        }),
+      )
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ ok: false, code: "invalid_url", message: "Send JSON." })
+    }
+    const charset = await p(
+      new Request("http://x/api/resolve-merchant", {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ url: "https://api.example.com/w" }),
+      }),
+    )
+    expect(charset.status).toBe(200)
+  })
+
+  it("400 for a body over 4 KiB", async () => {
+    const p = handler()
+    const res = await p(req({ url: "https://api.example.com/w", pad: "a".repeat(4096) }))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ ok: false, code: "invalid_url" })
+    const exact = JSON.stringify({ url: "https://api.example.com/w", pad: "" })
+    const fits = await p(req({ url: "https://api.example.com/w", pad: "a".repeat(4096 - exact.length) }))
+    expect(fits.status).toBe(200)
+  })
+
   it("200 ok with no-store", async () => {
     const res = await handler()(req({ url: "https://api.example.com/w" }))
     expect(res.status).toBe(200)

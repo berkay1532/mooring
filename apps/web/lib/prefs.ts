@@ -127,12 +127,21 @@ export interface MerchantLabel {
   url: string;
 }
 
-/** Labels for `card`'s merchants, keyed by `payTo`. `{}` when absent or unreadable. */
+/**
+ * Labels for `card`'s merchants, keyed by `payTo`. `{}` when absent or
+ * unreadable; an entry whose `name` or `url` is not a string is dropped.
+ */
 export function getMerchantLabels(owner: string, card: string): Record<string, MerchantLabel> {
   const raw = readJSON<unknown>(ownerKey(owner, `merchants:${card}`), {});
-  return raw !== null && typeof raw === "object" && !Array.isArray(raw)
-    ? (raw as Record<string, MerchantLabel>)
-    : {};
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, MerchantLabel> = {};
+  for (const [payTo, value] of Object.entries(raw as Record<string, unknown>)) {
+    const label = value as { name?: unknown; url?: unknown } | null;
+    if (label && typeof label.name === "string" && typeof label.url === "string") {
+      out[payTo] = { name: label.name, url: label.url };
+    }
+  }
+  return out;
 }
 
 /** Sets (or overwrites) the label for `payTo` on `card`. */

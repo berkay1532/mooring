@@ -5,12 +5,14 @@ import type { Card } from "@mooring/contracts-ts";
 import { periodLabel } from "@/components/cards/summary";
 import { Button } from "@/components/ui/Button";
 import { opButtonLabel } from "@/components/cards/busy";
+import { MerchantIdentity } from "@/components/merchants/MerchantIdentity";
 import type { TxState } from "@/components/ui/TxToast";
 import { formatDate } from "@/components/wizard/PolicyStep";
 import { config } from "@/lib/config";
 import { shortAddress } from "@/lib/format/address";
 import { formatDuration } from "@/lib/format/time";
 import { formatUsdc } from "@/lib/format/usdc";
+import type { MerchantLabel } from "@/lib/prefs";
 import { UNIT_SECONDS } from "@/lib/wizard/validate";
 
 export interface ConfirmStepProps {
@@ -19,7 +21,7 @@ export interface ConfirmStepProps {
   agentKey: string;
   merchants: readonly string[];
   /** Display names for merchants added by URL, keyed by `payTo`. */
-  merchantNames?: Record<string, { name: string; url: string }>;
+  merchantNames?: Record<string, MerchantLabel>;
   /** The address the card will be deployed at, once discovery has answered. */
   address?: string;
   /** Something went wrong working out the next free address. */
@@ -144,18 +146,7 @@ export function ConfirmStep({
           <ul aria-label="Allowed merchants" className="mt-2">
             {merchants.map((merchant) => (
               <li key={merchant} className="mt-1 text-xs text-text-hi">
-                {merchantNames?.[merchant] ? (
-                  <>
-                    <span>{merchantNames[merchant].name}</span>{" "}
-                    <span className="font-mono text-text-lo" title={merchant}>
-                      {shortAddress(merchant)}
-                    </span>
-                  </>
-                ) : (
-                  <span className="font-mono" title={merchant}>
-                    {shortAddress(merchant)}
-                  </span>
-                )}
+                <MerchantIdentity address={merchant} label={merchantNames?.[merchant]} inline />
               </li>
             ))}
           </ul>

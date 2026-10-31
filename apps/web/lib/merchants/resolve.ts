@@ -168,8 +168,10 @@ export async function resolveMerchant(rawUrl: string, deps: ResolveDeps): Promis
       } catch {
         return fail("unreachable", UNREACHABLE)
       }
+      // A hop that fails the URL shape check (http:, credentials, too long) is
+      // the service's doing, not the owner's input: say so.
       const v = validateUrl(next, { allowLocal: deps.allowLocal })
-      if (!v.ok) return fail(v.code, v.message)
+      if (!v.ok) return fail("blocked_url", "That service redirected somewhere Mooring will not follow.")
       url = v.url
       if (status === 303 || ((status === 301 || status === 302) && method === "POST")) method = "GET"
       continue

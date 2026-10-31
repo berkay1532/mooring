@@ -80,6 +80,17 @@ describe("resolveMerchant", () => {
     expect(r).toMatchObject({ ok: false, code: "blocked_url" })
   })
 
+  it("refuses a redirect to http: or to a URL with credentials as blocked_url", async () => {
+    for (const to of ["http://api.example.com/y", "https://user:pw@api.example.com/y"]) {
+      const { deps } = setup([redirect(to)])
+      expect(await resolveMerchant("https://api.example.com/x", deps)).toEqual({
+        ok: false,
+        code: "blocked_url",
+        message: "That service redirected somewhere Mooring will not follow.",
+      })
+    }
+  })
+
   it("follows up to 3 redirects and fails on the 4th", async () => {
     const hop = (n: number) => redirect(`https://api.example.com/${n}`)
     const { deps } = setup([hop(1), hop(2), hop(3), hop(4)])

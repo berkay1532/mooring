@@ -14,6 +14,7 @@ import { StrKey } from "@stellar/stellar-sdk";
 import type { Card } from "@mooring/contracts-ts";
 
 import { parseUsdc } from "../format/usdc";
+import type { MerchantLabel } from "../prefs";
 
 /** `contracts/card/src/label.rs::MAX_LABEL_LEN` — bytes, not characters. */
 export const MAX_LABEL_BYTES = 32;
@@ -283,7 +284,7 @@ export interface WizardDraft {
   agentKey: string;
   merchants: string[];
   /** Display names of merchants added by URL, keyed by `payTo`; absent for bare addresses. */
-  merchantNames: Record<string, { name: string; url: string }>;
+  merchantNames: Record<string, MerchantLabel>;
 }
 
 /** A fresh draft: a daily budget expiring in 30 days, nothing filled in. */

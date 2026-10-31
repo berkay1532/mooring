@@ -155,6 +155,28 @@ describe("MerchantResolver", () => {
     expect(screen.queryByText("Examples, not recommendations.")).toBeNull();
   });
 
+  it("offers the local example seller outside a production build only", async () => {
+    const spy = vi.spyOn(seed, "seedServices");
+    setup();
+    expect(spy).toHaveBeenCalledWith("stellar:testnet", true);
+    expect(screen.getByRole("button", { name: "Example merchant (local)" })).toBeInTheDocument();
+    cleanup();
+
+    vi.resetModules();
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const freshSeed = await import("../../lib/merchants/seed");
+      const freshSpy = vi.spyOn(freshSeed, "seedServices");
+      const { MerchantResolver: Fresh } = await import("../../components/merchants/MerchantResolver");
+      render(<Fresh existing={[]} onConfirm={vi.fn()} confirmLabel={(h) => h} resolve={vi.fn()} />);
+      expect(freshSpy).toHaveBeenCalledWith("stellar:testnet", false);
+      expect(screen.queryByRole("button", { name: "Example merchant (local)" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Rail402 demo" })).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("hides the seed row when there are no seed services", () => {
     vi.spyOn(seed, "seedServices").mockReturnValue([]);
     setup();

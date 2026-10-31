@@ -10,11 +10,12 @@ import {
   SMALL_BUTTON_CLASS,
   SURFACE_CLASS,
 } from "@/components/cards/PolicySection";
+import { MerchantIdentity } from "@/components/merchants/MerchantIdentity";
 import { MerchantResolver, type ResolvedMerchant } from "@/components/merchants/MerchantResolver";
 import { Button } from "@/components/ui/Button";
 import { buildAddMerchant, buildRemoveMerchant } from "@/lib/chain/card";
 import { shortAddress } from "@/lib/format/address";
-import { getMerchantLabels, removeMerchantLabel, setMerchantLabel } from "@/lib/prefs";
+import { getMerchantLabels, removeMerchantLabel, setMerchantLabel, type MerchantLabel } from "@/lib/prefs";
 import { keys } from "@/lib/query/keys";
 
 /** The contract's `MAX_ALLOWLIST` (contracts/card/src/lib.rs). */
@@ -44,7 +45,7 @@ export interface MerchantsSectionProps {
  */
 export function MerchantsSection({ address, owner, merchants, loading, disabled }: MerchantsSectionProps) {
   const [adding, setAdding] = useState(false);
-  const [labels, setLabels] = useState<Record<string, { name: string; url: string }>>({});
+  const [labels, setLabels] = useState<Record<string, MerchantLabel>>({});
   const pendingLabel = useRef<ResolvedMerchant | null>(null);
   const removing = useRef<string | null>(null);
 
@@ -120,18 +121,7 @@ export function MerchantsSection({ address, owner, merchants, loading, disabled 
         const label = labels[merchant];
         return (
           <div key={merchant} className={KV_CLASS}>
-            {label ? (
-              <span className="min-w-0">
-                <span className="block truncate text-sm text-text-hi">{label.name}</span>
-                <span className="block truncate font-mono text-xs text-text-lo" title={merchant}>
-                  {shortAddress(merchant)}
-                </span>
-              </span>
-            ) : (
-              <span className="min-w-0 truncate font-mono text-xs text-text-hi" title={merchant}>
-                {merchant}
-              </span>
-            )}
+            <MerchantIdentity address={merchant} label={label} />
             <button
               type="button"
               onClick={() => {

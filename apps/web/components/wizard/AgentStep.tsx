@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 
+import { MerchantIdentity } from "@/components/merchants/MerchantIdentity";
 import { MerchantResolver } from "@/components/merchants/MerchantResolver";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { shortAddress } from "@/lib/format/address";
+import type { MerchantLabel } from "@/lib/prefs";
 import { MAX_MERCHANTS, addMerchant, type WizardDraft } from "@/lib/wizard/validate";
 
 export interface AgentStepProps {
@@ -34,7 +36,7 @@ export interface AgentStepProps {
 export function AgentStep({ draft, patch, agentError, agentValid, locked, onBack, onContinue }: AgentStepProps) {
   const [merchantError, setMerchantError] = useState<string | undefined>(undefined);
 
-  function addAddress(address: string, name?: { name: string; url: string }) {
+  function addAddress(address: string, name?: MerchantLabel) {
     const result = addMerchant(draft.merchants, address);
     setMerchantError(result.error);
     if (result.error) return;
@@ -85,18 +87,7 @@ export function AgentStep({ draft, patch, agentError, agentValid, locked, onBack
               key={merchant}
               className="mt-1.5 flex items-center justify-between gap-3 rounded-[10px] border border-text-hi/[0.12] bg-bg-raised px-3.5 py-2.5"
             >
-              {draft.merchantNames[merchant] ? (
-                <span className="min-w-0">
-                  <span className="block truncate text-sm text-text-hi">{draft.merchantNames[merchant].name}</span>
-                  <span className="block font-mono text-xs text-text-lo" title={merchant}>
-                    {shortAddress(merchant)}
-                  </span>
-                </span>
-              ) : (
-                <span className="min-w-0 truncate font-mono text-xs text-text-hi" title={merchant}>
-                  {merchant}
-                </span>
-              )}
+              <MerchantIdentity address={merchant} label={draft.merchantNames[merchant]} />
               <button
                 type="button"
                 onClick={() => remove(merchant)}

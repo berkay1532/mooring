@@ -44,6 +44,8 @@ function v4Blocked(n: number): boolean {
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
     (a === 100 && b >= 64 && b <= 127) ||
+    (a === 192 && b === 0 && ((n >>> 8) & 0xff) === 0) || // 192.0.0.0/24 IETF protocol assignments
+    (a === 198 && (b === 18 || b === 19)) || // 198.18.0.0/15 benchmarking
     a >= 224 // multicast 224/4 and reserved 240/4
   )
 }
@@ -71,8 +73,8 @@ function parseV6(s: string): number[] {
 
 /**
  * True for loopback, link-local, private, unique-local, CGNAT, multicast,
- * reserved and unspecified addresses (IPv4-mapped IPv6 is judged by its IPv4
- * part). Returns false for input that is not an IP literal.
+ * reserved and unspecified addresses (IPv4-mapped, -compatible, SIIT, NAT64
+ * and 6to4 IPv6 are judged by their embedded IPv4 part). Returns false for input that is not an IP literal.
  */
 export function isBlockedAddress(ip: string): boolean {
   let addr = ip
@@ -89,9 +91,10 @@ export function isBlockedAddress(ip: string): boolean {
     (zeros(0, 4) && g[4] === 0xffff && g[5] === 0) || // ::ffff:0:0:0/96 SIIT
     zeros(0, 6) || // ::/96 IPv4-compatible
     (g[0] === 0x64 && g[1] === 0xff9b && zeros(2, 6)) // 64:ff9b::/96 NAT64
+  // `::` and `::1` fall inside ::/96 above and are judged as 0.0.0.0 / 0.0.0.1
+  // (both in 0.0.0.0/8), so they need no separate checks.
   if (embedsV4) return v4Blocked(((g[6] << 16) | g[7]) >>> 0)
-  if (g.every((x) => x === 0)) return true // ::
-  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true // ::1
+  if (g[0] === 0x2002) return v4Blocked(((g[1] << 16) | g[2]) >>> 0) // 2002::/16 6to4
   if ((g[0] & 0xfe00) === 0xfc00) return true // fc00::/7
   if ((g[0] & 0xffc0) === 0xfe80) return true // fe80::/10
   return false

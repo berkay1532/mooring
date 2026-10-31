@@ -60,7 +60,9 @@ export function AllowScreen({ card, url }: AllowScreenProps) {
 /** Proves the card code before anything the contract answers is shown. */
 function AllowCheckedCard({ card, url }: { card: string; url: string | null }) {
   const codeQuery = useIsMooringCard(card);
-  if (codeQuery.data === true) return <AllowCard card={card} url={url} />;
+  // Keyed so a client-side navigation to another `/allow` link starts fresh
+  // (no "Merchant allowed." or pending label carried over).
+  if (codeQuery.data === true) return <AllowCard key={`${card}|${url ?? ""}`} card={card} url={url} />;
   return (
     <main className="px-6 py-10 text-sm text-text-lo">
       {codeQuery.data === false ? (
@@ -129,6 +131,7 @@ function AllowCard({ card, url }: { card: string; url: string | null }) {
         <p>
           This card belongs to {shortAddress(info.owner)}. Connect that wallet to manage it.
         </p>
+        <BackToCards />
       </main>
     );
   }
