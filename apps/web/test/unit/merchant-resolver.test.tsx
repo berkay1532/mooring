@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,6 +41,13 @@ function setup(over: Partial<MerchantResolverProps> = {}) {
   return { resolve, onConfirm, ...utils };
 }
 
+/** Ticks the responsibility box in the open confirmation modal and confirms. */
+function approve() {
+  const dialog = screen.getByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("checkbox"));
+  fireEvent.click(within(dialog).getByRole("button", { name: /^(Allow and sign|Add to list)$/ }));
+}
+
 async function lookUp(url = URL_) {
   const input = screen.getByLabelText("Service URL");
   fireEvent.change(input, { target: { value: url } });
@@ -61,9 +68,39 @@ describe("MerchantResolver", () => {
     expect(group).toHaveTextContent(`${PAY_TO.slice(0, 4)}…${PAY_TO.slice(-4)}`);
     expect(screen.getByText(NOTICE)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Allow demo.rail402.dev" }));
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Allow demo.rail402.dev?" })).toBeInTheDocument();
+    approve();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ payTo: PAY_TO, host: "demo.rail402.dev", name: "Rail402 demo", amount: "10000" }),
     );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Cancel in the modal closes it and leaves the preview", async () => {
+    const { onConfirm } = setup();
+    await lookUp();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("group", { name: "Service Rail402 demo" })).toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("confirmMode list words the modal as Add to list", async () => {
+    setup({ confirmMode: "list", confirmLabel: () => "Add to list" });
+    await lookUp();
+    fireEvent.click(await screen.findByRole("button", { name: "Add to list" }));
+    const dialog = screen.getByRole("dialog", { name: "Add demo.rail402.dev to the list?" });
+    expect(within(dialog).getByRole("button", { name: "Add to list" })).toBeDisabled();
+  });
+
+  it("passes linkOrigin into the modal", async () => {
+    setup({ linkOrigin: true });
+    await lookUp();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    expect(within(screen.getByRole("dialog")).getByText(/came from a link/)).toBeInTheDocument();
   });
 
   it("shows Already allowed, disabled, when payTo is in existing", async () => {
@@ -200,7 +237,10 @@ describe("MerchantResolver", () => {
     const onConfirm = vi.fn(() => new Promise<void>((r) => (release = r)));
     setup({ onConfirm });
     await lookUp();
-    const btn = await screen.findByRole("button", { name: "Allow demo.rail402.dev" });
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    const btn = within(dialog).getByRole("button", { name: "Allow and sign" });
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(onConfirm).toHaveBeenCalledTimes(1);

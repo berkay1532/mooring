@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AllowScreen } from "../../components/merchants/AllowScreen";
@@ -67,6 +67,14 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+
+/** Clicks the preview's Allow button, then ticks the box and confirms in the modal. */
+async function allowViaModal() {
+  fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+  const dialog = await screen.findByRole("dialog", { name: "Allow demo.rail402.dev?" });
+  fireEvent.click(within(dialog).getByRole("checkbox"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Allow and sign" }));
+}
 
 describe("AllowScreen", () => {
   it("rejects a missing or invalid card param", () => {
@@ -156,7 +164,7 @@ describe("AllowScreen", () => {
 
   it("starts fresh when the link changes to another card", async () => {
     const view = render(<AllowScreen card={CARD} url={URL_} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    await allowViaModal();
     await waitFor(() => expect(state.add.run).toHaveBeenCalled());
     act(() => state.add.onDone?.());
     expect(screen.getByText("Merchant allowed.")).toBeTruthy();
@@ -176,7 +184,7 @@ describe("AllowScreen", () => {
 
   it("allows the merchant, stores the label and offers the card", async () => {
     render(<AllowScreen card={CARD} url={URL_} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    await allowViaModal();
     await waitFor(() => expect(state.add.run).toHaveBeenCalledWith(PAY_TO));
     expect(screen.queryByText("Merchant allowed.")).toBeNull();
 
@@ -197,7 +205,7 @@ describe("AllowScreen", () => {
 
   it("drops the pending label when the add ends in the failed state", async () => {
     const view = render(<AllowScreen card={CARD} url={URL_} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    await allowViaModal();
     await waitFor(() => expect(state.add.run).toHaveBeenCalled());
     state.add.state = "failed";
     view.rerender(<AllowScreen card={CARD} url={URL_} />);

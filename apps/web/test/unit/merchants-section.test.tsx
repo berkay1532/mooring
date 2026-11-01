@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,6 +54,9 @@ async function resolveAndAllow() {
   fireEvent.change(input, { target: { value: URL_ } });
   fireEvent.keyDown(input, { key: "Enter" });
   fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+  const dialog = await screen.findByRole("dialog", { name: "Allow demo.rail402.dev?" });
+  fireEvent.click(within(dialog).getByRole("checkbox"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Allow and sign" }));
 }
 
 beforeEach(() => {

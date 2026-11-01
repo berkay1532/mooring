@@ -214,6 +214,10 @@ async function addByUrl(url = RAIL_URL) {
   click(/look up/i);
   await screen.findByRole("group", { name: /service rail402 demo/i });
   click(/add to list/i);
+  // The explicit confirmation modal: tick the responsibility box, then add.
+  const dialog = await screen.findByRole("dialog", { name: /to the list\?/i });
+  fireEvent.click(within(dialog).getByRole("checkbox"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Add to list" }));
 }
 
 /** Fills a valid step 2 and advances to step 3. */
