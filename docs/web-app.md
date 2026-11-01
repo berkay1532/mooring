@@ -21,7 +21,7 @@ Two keys, two roles:
 | `/` | Connect. Detects Freighter, explains what the wallet is for when it is missing, and blocks with a single notice when Freighter is on the wrong network. Goes to `/cards` on success. |
 | `/cards` | My cards. 3D carousel (selected card centred) or list view, plus the selected card's details: balance, remaining this period, per-tx cap, expiry, policy, merchants, agent signer, danger zone. Owner actions: fund, freeze/unfreeze, withdraw, cancel, rename (`set_label`), edit policy, add/remove merchant, rotate signer. "Add existing card" imports a card by address. |
 | `/cards/new` | New card wizard: Policy → Agent & merchants → Confirm, with a live preview card. Creates the card through the factory, then adds each merchant. |
-| `/allow` | Approval screen for a denial link: `/allow?card=<C…>&url=<service url>`. Checks the connected wallet owns the card, resolves the service and offers a single `Allow <host>` confirmation. See [Adding a merchant by URL](#adding-a-merchant-by-url). |
+| `/allow` | Approval screen for a denial link: `/allow?card=<C…>&url=<service url>`. Verifies the address runs the Mooring card WASM and that the connected wallet owns it, resolves the service server-side and offers a single `Allow <host>` confirmation; nothing in the link decides the address that is signed. See [Adding a merchant by URL](#adding-a-merchant-by-url). |
 | `/dev/gallery` | Visual gallery of the design-system primitives and every card state. 404s in a production build unless `NEXT_PUBLIC_WALLET=mock`. |
 
 Card discovery has no indexer behind it: the factory derives a card address from

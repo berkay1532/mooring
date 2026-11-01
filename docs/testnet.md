@@ -402,3 +402,25 @@ outside the workspace, against the registry only:
 
 Right after publishing, npm served a `0.0.0-stage` placeholder for a few minutes and a cached
 metadata read made `npm i …@0.1.0` fail with `ETARGET`; `--prefer-online` (or waiting) resolves it.
+
+## Merchant resolution — allow by URL and the denial link (2026-11-01)
+
+Owner-run verification of PR #15 on the branch's preview deployment (real Freighter, testnet), legacy
+card `CBOOOQDW…UH5W` imported with "Add existing card" (which now also checks the contract runs the
+v2 card WASM `158b6acf…` before trusting `info()`):
+
+| Step | Result | Tx |
+|---|---|---|
+| Card screen → "+ Add" → `https://playground.rail402.dev/lab/sell/forecast/istanbul` → Look up → "Allow playground.rail402.dev" | preview showed price, network, `payTo` and the responsibility notice; `add_merchant` signed in Freighter, allowlist 2 → 3 | [`b4b423ad…ab34cd`](https://stellar.expert/explorer/testnet/tx/b4b423adc882c3dc314957885eaf9f4dab44d9798a9d15eb70a2cb63daab34cd) |
+| Same URL resolved again | "Already allowed", no transaction | — |
+| `mooring pay https://playground.rail402.dev/lab/sell/forecast/istanbul` | HTTP 200 (7-day forecast), 0.01 USDC settled by Rail402's facilitator | [`cf51d876…689460`](https://stellar.expert/explorer/testnet/tx/cf51d876d5fbeaafb9e02ced1624705f79b0a86bca407cd7d1d2dd463c689460) |
+| `/allow?card=CBOO…UH5W&url=https%3A%2F%2Ftry-cli-jukj.onrender.com%2Ffortune` (the link the client prints on `not_allowlisted`) | "This request came from a link…" + notice; "Allow try-cli-jukj.onrender.com" signed; allowlist 3 → 4 | [`739d6edd…e5efb3`](https://stellar.expert/explorer/testnet/tx/739d6edd40626d975f2fa18959c2e6a1066d5f2e63d7a75e63036233c5e5efb3) |
+| `mooring pay https://try-cli-jukj.onrender.com/fortune` | HTTP 200, 0.01 USDC settled | [`99d91c28…1d2e21`](https://stellar.expert/explorer/testnet/tx/99d91c2817270cac97b50410e48a6890464f9f75137460eed6bafc6ab61d2e21) |
+
+Before the second allow, the same CLI run against the fortune seller printed
+`Denied (not_allowlisted) at precheck` followed by `Allow it: https://app.mooring.live/allow?card=…&url=…`
+and exited 2 with nothing signed — the link above is that output with the preview host swapped in.
+The resolver was also probed directly against the real sellers (Rail402 demo, playground, the Render-hosted
+fortune seller) and refused `127.0.0.1`, `localhost` (without `MOORING_RESOLVER_ALLOW_LOCAL`) and a non-x402
+page with the expected codes; the WASM check accepted both Mooring cards and refused the USDC SAC and the
+factory.
