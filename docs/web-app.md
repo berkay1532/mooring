@@ -21,6 +21,7 @@ Two keys, two roles:
 | `/` | Connect. Detects Freighter, explains what the wallet is for when it is missing, and blocks with a single notice when Freighter is on the wrong network. Goes to `/cards` on success. |
 | `/cards` | My cards. 3D carousel (selected card centred) or list view, plus the selected card's details: balance, remaining this period, per-tx cap, expiry, policy, merchants, agent signer, danger zone. Owner actions: fund, freeze/unfreeze, withdraw, cancel, rename (`set_label`), edit policy, add/remove merchant, rotate signer. "Add existing card" imports a card by address. |
 | `/cards/new` | New card wizard: Policy → Agent & merchants → Confirm, with a live preview card. Creates the card through the factory, then adds each merchant. |
+| `/allow` | Approval screen for a denial link: `/allow?card=<C…>&url=<service url>`. Verifies the address runs the Mooring card WASM and that the connected wallet owns it, resolves the service server-side and offers a single `Allow <host>` confirmation; nothing in the link decides the address that is signed. See [Adding a merchant by URL](#adding-a-merchant-by-url). |
 | `/dev/gallery` | Visual gallery of the design-system primitives and every card state. 404s in a production build unless `NEXT_PUBLIC_WALLET=mock`. |
 
 Card discovery has no indexer behind it: the factory derives a card address from
@@ -28,7 +29,10 @@ Card discovery has no indexer behind it: the factory derives a card address from
 the factory does, and checks existence with `getLedgerEntries`. Cards created **before** the app
 existed used a random salt — the live v2 card `CBOOOQDW4YA7JHDW4ELMKRFUUBJFBOJZGB4IXZJTHSAGUE4TWKJXUH5W`
 among them — so those are not auto-discovered. Import them once with **Add existing card**; the
-app verifies on-chain that the address is a Mooring card owned by the connected account.
+app verifies on-chain that the address is a Mooring card owned by the connected account. It
+first reads the contract's instance entry and requires its WASM hash to equal
+`NEXT_PUBLIC_CARD_WASM_HASH`, and only then reads `info()`: any contract can answer `info()`
+with any owner, so the owner field means nothing until the code is known to be Mooring's.
 
 ## Architecture
 
@@ -97,6 +101,7 @@ Copy `apps/web/.env.example` to `apps/web/.env.local`. Every value is read once 
 | `NEXT_PUBLIC_NETWORK_PASSPHRASE` | `Test SDF Network ; September 2015` |
 | `NEXT_PUBLIC_FACTORY_ADDRESS` | `CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE` (deployment v2) |
 | `NEXT_PUBLIC_USDC_SAC` | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` |
+| `NEXT_PUBLIC_CARD_WASM_HASH` | `158b6acf3cde928e2c9c18c9e0f79fd29f7b847b7c73908c3972ef923c85d20f` (deployment v2 card WASM, `card_wasm_hash` in `deployed.testnet.json`). A contract is treated as a card — its `info()` trusted — only when its instance runs this code. |
 | `NEXT_PUBLIC_DOCS_URL` | link shown in the header; defaults to `docs/x402-integration.md` on GitHub |
 | `NEXT_PUBLIC_WALLET` | `freighter` (default). **`mock` is for tests only** — it replaces the wallet with an in-memory stub and unlocks `/dev/gallery`. Never set it on a deployment. |
 
@@ -152,9 +157,10 @@ npx vercel link                        # from the repo root; project name e.g. m
                                        # set Root Directory = apps/web when asked
                                        # (or later: Project Settings -> Build & Deployment)
 
-# the six NEXT_PUBLIC_* values from apps/web/.env.example, for production and preview:
+# the seven NEXT_PUBLIC_* values from apps/web/.env.example, for production and preview:
 for v in NEXT_PUBLIC_STELLAR_NETWORK NEXT_PUBLIC_RPC_URL NEXT_PUBLIC_NETWORK_PASSPHRASE \
-         NEXT_PUBLIC_FACTORY_ADDRESS NEXT_PUBLIC_USDC_SAC NEXT_PUBLIC_DOCS_URL; do
+         NEXT_PUBLIC_FACTORY_ADDRESS NEXT_PUBLIC_USDC_SAC NEXT_PUBLIC_CARD_WASM_HASH \
+         NEXT_PUBLIC_DOCS_URL; do
   npx vercel env add "$v" production
   npx vercel env add "$v" preview
 done
@@ -261,6 +267,55 @@ AGENT_SECRET=S… mooring pay http://localhost:3001/weather --card <the new card
 `examples/merchant-server` is the x402 endpoint; its `payTo` address must be one of the card's
 merchants. See `docs/x402-integration.md` for the full payment walkthrough.
 
+## Adding a merchant by URL
+
+An owner adds a merchant by pasting the URL of the paid service instead of a raw `G…` address.
+Both the card screen ("+ Add" in the Merchants section) and the wizard's Agent step use the same
+resolver.
+
+- **What it does.** The app's server (`POST /api/resolve-merchant`) fetches the service URL,
+  reads its x402 `402 Payment Required` terms, and looks for an `exact` requirement on this
+  card's network paying in this card's USDC. The preview shows the service name, price per
+  request, network and the `payTo` address; **Look up** resolves, **Allow `<host>`** (card
+  screen, `/allow`) or **Add to list** (wizard) confirms. A service that accepts a different
+  network, token or scheme is refused with what it does accept — one line per entry,
+  `<network> · <token> → <payTo>`, where the token reads `USDC` only when it is exactly this
+  card's USDC contract — and no confirm button is shown.
+- **Server-side limits.** The fetch runs on the server, so it is guarded against SSRF: only
+  public `https:` hosts, every address a name resolves to is checked, and each redirect hop is
+  re-checked (a hop to `http:` or a URL with credentials is refused: "That service redirected
+  somewhere Mooring will not follow."). 10 s per hop, at most 3 redirects, and a rate limit of
+  30 lookups per minute. The route only accepts a `Content-Type: application/json` body of at
+  most 4 KiB.
+- **Responsibility notice.** The preview always says: "Mooring only checked that this service
+  accepts payments from this card's network and token. It does not vouch for the service.
+  Allowing it lets your agent pay it up to the card's limits — whether to trust it is your
+  decision." The wizard shows it once on the Confirm step.
+- **Already allowed.** A service whose `payTo` is already on the card's list shows a disabled
+  "Already allowed" button.
+- **Names are per device.** The approved name and URL are kept in `localStorage`
+  (`mooring:<owner>:merchants:<card>`) and shown above the shortened address. The chain only
+  stores the address, so a name does not follow the owner to another browser.
+- **Examples.** An empty resolver shows a seed row, "Examples, not recommendations." (currently
+  "Rail402 demo", `https://demo.rail402.dev/weather`; outside a production build — `next dev`
+  or the mock-wallet test build — also "Example merchant (local)", `http://localhost:3001/weather`).
+  It only fills the URL field; the owner still looks up and confirms.
+- **The `/allow` link.** When the agent is denied with `not_allowlisted`, the client prints a
+  link to `/allow?card=<card>&url=<service url>`. The screen first proves the address runs the
+  Mooring card code (its instance's WASM hash must equal `NEXT_PUBLIC_CARD_WASM_HASH`); any
+  other contract gets "This link does not point to a Mooring card." with no resolver and no
+  owner comparison, because a malicious contract could report the visitor as its owner and
+  make its `add_merchant` do something else. It then requires the connected wallet to
+  own the card, resolves the URL and shows "This request came from a link. Make sure it is a
+  service your agent is meant to use." Link data is never trusted: the card and URL are only
+  inputs, the terms come from a fresh resolve, and nothing is added without the owner's
+  confirmation. On success it shows "Merchant allowed." with an "Open card" link.
+- **Local development.** The resolver refuses `http:` and loopback sellers. Set the server-only
+  variable `MOORING_RESOLVER_ALLOW_LOCAL=1` (the `dev` script and the Playwright config do) to
+  resolve `examples/merchant-server` on `localhost`. Never set it on Vercel.
+- **By address.** "Add by address instead" keeps the raw `G…` / `C…` path for a seller that
+  cannot be resolved.
+
 ## Known limitations and follow-ups
 
 - **Merchants are added one transaction at a time.** The card constructor and the factory's
@@ -268,6 +323,10 @@ merchants. See `docs/x402-integration.md` for the full payment walkthrough.
   `add_merchant` transaction — one Freighter prompt — per merchant. A v3 card constructor taking
   `Vec<Address>` (card code is immutable, so it needs a new factory) would make creation a single
   transaction. Scheduled before mainnet, with the audit.
+- **Merchant names are per device** (`localStorage`) until the indexer lands; the chain keeps
+  only the address.
+- **No merchant directory yet.** Merchants are found by URL or address; a browsable directory is
+  the next step (flow 3).
 - **Freighter only.** The wallet interface in `lib/wallet` is what a Stellar Wallets Kit adapter
   would implement; multi-wallet support is post-v1.
 - **No activity history.** Payments and owner actions per card need an indexer — RPC keeps

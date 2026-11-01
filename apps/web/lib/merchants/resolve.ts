@@ -1,0 +1,232 @@
+/**
+ * Server-side resolver: fetches an owner-supplied x402 service URL, reads its
+ * `402` terms and returns the entry this card can pay. Every hop is checked by
+ * the SSRF guard and (when `dispatcherFor` is given) pinned to the addresses
+ * the guard validated, so DNS cannot change between check and connect.
+ */
+import { StrKey } from "@stellar/stellar-sdk"
+import { describeTerms } from "./describe"
+import { assertHostAllowed, validateUrl } from "./guard"
+import { parsePaymentRequired, selectTerms, type MerchantTerms, type ServiceMeta } from "./terms"
+
+/** A resolved, payable merchant entry. */
+export type ResolveOk = {
+  ok: true
+  url: string
+  payTo: string
+  network: string
+  asset: string
+  amount: string
+  scheme: string
+  service?: ServiceMeta
+  feesSponsored?: boolean
+}
+/** Failure codes surfaced to the UI. */
+export type ResolveErrCode =
+  | "invalid_url"
+  | "blocked_url"
+  | "unreachable"
+  | "not_x402"
+  | "no_match"
+  | "ambiguous"
+/** A resolution failure; `found` lists the entries the service did offer. */
+export type ResolveErr = {
+  ok: false
+  code: ResolveErrCode
+  message: string
+  found?: Array<Pick<MerchantTerms, "network" | "asset" | "payTo" | "amount" | "scheme">>
+}
+/** Outcome of `resolveMerchant`. */
+export type ResolveResult = ResolveOk | ResolveErr
+
+/** Injectable collaborators; tests script `fetch` and `lookup`. */
+export interface ResolveDeps {
+  fetch: typeof globalThis.fetch
+  lookup: (host: string) => Promise<string[]>
+  network: string
+  asset: string
+  allowLocal: boolean
+  userAgent: string
+  /** Per-hop deadline (DNS lookup plus request), default 10000 ms: free-tier sellers cold-start slowly. */
+  timeoutMs?: number
+  /** Builds a connection-pinning dispatcher for a hop; omitted in tests. */
+  dispatcherFor?: (hostname: string, addresses: string[]) => unknown
+  /** Releases a dispatcher built by `dispatcherFor`. */
+  closeDispatcher?: (dispatcher: unknown) => Promise<void> | void
+}
+
+const MAX_REDIRECTS = 3
+const MAX_BODY = 64 * 1024
+const REDIRECTS = new Set([301, 302, 303, 307, 308])
+const UNREACHABLE = "Could not reach that service."
+
+const validPayTo = (a: string) => StrKey.isValidEd25519PublicKey(a) || StrKey.isValidContract(a)
+const slim = ({ network, asset, payTo, amount, scheme }: MerchantTerms) => ({ network, asset, payTo, amount, scheme })
+
+const fail = (code: ResolveErrCode, message: string, found?: ResolveErr["found"]): ResolveErr =>
+  found ? { ok: false, code, message, found } : { ok: false, code, message }
+
+async function readCapped(res: Response): Promise<string | null> {
+  const reader = res.body?.getReader()
+  if (!reader) return ""
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > MAX_BODY) {
+      await reader.cancel().catch(() => {})
+      return null
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString("utf8")
+}
+
+/**
+ * Resolves `rawUrl` to the x402 entry matching `deps.network` / `deps.asset`.
+ * GET first, one POST `{}` retry when GET is not a 402; never throws.
+ */
+export async function resolveMerchant(rawUrl: string, deps: ResolveDeps): Promise<ResolveResult> {
+  const checked = validateUrl(rawUrl, { allowLocal: deps.allowLocal })
+  if (!checked.ok) return fail(checked.code, checked.message)
+  let url = checked.url
+  let method: "GET" | "POST" = "GET"
+  let posted = false
+  let redirects = 0
+  let status = 0
+
+  for (;;) {
+    // One deadline per hop covers the DNS lookup and the request.
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), deps.timeoutMs ?? 10_000)
+    const expired = new Promise<never>((_, reject) =>
+      ctrl.signal.addEventListener("abort", () => reject(new Error("timeout"))),
+    )
+    expired.catch(() => {})
+    // One lookup per hop: the guard and the pinned connection share its answer.
+    let addrs: string[] | undefined
+    const lookup = async (host: string) =>
+      (addrs ??= await Promise.race([deps.lookup(host), expired]))
+    const denied = await assertHostAllowed(url, { allowLocal: deps.allowLocal, lookup })
+    if (denied) {
+      clearTimeout(timer)
+      return fail(denied.code, denied.message)
+    }
+
+    let dispatcher: unknown
+    if (deps.dispatcherFor) {
+      const bare = url.hostname.replace(/^\[|\]$/g, "")
+      try {
+        const pinned = /^[\d.]+$|:/.test(bare) ? [bare] : await lookup(url.hostname)
+        if (pinned.length === 0) {
+          clearTimeout(timer)
+          return fail("unreachable", UNREACHABLE)
+        }
+        dispatcher = deps.dispatcherFor(url.hostname, pinned)
+      } catch {
+        clearTimeout(timer)
+        return fail("unreachable", UNREACHABLE)
+      }
+    }
+
+    const headers: Record<string, string> = { Accept: "application/json", "User-Agent": deps.userAgent }
+    if (method === "POST") headers["Content-Type"] = "application/json"
+    const init: Record<string, unknown> = { method, headers, redirect: "manual", signal: ctrl.signal }
+    if (method === "POST") init.body = "{}"
+    if (dispatcher !== undefined) init.dispatcher = dispatcher
+
+    let res: Response
+    let outcome: ResolveResult | "again" | "redirect"
+    try {
+      res = await deps.fetch(url.href, init as RequestInit)
+      status = res.status
+      if (REDIRECTS.has(status)) {
+        await res.body?.cancel().catch(() => {})
+        outcome = "redirect"
+      } else if (status === 402) {
+        outcome = await interpret(res, url, deps)
+      } else {
+        await res.body?.cancel().catch(() => {})
+        outcome = "again"
+      }
+    } catch {
+      return fail("unreachable", UNREACHABLE)
+    } finally {
+      clearTimeout(timer)
+      if (dispatcher !== undefined) await Promise.resolve(deps.closeDispatcher?.(dispatcher)).catch(() => {})
+    }
+
+    if (outcome === "redirect") {
+      redirects += 1
+      const location = res.headers.get("location")
+      if (redirects > MAX_REDIRECTS || !location) return fail("unreachable", UNREACHABLE)
+      let next: string
+      try {
+        next = new URL(location, url).href
+      } catch {
+        return fail("unreachable", UNREACHABLE)
+      }
+      // A hop that fails the URL shape check (http:, credentials, too long) is
+      // the service's doing, not the owner's input: say so.
+      const v = validateUrl(next, { allowLocal: deps.allowLocal })
+      if (!v.ok) return fail("blocked_url", "That service redirected somewhere Mooring will not follow.")
+      url = v.url
+      if (status === 303 || ((status === 301 || status === 302) && method === "POST")) method = "GET"
+      continue
+    }
+    if (outcome === "again") {
+      if (posted) break
+      posted = true
+      method = "POST"
+      continue
+    }
+    return outcome
+  }
+  return fail("not_x402", `That URL did not answer with x402 payment terms (HTTP ${status}).`)
+}
+
+async function interpret(res: Response, url: URL, deps: ResolveDeps): Promise<ResolveResult> {
+  const notX402 = fail("not_x402", "That URL did not answer with usable x402 payment terms.")
+  const header = res.headers.get("payment-required")
+  let body: string | null = null
+  if (header === null) {
+    body = await readCapped(res)
+    if (body === null) return notX402
+  } else {
+    await res.body?.cancel().catch(() => {})
+  }
+  const parsed = parsePaymentRequired(header, body)
+  if (!parsed || parsed.accepts.length === 0) return notX402
+
+  const sel = selectTerms(parsed, deps.network, deps.asset)
+  if (sel.kind === "many") {
+    return fail(
+      "ambiguous",
+      "This service lists more than one address for this network — add it by address instead.",
+      sel.found.filter((t) => validPayTo(t.payTo)).map(slim),
+    )
+  }
+  if (sel.kind === "none") {
+    return fail(
+      "no_match",
+      describeTerms(parsed.accepts, deps.network, deps.asset).message,
+      parsed.accepts.filter((t) => validPayTo(t.payTo)).map(slim),
+    )
+  }
+  const { terms } = sel
+  if (!validPayTo(terms.payTo)) return notX402
+  const ok: ResolveOk = {
+    ok: true,
+    url: url.href,
+    payTo: terms.payTo,
+    network: terms.network,
+    asset: terms.asset,
+    amount: terms.amount,
+    scheme: terms.scheme,
+  }
+  if (Object.keys(parsed.service).length > 0) ok.service = parsed.service
+  if (parsed.feesSponsored !== undefined) ok.feesSponsored = parsed.feesSponsored
+  return ok
+}

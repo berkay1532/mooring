@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CardPolicyDenied } from "@mooring-live/x402-client";
 import { buildProgram } from "../src/index.js";
 
 const CARD = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
@@ -54,6 +55,34 @@ describe("mooring pay", () => {
     const program = buildProgram({ stdout: (s: string) => out.push(s), createMooringFetch: () => fetchOk, getSettlement: () => ({ success: true, transaction: "cafe", network: "stellar:testnet" }) } as never);
     await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
     expect(out.join("\n")).toContain("cafe");
+  });
+
+  it.each([
+    [{ payTo: "GX", url: "https://api.test/weather" }, true],
+    [{ payTo: "GX" }, false],
+  ])("prints the allow link on a denial when the merchant has a url (%j)", async (merchant, hasLink) => {
+    const out: string[] = [];
+    process.env.AGENT_SECRET = "SDCXRZMPIMR74JONSVNG7MQJS7SLQX2KTNKO5EIZHZLUFQYQ3JTT26SC";
+    process.exitCode = undefined;
+    const denied = new CardPolicyDenied("not_allowlisted", "precheck", { merchant });
+    const program = buildProgram({
+      stdout: (s: string) => out.push(s),
+      createMooringFetch: () => async () => {
+        throw denied;
+      },
+    } as never);
+    await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
+    expect(out[0]).toBe("Denied (not_allowlisted) at precheck");
+    if (hasLink) {
+      expect(out).toEqual([
+        "Denied (not_allowlisted) at precheck",
+        `Allow it: https://app.mooring.live/allow?card=${CARD}&url=${encodeURIComponent("https://api.test/weather")}`,
+      ]);
+    } else {
+      expect(out).toEqual(["Denied (not_allowlisted) at precheck"]);
+    }
+    expect(process.exitCode).toBe(2);
+    process.exitCode = undefined;
   });
 
   it("prints a clean error and exits 1 on a malformed agent secret, without a stack trace", async () => {

@@ -66,3 +66,4 @@ export const RPC_URL = required("NEXT_PUBLIC_RPC_URL");
 export const NETWORK_PASSPHRASE = required("NEXT_PUBLIC_NETWORK_PASSPHRASE");
 export const FACTORY = required("NEXT_PUBLIC_FACTORY_ADDRESS");
 export const USDC = required("NEXT_PUBLIC_USDC_SAC");
+export const CARD_WASM_HASH = required("NEXT_PUBLIC_CARD_WASM_HASH");

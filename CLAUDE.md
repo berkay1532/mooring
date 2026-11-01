@@ -84,6 +84,7 @@ evidence in `docs/testnet.md`, the integration guide in `docs/x402-integration.m
 in `docs/web-app.md`. Remaining work is the post-sprint roadmap below.
 
 ### Post-sprint roadmap (not in the 30-day SOW)
+v1.1 (in progress): merchants added by service URL (402 resolution) + `/allow` denial links — PR TBD; next: merchant directory (flow 3).
 v1.1: indexer + activity history, hosted example merchant API. v2: Soroban Audit Bank audit,
 mainnet, merchant side (registration / receiving / incoming payments). Never: recurring billing
 with fee split, passkey signer (until a wallet can sign Soroban auth entries for a C address).

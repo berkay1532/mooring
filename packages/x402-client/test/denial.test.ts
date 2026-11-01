@@ -3,6 +3,10 @@ import {
   CARD_ERROR_CODES,
   CARD_ERRORS,
   CardPolicyDenied,
+  DEFAULT_APP_URL,
+  allowMerchantUrl,
+  isAbsoluteHttpUrl,
+  stripQuery,
   PaymentError,
   cardDenialFromEvents,
   classifyContractError,
@@ -102,5 +106,52 @@ describe("cardDenialFromEvents", () => {
       code: 42,
       reason: "unknown",
     });
+  });
+});
+
+describe("stripQuery", () => {
+  it("keeps origin + path of an absolute URL", () => {
+    expect(stripQuery("https://api.x.dev/weather?key=SECRET#frag")).toBe("https://api.x.dev/weather");
+  });
+
+  it("cuts unparseable input at the first ? or #", () => {
+    expect(stripQuery("/weather?key=SECRET")).toBe("/weather");
+    expect(stripQuery("weather#frag?x")).toBe("weather");
+    expect(stripQuery("api.x.dev/w?key=SECRET#f")).toBe("api.x.dev/w");
+    expect(stripQuery("/plain")).toBe("/plain");
+  });
+});
+
+describe("isAbsoluteHttpUrl", () => {
+  it("accepts only absolute http(s) URLs", () => {
+    expect(isAbsoluteHttpUrl("https://api.x.dev/w")).toBe(true);
+    expect(isAbsoluteHttpUrl("http://localhost:3001/w")).toBe(true);
+    expect(isAbsoluteHttpUrl("/weather")).toBe(false);
+    expect(isAbsoluteHttpUrl("ftp://x/y")).toBe(false);
+    expect(isAbsoluteHttpUrl("data:text/plain,hi")).toBe(false);
+  });
+});
+
+describe("allowMerchantUrl and CardPolicyDenied.merchant", () => {
+  it("allowMerchantUrl strips the query string and fragment", () => {
+    expect(allowMerchantUrl("https://app.mooring.live/", "CBOO", "https://api.x.dev/weather?key=SECRET#frag"))
+      .toBe("https://app.mooring.live/allow?card=CBOO&url=https%3A%2F%2Fapi.x.dev%2Fweather");
+  });
+  it("not_allowlisted with merchant.url appends the allow link to the message", () => {
+    const err = new CardPolicyDenied("not_allowlisted", "precheck", {
+      merchant: { payTo: "GBSV", url: "https://demo.rail402.dev/weather?x=1", amount: "10000", network: "stellar:testnet" },
+      card: "CBOO", appUrl: "https://app.mooring.live",
+    });
+    expect(err.merchant?.payTo).toBe("GBSV");
+    expect(err.message).toContain("allow it: https://app.mooring.live/allow?card=CBOO&url=https%3A%2F%2Fdemo.rail402.dev%2Fweather");
+    expect(err.message).not.toContain("x=1");
+  });
+  it("no link without a url, and never for other reasons", () => {
+    expect(new CardPolicyDenied("not_allowlisted", "simulate", { merchant: { payTo: "GBSV" }, card: "CBOO" }).message).not.toContain("allow it");
+    expect(new CardPolicyDenied("over_budget", "precheck", { merchant: { payTo: "GBSV", url: "https://a.b/c" }, card: "CBOO" }).message).not.toContain("allow it");
+  });
+  it("falls back to the default app URL", () => {
+    const err = new CardPolicyDenied("not_allowlisted", "precheck", { merchant: { payTo: "G", url: "https://a.b/c" }, card: "CBOO" });
+    expect(err.message).toContain(` — allow it: ${DEFAULT_APP_URL}/allow?card=CBOO&url=`);
   });
 });

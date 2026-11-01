@@ -120,3 +120,49 @@ export function getViewMode(owner: string, fallback: ViewMode = DEFAULT_VIEW_MOD
 export function setViewMode(owner: string, mode: ViewMode): void {
   writeString(ownerKey(owner, "view"), mode);
 }
+
+/** A per-device display label for a merchant `payTo` address. */
+export interface MerchantLabel {
+  name: string;
+  url: string;
+}
+
+/**
+ * Labels for `card`'s merchants, keyed by `payTo`. `{}` when absent or
+ * unreadable; an entry whose `name` or `url` is not a string is dropped.
+ */
+export function getMerchantLabels(owner: string, card: string): Record<string, MerchantLabel> {
+  const raw = readJSON<unknown>(ownerKey(owner, `merchants:${card}`), {});
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, MerchantLabel> = {};
+  for (const [payTo, value] of Object.entries(raw as Record<string, unknown>)) {
+    const label = value as { name?: unknown; url?: unknown } | null;
+    if (label && typeof label.name === "string" && typeof label.url === "string") {
+      out[payTo] = { name: label.name, url: label.url };
+    }
+  }
+  return out;
+}
+
+/** Sets (or overwrites) the label for `payTo` on `card`. */
+export function setMerchantLabel(
+  owner: string,
+  card: string,
+  payTo: string,
+  label: MerchantLabel,
+): void {
+  writeJSON(ownerKey(owner, `merchants:${card}`), {
+    ...getMerchantLabels(owner, card),
+    [payTo]: label,
+  });
+}
+
+/** Removes the label for `payTo` on `card`; drops the key once empty. No-op if absent. */
+export function removeMerchantLabel(owner: string, card: string, payTo: string): void {
+  const current = getMerchantLabels(owner, card);
+  if (!(payTo in current)) return;
+  const { [payTo]: _removed, ...rest } = current;
+  const key = ownerKey(owner, `merchants:${card}`);
+  if (Object.keys(rest).length === 0) removeKey(key);
+  else writeJSON(key, rest);
+}

@@ -6,6 +6,7 @@ const REQUIRED_ENV = {
   NEXT_PUBLIC_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
   NEXT_PUBLIC_FACTORY_ADDRESS: "CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE",
   NEXT_PUBLIC_USDC_SAC: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+  NEXT_PUBLIC_CARD_WASM_HASH: "158b6acf3cde928e2c9c18c9e0f79fd29f7b847b7c73908c3972ef923c85d20f",
 };
 
 describe("config", () => {
@@ -29,6 +30,25 @@ describe("config", () => {
     expect(config.network).toBe("stellar:testnet");
     expect(config.rpcUrl).toBe(REQUIRED_ENV.NEXT_PUBLIC_RPC_URL);
     expect(config.networkPassphrase).toBe(REQUIRED_ENV.NEXT_PUBLIC_NETWORK_PASSPHRASE);
+    expect(config.cardWasmHash).toBe(REQUIRED_ENV.NEXT_PUBLIC_CARD_WASM_HASH);
+  });
+
+  it("normalizes the card WASM hash to lowercase and rejects a malformed one", async () => {
+    process.env.NEXT_PUBLIC_CARD_WASM_HASH = REQUIRED_ENV.NEXT_PUBLIC_CARD_WASM_HASH.toUpperCase();
+    const { config } = await import("../../lib/config");
+    expect(config.cardWasmHash).toBe(REQUIRED_ENV.NEXT_PUBLIC_CARD_WASM_HASH);
+
+    vi.resetModules();
+    process.env.NEXT_PUBLIC_CARD_WASM_HASH = "abc";
+    await expect(async () => {
+      await import("../../lib/config");
+    }).rejects.toThrow(/64 hex characters/);
+
+    vi.resetModules();
+    delete process.env.NEXT_PUBLIC_CARD_WASM_HASH;
+    await expect(async () => {
+      await import("../../lib/config");
+    }).rejects.toThrow(/Missing NEXT_PUBLIC_CARD_WASM_HASH/);
   });
 
   it("throws when a required env var is missing", async () => {
@@ -60,5 +80,6 @@ describe("config", () => {
     for (const name of Object.keys(REQUIRED_ENV)) {
       expect(source).toContain(`process.env.${name}`);
     }
+    expect(source).toContain("process.env.NODE_ENV");
   });
 });

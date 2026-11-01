@@ -190,6 +190,7 @@ function CardDetailsInner({
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-3.5">
           <MerchantsSection
+            owner={owner}
             address={address}
             merchants={merchantsQuery.data ?? []}
             loading={merchantsQuery.isLoading}

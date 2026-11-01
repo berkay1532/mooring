@@ -44,7 +44,7 @@ vi.mock("../src/scheme.js", () => ({
   },
 }));
 
-const { createMooringFetch, getSettlement } = await import("../src/client.js");
+const { createMooringClient, createMooringFetch, getSettlement } = await import("../src/client.js");
 
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64");
 const paymentRequired = (amount: string, payTo = MERCHANT, error?: string) => ({
@@ -182,6 +182,78 @@ describe("createMooringFetch", () => {
       stage: "precheck",
     });
     expect(onDenial).toHaveBeenCalledTimes(1);
+  });
+
+  it("not_allowlisted at precheck carries merchant and the allow link with the request url", async () => {
+    const f = createMooringFetch({
+      ...opts(),
+      fetch: fakeServer({ amount: "10000", payTo: "GOTHER" }),
+    });
+    const err = await f("http://api.test/weather?city=ist").catch((e: unknown) => e as any);
+    expect(err.name).toBe("CardPolicyDenied");
+    expect(err.merchant).toEqual({
+      payTo: "GOTHER",
+      amount: "10000",
+      network: "stellar:testnet",
+      url: "http://api.test/weather",
+    });
+    expect(err.message).toContain(
+      "/allow?card=" + CARD + "&url=" + encodeURIComponent("http://api.test/weather"),
+    );
+  });
+
+  it("omits the url and the allow link when the request URL is not absolute http(s)", async () => {
+    // A browser resolves a relative Request against the page; Node does not,
+    // so stand in a Request that does, as a page on http://api.test would.
+    const NodeRequest = globalThis.Request;
+    class PageRequest extends NodeRequest {
+      constructor(input: RequestInfo | URL, init?: RequestInit) {
+        super(typeof input === "string" ? new URL(input, "http://api.test/") : input, init);
+      }
+    }
+    vi.stubGlobal("Request", PageRequest);
+    const f = createMooringFetch({ ...opts(), fetch: fakeServer({ amount: "10000", payTo: "GOTHER" }) });
+    const err = await f("/weather?key=SECRET")
+      .catch((e: unknown) => e as any)
+      .finally(() => vi.unstubAllGlobals());
+    expect(err.name).toBe("CardPolicyDenied");
+    expect(err.merchant).toEqual({ payTo: "GOTHER", amount: "10000", network: "stellar:testnet" });
+    expect(err.message).not.toContain("/allow");
+    expect(err.message).not.toContain("SECRET");
+  });
+
+  it("attaches merchant at the verify stage", async () => {
+    const f = createMooringFetch({
+      ...opts(),
+      precheck: false,
+      fetch: fakeServer({ amount: "10000", payTo: "GOTHER", verifyFails: true }),
+    });
+    const err = await f("http://api.test/weather").catch((e: unknown) => e as any);
+    expect(err.stage).toBe("verify");
+    expect(err.merchant).toMatchObject({ payTo: "GOTHER", url: "http://api.test/weather" });
+  });
+
+  it("uses the appUrl option in the link", async () => {
+    const f = createMooringFetch({
+      ...opts(),
+      appUrl: "https://staging.example",
+      fetch: fakeServer({ amount: "10000", payTo: "GOTHER" }),
+    });
+    const err = await f("http://api.test/weather").catch((e: unknown) => e as any);
+    expect(err.message).toContain("https://staging.example/allow?card=");
+  });
+
+  it("createMooringClient used standalone sets merchant without url and no link", async () => {
+    const onDenial = vi.fn();
+    const client = createMooringClient({ ...opts(), onDenial });
+    const hooks = (client as any).beforePaymentCreationHooks as Array<(c: unknown) => Promise<unknown>>;
+    await hooks[0]!({
+      selectedRequirements: { scheme: "exact", network: "stellar:testnet", asset: TOKEN, amount: "10000", payTo: "GOTHER" },
+    });
+    const denial = onDenial.mock.calls[0]![0];
+    expect(denial.merchant).toEqual({ payTo: "GOTHER", amount: "10000", network: "stellar:testnet" });
+    expect(denial.merchant.url).toBeUndefined();
+    expect(denial.message).not.toContain("/allow");
   });
 
   it("denies locally when the amount exceeds the per-tx cap", async () => {

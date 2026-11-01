@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { HeaderBar } from "@/components/layout/HeaderBar";
 import { NetworkGuard } from "@/components/layout/NetworkGuard";
@@ -16,7 +16,7 @@ import { deriveCardAddress, saltBytes } from "@/lib/chain/derive";
 import { discoverCards } from "@/lib/chain/discover";
 import { getRpcServer } from "@/lib/chain/rpc";
 import { config } from "@/lib/config";
-import { setSelected } from "@/lib/prefs";
+import { setMerchantLabel, setSelected } from "@/lib/prefs";
 import { NOT_CONFIRMED_TITLE } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
 import { useWallet } from "@/lib/wallet/context";
@@ -128,7 +128,18 @@ function NewCardWizard() {
     [owner, queryClient, router],
   );
 
-  const flow = useCreateCard(createDraft, onFinished);
+  // A ref, so the callback the flow holds never reads a stale draft.
+  const namesRef = useRef(draft.merchantNames);
+  namesRef.current = draft.merchantNames;
+  const onMerchantAdded = useCallback(
+    (card: string, merchant: string) => {
+      const named = namesRef.current[merchant];
+      if (owner && named) setMerchantLabel(owner, card, merchant, named);
+    },
+    [owner],
+  );
+
+  const flow = useCreateCard(createDraft, onFinished, { onMerchantAdded });
 
   const policyValid = !label.error && policy.policy !== undefined;
   const stepValid = step === 0 ? policyValid : step === 1 ? agent.valid : true;
@@ -213,6 +224,7 @@ function NewCardWizard() {
                 draft={draft}
                 patch={patch}
                 agentValid={agent.valid}
+                locked={locked}
                 agentError={gate(draft.agentKey, agent.error)}
                 onBack={() => go(0)}
                 onContinue={advance}
@@ -234,6 +246,7 @@ function NewCardWizard() {
                 policy={policy.policy}
                 agentKey={draft.agentKey.trim()}
                 merchants={draft.merchants}
+                merchantNames={draft.merchantNames}
                 address={shownAddress}
                 addressError={Boolean(saltQuery.error)}
                 onRetryAddress={saltQuery.error ? () => void saltQuery.refetch() : undefined}

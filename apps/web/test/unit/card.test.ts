@@ -49,15 +49,47 @@ describe("chain/card", () => {
     const info = fakeInfo(OWNER);
     const read = vi.fn().mockResolvedValue(info);
 
-    await expect(verifyOwnedCard(CARD, OWNER, read)).resolves.toBe(info);
+    const assertCard = vi.fn().mockResolvedValue(undefined);
+
+    await expect(verifyOwnedCard(CARD, OWNER, read, assertCard)).resolves.toBe(info);
+    expect(assertCard).toHaveBeenCalledWith(CARD);
     expect(read).toHaveBeenCalledWith(CARD);
+  });
+
+  it("verifyOwnedCard refuses a contract that does not run the card WASM, without reading info()", async () => {
+    const { verifyOwnedCard } = await import("../../lib/chain/card");
+    const { assertMooringCard } = await import("../../lib/chain/verify");
+    const read = vi.fn().mockResolvedValue(fakeInfo(OWNER));
+    const { xdr, Address } = await import("@stellar/stellar-sdk");
+    const entry = new xdr.ContractDataEntry({
+      ext: xdr.ExtensionPoint.v0(),
+      contract: Address.fromString(CARD).toScAddress(),
+      key: xdr.ScVal.scvLedgerKeyContractInstance(),
+      durability: xdr.ContractDataDurability.persistent,
+      val: xdr.ScVal.scvContractInstance(
+        new xdr.ScContractInstance({
+          executable: xdr.ContractExecutable.contractExecutableWasm("ab".repeat(32)),
+          storage: null,
+        }),
+      ),
+    });
+    const rpc = {
+      getLedgerEntries: vi.fn(async () => ({ entries: [{ val: xdr.LedgerEntryData.contractData(entry) }] })),
+    };
+    const assertCard = (address: string) => assertMooringCard(rpc, address, "00".repeat(32));
+
+    await expect(verifyOwnedCard(CARD, OWNER, read, assertCard)).rejects.toThrow(
+      "This address is not a Mooring card.",
+    );
+    expect(rpc.getLedgerEntries).toHaveBeenCalledTimes(1);
+    expect(read).not.toHaveBeenCalled();
   });
 
   it("verifyOwnedCard throws when the card belongs to another owner", async () => {
     const { verifyOwnedCard } = await import("../../lib/chain/card");
     const read = vi.fn().mockResolvedValue(fakeInfo(OTHER_OWNER));
 
-    await expect(verifyOwnedCard(CARD, OWNER, read)).rejects.toThrow(
+    await expect(verifyOwnedCard(CARD, OWNER, read, async () => {})).rejects.toThrow(
       "This card belongs to another owner",
     );
   });
@@ -65,11 +97,13 @@ describe("chain/card", () => {
   it("verifyOwnedCard rejects an address that is not a contract strkey, without reading it", async () => {
     const { verifyOwnedCard } = await import("../../lib/chain/card");
     const read = vi.fn();
+    const assertCard = vi.fn();
 
-    await expect(verifyOwnedCard(OWNER, OWNER, read)).rejects.toThrow(
+    await expect(verifyOwnedCard(OWNER, OWNER, read, assertCard)).rejects.toThrow(
       /not a valid Stellar contract address/,
     );
     expect(read).not.toHaveBeenCalled();
+    expect(assertCard).not.toHaveBeenCalled();
   });
 
   it("buildFundTransfer prepares an unsigned SAC transfer from the owner's account", async () => {

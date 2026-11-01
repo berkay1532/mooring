@@ -630,6 +630,41 @@ describe("useCardInfo", () => {
   });
 });
 
+describe("useIsMooringCard", () => {
+  async function instanceEntry(hashHex: string) {
+    const { Address, xdr } = await import("@stellar/stellar-sdk");
+    return xdr.LedgerEntryData.contractData(
+      new xdr.ContractDataEntry({
+        ext: xdr.ExtensionPoint.v0(),
+        contract: Address.fromString(CARD).toScAddress(),
+        key: xdr.ScVal.scvLedgerKeyContractInstance(),
+        durability: xdr.ContractDataDurability.persistent,
+        val: xdr.ScVal.scvContractInstance(
+          new xdr.ScContractInstance({
+            executable: xdr.ContractExecutable.contractExecutableWasm(hashHex),
+            storage: null,
+          }),
+        ),
+      }),
+    );
+  }
+
+  it("is true only for the configured card WASM hash", async () => {
+    const { useIsMooringCard } = await import("../../lib/query/hooks");
+    const { config } = await import("../../lib/config");
+    getLedgerEntries.mockResolvedValue({ entries: [{ val: await instanceEntry(config.cardWasmHash) }] });
+    const ok = renderHook(() => useIsMooringCard(CARD), { wrapper });
+    await waitFor(() => expect(ok.result.current.data).toBe(true));
+  });
+
+  it("is false for a contract running other code", async () => {
+    const { useIsMooringCard } = await import("../../lib/query/hooks");
+    getLedgerEntries.mockResolvedValue({ entries: [{ val: await instanceEntry("cd".repeat(32)) }] });
+    const other = renderHook(() => useIsMooringCard(CARD), { wrapper });
+    await waitFor(() => expect(other.result.current.data).toBe(false));
+  });
+});
+
 describe("useUsdcBalance", () => {
   it("does not read (or poll) while its dialog is closed", async () => {
     const { useUsdcBalance } = await import("../../lib/query/hooks");

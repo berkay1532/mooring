@@ -20,6 +20,18 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
+/** Validates a 32-byte hex hash and normalizes it to lowercase. */
+function wasmHash(value: string): string {
+  const hex = value.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hex)) {
+    throw new Error("NEXT_PUBLIC_CARD_WASM_HASH must be 64 hex characters");
+  }
+  return hex;
+}
+
+/** True outside a production build (`next dev`, vitest). */
+export const isDev = process.env.NODE_ENV !== "production";
+
 export const config = {
   network: required(
     "NEXT_PUBLIC_STELLAR_NETWORK",
@@ -32,6 +44,14 @@ export const config = {
   ),
   factory: required("NEXT_PUBLIC_FACTORY_ADDRESS", process.env.NEXT_PUBLIC_FACTORY_ADDRESS),
   usdc: required("NEXT_PUBLIC_USDC_SAC", process.env.NEXT_PUBLIC_USDC_SAC),
+  /**
+   * The hex WASM hash of the Mooring card contract. A contract is treated as
+   * a card (its `info()` trusted, owner actions offered) only when its
+   * instance runs exactly this code — see `lib/chain/verify.ts`.
+   */
+  cardWasmHash: wasmHash(
+    required("NEXT_PUBLIC_CARD_WASM_HASH", process.env.NEXT_PUBLIC_CARD_WASM_HASH),
+  ),
   docsUrl:
     process.env.NEXT_PUBLIC_DOCS_URL ??
     "https://github.com/berkay1532/mooring/blob/main/docs/x402-integration.md",

@@ -392,6 +392,16 @@ describe("AddCardModal", () => {
     expect(await screen.findByText(/not a Mooring card/i)).toBeInTheDocument();
   });
 
+  it("names a contract that does not run the card code", async () => {
+    verifyOwnedCard.mockRejectedValue(new Error("This address is not a Mooring card."));
+    addModal();
+    fireEvent.change(screen.getByLabelText(/card address/i), { target: { value: CARD } });
+    fireEvent.click(screen.getByRole("button", { name: /add card/i }));
+
+    expect(await screen.findByText(/does not run the Mooring card code/i)).toBeInTheDocument();
+    expect(addCard).not.toHaveBeenCalled();
+  });
+
   it("rejects an address that is not a contract address", async () => {
     verifyOwnedCard.mockRejectedValue(new Error(`"${OWNER}" is not a valid Stellar contract address`));
     addModal();

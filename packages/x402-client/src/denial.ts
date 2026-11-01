@@ -94,19 +94,67 @@ export function cardDenialFromEvents(
   return null;
 }
 
+/** The merchant a denied payment was addressed to, as far as the client knows. */
+export interface DeniedMerchant { payTo: string; url?: string; amount?: string; network?: string }
+
+/** The hosted Mooring web app, used to build "allow this merchant" links. */
+export const DEFAULT_APP_URL = "https://app.mooring.live";
+
+/**
+ * `origin + pathname` of an absolute URL (drops query and fragment). Input
+ * that does not parse (a relative URL, say) is cut at its first `?` or `#`,
+ * so a query string can never pass through.
+ */
+export function stripQuery(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    const cut = url.search(/[?#]/);
+    return cut === -1 ? url : url.slice(0, cut);
+  }
+}
+
+/** True for an absolute `http:` / `https:` URL. */
+export function isAbsoluteHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Link to the web app's allow page for a card and a paid service URL (query and fragment are dropped). */
+export function allowMerchantUrl(appBaseUrl: string, card: string, serviceUrl: string): string {
+  const base = appBaseUrl.endsWith("/") ? appBaseUrl.slice(0, -1) : appBaseUrl;
+  return `${base}/allow?card=${card}&url=${encodeURIComponent(stripQuery(serviceUrl))}`;
+}
+
 export class CardPolicyDenied extends Error {
   readonly reason: DenialReason;
   readonly stage: DenialStage;
   readonly contractError?: number;
   readonly detail?: string;
+  readonly merchant?: DeniedMerchant;
 
-  constructor(reason: DenialReason, stage: DenialStage, opts: { contractError?: number; detail?: string } = {}) {
-    super(`card policy denied (${reason}) at ${stage}${opts.contractError ? ` [contract error #${opts.contractError}]` : ""}${opts.detail ? `: ${opts.detail}` : ""}`);
+  constructor(
+    reason: DenialReason,
+    stage: DenialStage,
+    opts: { contractError?: number; detail?: string; merchant?: DeniedMerchant; card?: string; appUrl?: string } = {},
+  ) {
+    const appUrl = opts.appUrl ?? DEFAULT_APP_URL;
+    const link =
+      reason === "not_allowlisted" && opts.merchant?.url && opts.card && appUrl
+        ? ` — allow it: ${allowMerchantUrl(appUrl, opts.card, opts.merchant.url)}`
+        : "";
+    super(`card policy denied (${reason}) at ${stage}${opts.contractError ? ` [contract error #${opts.contractError}]` : ""}${opts.detail ? `: ${opts.detail}` : ""}${link}`);
     this.name = "CardPolicyDenied";
     this.reason = reason;
     this.stage = stage;
     this.contractError = opts.contractError;
     this.detail = opts.detail;
+    this.merchant = opts.merchant;
   }
 }
 

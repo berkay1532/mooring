@@ -107,6 +107,19 @@ that could not be read (the pre-check fails **closed**), a facilitator `simulati
 re-run pre-check no longer explains, and an on-chain failure whose diagnostics do not name the
 card.
 
+## Allowing a merchant from a denial
+
+A `not_allowlisted` denial carries `err.merchant` (`payTo`, and when known `amount`, `network` and
+`url`, the service URL with its query string removed). When `url` is known the message ends with a
+link the card's owner can open to allow the merchant:
+
+```
+https://app.mooring.live/allow?card=<C…>&url=<service url without query>
+```
+
+`allowMerchantUrl(appUrl, card, serviceUrl)` builds the same link. Point it at another deployment
+of the app with the `appUrl` option (default `https://app.mooring.live`).
+
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -116,6 +129,7 @@ card.
 | `network` | `"stellar:testnet" \| "stellar:pubnet"` | — | CAIP-2 network |
 | `rpcUrl` | `string` | testnet default; **required** on pubnet | Soroban RPC endpoint |
 | `precheck` | `boolean` | `true` | run the local policy mirror before signing |
+| `appUrl` | `string` | `https://app.mooring.live` | base URL of the Mooring app used in the allow link |
 | `onDenial` | `(d: CardPolicyDenied) => void` | — | called at every denial stage |
 | `onPaymentError` | `(e: PaymentError) => void` | — | called for every non-policy failure |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | transport (`createMooringFetch` only) |

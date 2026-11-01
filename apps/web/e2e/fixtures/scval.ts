@@ -97,8 +97,13 @@ export function accountKeyB64(publicKey: string): string {
   ).toXDR("base64");
 }
 
-/** A contract-instance `LedgerEntryData`, as base64 — the body of a discovery hit. */
-export function contractInstanceEntryB64(contract: string): string {
+/**
+ * A contract-instance `LedgerEntryData`, as base64 — the body of a discovery
+ * hit, and what the app's card-code check (`lib/chain/verify.ts`) reads the
+ * WASM hash from. `wasmHashHex` must be the app's `NEXT_PUBLIC_CARD_WASM_HASH`
+ * for the contract to count as a Mooring card.
+ */
+export function contractInstanceEntryB64(contract: string, wasmHashHex: string): string {
   return xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
       ext: xdr.ExtensionPoint.v0(),
@@ -107,7 +112,7 @@ export function contractInstanceEntryB64(contract: string): string {
       durability: xdr.ContractDataDurability.persistent,
       val: xdr.ScVal.scvContractInstance(
         new xdr.ScContractInstance({
-          executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.alloc(32, 7)),
+          executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.from(wasmHashHex, "hex")),
           storage: null,
         }),
       ),

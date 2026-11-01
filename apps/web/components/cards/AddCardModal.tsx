@@ -84,12 +84,16 @@ export function AddCardModal({ open, onClose, owner, onAdded }: AddCardModalProp
 /**
  * Turns a `verifyOwnedCard` rejection into one sentence the owner can act
  * on. Anything that is not a strkey problem or an ownership mismatch means
- * the address did not answer `info()` like a Mooring card.
+ * the address does not run the card code, or did not answer `info()` like a
+ * Mooring card.
  */
 function describe(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
   if (/belongs to another owner/i.test(message)) {
     return "This card belongs to another owner, so this wallet cannot manage it.";
+  }
+  if (/^This address is not a Mooring card\.$/.test(message)) {
+    return "This address is not a Mooring card (it does not run the Mooring card code).";
   }
   if (/not a valid Stellar contract address/i.test(message)) {
     return "That is not a contract address — a card address starts with C.";

@@ -6,6 +6,7 @@ import {
   MAX_LABEL_BYTES,
   MAX_MERCHANTS,
   addMerchant,
+  emptyDraft,
   validateAgentKey,
   validateLabel,
   validateMerchants,
@@ -200,5 +201,11 @@ describe("merchants", () => {
     ]);
     expect(validateMerchants([]).merchants).toEqual([]);
     expect(validateMerchants([]).error).toBeUndefined();
+  });
+});
+
+describe("emptyDraft merchant names", () => {
+  it("starts with no merchant names", () => {
+    expect(emptyDraft().merchantNames).toEqual({});
   });
 });

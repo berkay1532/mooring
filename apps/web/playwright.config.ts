@@ -35,7 +35,9 @@ export default defineConfig({
   webServer: {
     command: `npm run build:web && npm run start -- --port ${PORT} --hostname 127.0.0.1`,
     url: BASE_URL,
-    env: appEnv,
+    // MOORING_RESOLVER_ALLOW_LOCAL is server-only: it lets the resolver route
+    // reach http:// / loopback sellers (the stubbed ones in the specs never do).
+    env: { ...appEnv, MOORING_RESOLVER_ALLOW_LOCAL: "1" },
     // Locally a server already listening on this (non-default) port is
     // reused, which keeps an edit-run loop fast; CI always builds and serves
     // its own, so a run can never be answered by a stale tree.

@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 
+import { MerchantIdentity } from "@/components/merchants/MerchantIdentity";
+import { MerchantResolver } from "@/components/merchants/MerchantResolver";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { shortAddress } from "@/lib/format/address";
+import type { MerchantLabel } from "@/lib/prefs";
 import { MAX_MERCHANTS, addMerchant, type WizardDraft } from "@/lib/wizard/validate";
 
 export interface AgentStepProps {
@@ -13,6 +16,8 @@ export interface AgentStepProps {
   /** Agent-key message, already gated on "has the user touched this?". */
   agentError?: string;
   agentValid: boolean;
+  /** True while the card is being created: the merchant list cannot change (add and remove are both disabled). */
+  locked?: boolean;
   onBack: () => void;
   onContinue: () => void;
 }
@@ -28,21 +33,22 @@ export interface AgentStepProps {
  * (`contracts/card/src/allowlist.rs`: an address that is not on the list is
  * rejected with `NotAllowlisted`), which this step says plainly.
  */
-export function AgentStep({ draft, patch, agentError, agentValid, onBack, onContinue }: AgentStepProps) {
-  const [candidate, setCandidate] = useState("");
+export function AgentStep({ draft, patch, agentError, agentValid, locked, onBack, onContinue }: AgentStepProps) {
   const [merchantError, setMerchantError] = useState<string | undefined>(undefined);
 
-  function add() {
-    const result = addMerchant(draft.merchants, candidate);
+  function addAddress(address: string, name?: MerchantLabel) {
+    const result = addMerchant(draft.merchants, address);
     setMerchantError(result.error);
-    if (!result.error) {
-      patch({ merchants: result.merchants });
-      setCandidate("");
-    }
+    if (result.error) return;
+    patch({
+      merchants: result.merchants,
+      merchantNames: name ? { ...draft.merchantNames, [address.trim()]: name } : draft.merchantNames,
+    });
   }
 
   function remove(merchant: string) {
-    patch({ merchants: draft.merchants.filter((m) => m !== merchant) });
+    const { [merchant]: _removed, ...names } = draft.merchantNames;
+    patch({ merchants: draft.merchants.filter((m) => m !== merchant), merchantNames: names });
     setMerchantError(undefined);
   }
 
@@ -81,14 +87,13 @@ export function AgentStep({ draft, patch, agentError, agentValid, onBack, onCont
               key={merchant}
               className="mt-1.5 flex items-center justify-between gap-3 rounded-[10px] border border-text-hi/[0.12] bg-bg-raised px-3.5 py-2.5"
             >
-              <span className="min-w-0 truncate font-mono text-xs text-text-hi" title={merchant}>
-                {merchant}
-              </span>
+              <MerchantIdentity address={merchant} label={draft.merchantNames[merchant]} />
               <button
                 type="button"
                 onClick={() => remove(merchant)}
+                disabled={locked}
                 aria-label={`Remove merchant ${shortAddress(merchant)}`}
-                className="shrink-0 rounded font-body text-xs text-danger-text transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+                className="shrink-0 rounded font-body text-xs text-danger-text transition disabled:cursor-not-allowed disabled:opacity-50 hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
               >
                 ×
               </button>
@@ -96,25 +101,19 @@ export function AgentStep({ draft, patch, agentError, agentValid, onBack, onCont
           ))}
         </ul>
 
-        <Field
-          label="Merchant address"
-          value={candidate}
-          onChange={(event) => {
-            setCandidate(event.target.value);
-            setMerchantError(undefined);
-          }}
-          placeholder="G… or C…"
-          error={merchantError}
-          hint={`The card can only pay the addresses on this list — at most ${MAX_MERCHANTS}. You can add and remove them later.`}
-          inputClassName="font-mono text-xs"
-          spellCheck={false}
-          autoComplete="off"
-        />
-        <div className="mt-3 flex justify-end">
-          <Button variant="ghost" className="px-3.5 py-1.5 text-xs" onClick={add} disabled={candidate.trim() === ""}>
-            + Add merchant
-          </Button>
+        <div className="mt-3">
+          <MerchantResolver
+            existing={draft.merchants}
+            confirmLabel={() => "Add to list"}
+            onConfirm={(m) => addAddress(m.payTo, { name: m.name, url: m.url })}
+            onAddByAddress={(address) => addAddress(address)}
+            disabled={locked}
+          />
         </div>
+        {merchantError ? <p className="mt-1.5 text-xs text-danger-text">{merchantError}</p> : null}
+        <p className="mt-1.5 text-xs text-text-lo">
+          {`The card can only pay the services on this list — at most ${MAX_MERCHANTS}. You can add and remove them later.`}
+        </p>
 
         {draft.merchants.length === 0 ? (
           <p className="mt-1 text-xs text-text-lo">

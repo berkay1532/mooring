@@ -101,9 +101,12 @@ function merchantLabel(merchants: readonly string[], index: number): string {
 export function useCreateCard(
   draft: CreateCardDraft | null,
   onFinished: (address: string) => void,
+  opts?: { onMerchantAdded?: (card: string, merchant: string) => void },
 ): CreateCardFlow {
   const [phase, setPhase] = useState<CreatePhase>("idle");
   const [merchantIndex, setMerchantIndex] = useState(0);
+  const merchantIndexRef = useRef(0);
+  merchantIndexRef.current = merchantIndex;
 
   // Refs, not state: these are read from inside callbacks that must never
   // re-run just because the draft object identity changed on a keystroke.
@@ -111,6 +114,8 @@ export function useCreateCard(
   draftRef.current = draft;
   const finishedCb = useRef(onFinished);
   finishedCb.current = onFinished;
+  const merchantAddedCb = useRef(opts?.onMerchantAdded);
+  merchantAddedCb.current = opts?.onMerchantAdded;
 
   // The draft as it was when `start()` ran. Everything after that point —
   // the salt, the derived address, the merchant list — reads from here, so
@@ -157,7 +162,12 @@ export function useCreateCard(
     ({ card, merchant }, wallet) => buildAddMerchant(card, merchant, wallet),
     {
       invalidates: ({ card }) => [keys.merchants(card), keys.info(card)],
-      onConfirmed: () => setMerchantIndex((index) => index + 1),
+      onConfirmed: () => {
+        const card = cardRef.current;
+        const merchant = activeRef.current?.merchants[merchantIndexRef.current];
+        if (card && merchant) merchantAddedCb.current?.(card, merchant);
+        setMerchantIndex((index) => index + 1);
+      },
     },
   );
 

@@ -5,6 +5,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { readBalance, readInfo, readMerchants, type CardInfo } from "../chain/card";
 import { discoverCards } from "../chain/discover";
 import { getRpcServer } from "../chain/rpc";
+import { readContractWasmHash } from "../chain/verify";
 import { getAddedCards } from "../prefs";
 import { config } from "../config";
 import { keys } from "./keys";
@@ -58,6 +59,22 @@ export function useCards(owner: string | null | undefined): UseQueryResult<strin
       }
       return merged;
     },
+  });
+}
+
+/**
+ * Whether the contract at `address` runs the Mooring card code (its instance's
+ * WASM hash is `config.cardWasmHash`). Anything the contract itself answers —
+ * `info().owner` above all — is only meaningful once this is `true`. An RPC
+ * failure is a query `error`, never `false`.
+ */
+export function useIsMooringCard(address: string | null | undefined): UseQueryResult<boolean> {
+  return useQuery({
+    queryKey: keys.cardCode(address ?? ""),
+    enabled: address != null,
+    queryFn: async () =>
+      (await readContractWasmHash(getRpcServer(), address as string)) === config.cardWasmHash,
+    staleTime: Infinity,
   });
 }
 

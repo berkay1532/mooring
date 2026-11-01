@@ -1,9 +1,8 @@
 "use client";
 
-import { StrKey } from "@stellar/stellar-sdk";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { opButtonLabel, useCardOp } from "@/components/cards/busy";
+import { useCardOp } from "@/components/cards/busy";
 import {
   KV_CLASS,
   SECTION_HEAD_CLASS,
@@ -11,10 +10,12 @@ import {
   SMALL_BUTTON_CLASS,
   SURFACE_CLASS,
 } from "@/components/cards/PolicySection";
+import { MerchantIdentity } from "@/components/merchants/MerchantIdentity";
+import { MerchantResolver, type ResolvedMerchant } from "@/components/merchants/MerchantResolver";
 import { Button } from "@/components/ui/Button";
-import { Field } from "@/components/ui/Field";
 import { buildAddMerchant, buildRemoveMerchant } from "@/lib/chain/card";
 import { shortAddress } from "@/lib/format/address";
+import { getMerchantLabels, removeMerchantLabel, setMerchantLabel, type MerchantLabel } from "@/lib/prefs";
 import { keys } from "@/lib/query/keys";
 
 /** The contract's `MAX_ALLOWLIST` (contracts/card/src/lib.rs). */
@@ -22,6 +23,8 @@ const MAX_MERCHANTS = 32;
 
 export interface MerchantsSectionProps {
   address: string;
+  /** The connected owner; per-device merchant names are stored under it. */
+  owner: string | null;
   merchants: readonly string[];
   loading?: boolean;
   /**
@@ -33,18 +36,22 @@ export interface MerchantsSectionProps {
   disabled?: boolean;
 }
 
-function isValidMerchant(value: string): boolean {
-  return StrKey.isValidEd25519PublicKey(value) || StrKey.isValidContract(value);
-}
-
 /**
  * The merchant allowlist: who the card is allowed to pay. Adding and
  * removing are both owner transactions, so each reports its progress on a
  * toast (see `useCardOp`) and participates in the per-card busy lock.
+ * Merchants are added by service URL; the name the owner approved is kept on
+ * this device and shown above the address.
  */
-export function MerchantsSection({ address, merchants, loading, disabled }: MerchantsSectionProps) {
+export function MerchantsSection({ address, owner, merchants, loading, disabled }: MerchantsSectionProps) {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [labels, setLabels] = useState<Record<string, MerchantLabel>>({});
+  const pendingLabel = useRef<ResolvedMerchant | null>(null);
+  const removing = useRef<string | null>(null);
+
+  useEffect(() => {
+    setLabels(owner ? getMerchantLabels(owner, address) : {});
+  }, [owner, address]);
 
   const invalidates = () => [keys.merchants(address), keys.info(address)];
 
@@ -52,19 +59,39 @@ export function MerchantsSection({ address, merchants, loading, disabled }: Merc
     invalidates,
     label: (merchant) => `Add merchant ${shortAddress(merchant)}`,
     onDone: () => {
-      setDraft("");
+      const pending = pendingLabel.current;
+      pendingLabel.current = null;
+      if (pending && owner) {
+        setMerchantLabel(owner, address, pending.payTo, { name: pending.name, url: pending.url });
+        setLabels(getMerchantLabels(owner, address));
+      }
       setAdding(false);
     },
   });
   const remove = useCardOp<string>(
     "merchant-remove",
     (merchant, wallet) => buildRemoveMerchant(address, merchant, wallet),
-    { invalidates, label: (merchant) => `Remove merchant ${shortAddress(merchant)}` },
+    {
+      invalidates,
+      label: (merchant) => `Remove merchant ${shortAddress(merchant)}`,
+      onDone: () => {
+        const gone = removing.current;
+        removing.current = null;
+        if (gone && owner) {
+          removeMerchantLabel(owner, address, gone);
+          setLabels(getMerchantLabels(owner, address));
+        }
+      },
+    },
   );
 
+  // A failed add is reported on its toast; drop the label so a later
+  // confirmation cannot store it.
+  useEffect(() => {
+    if (add.state === "failed") pendingLabel.current = null;
+  }, [add.state]);
+
   const full = merchants.length >= MAX_MERCHANTS;
-  const duplicate = merchants.includes(draft.trim());
-  const draftValid = isValidMerchant(draft.trim()) && !duplicate;
   const busy = Boolean(disabled) || add.locked || remove.locked;
 
   return (
@@ -90,44 +117,43 @@ export function MerchantsSection({ address, merchants, loading, disabled }: Merc
         </p>
       ) : null}
 
-      {merchants.map((merchant) => (
-        <div key={merchant} className={KV_CLASS}>
-          <span className="min-w-0 truncate font-mono text-xs text-text-hi" title={merchant}>
-            {merchant}
-          </span>
-          <button
-            type="button"
-            onClick={() => void remove.run(merchant)}
-            disabled={busy || remove.mine || add.mine}
-            className="shrink-0 rounded font-body text-xs text-danger-text transition hover:brightness-125 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
-          >
-            <span aria-hidden>Remove</span>
-            <span className="sr-only">Remove merchant {shortAddress(merchant)}</span>
-          </button>
-        </div>
-      ))}
+      {merchants.map((merchant) => {
+        const label = labels[merchant];
+        return (
+          <div key={merchant} className={KV_CLASS}>
+            <MerchantIdentity address={merchant} label={label} />
+            <button
+              type="button"
+              onClick={() => {
+                removing.current = merchant;
+                void remove.run(merchant);
+              }}
+              disabled={busy || remove.mine || add.mine}
+              className="shrink-0 rounded font-body text-xs text-danger-text transition hover:brightness-125 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber"
+            >
+              <span aria-hidden>Remove</span>
+              <span className="sr-only">Remove merchant {shortAddress(merchant)}</span>
+            </button>
+          </div>
+        );
+      })}
 
       {adding ? (
         <div className="mt-1">
-          <Field
-            label="Merchant address"
-            value={draft}
-            disabled={add.mine}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="G… or C…"
-            error={draft && !draftValid ? (duplicate ? "This merchant is already allowed." : "Enter a Stellar address (G… or C…).") : undefined}
-            hint="The card can only pay the addresses on this list."
+          <MerchantResolver
+            existing={merchants}
+            confirmLabel={(host) => `Allow ${host}`}
+            onConfirm={async (m) => {
+              pendingLabel.current = m;
+              await add.run(m.payTo);
+            }}
+            onAddByAddress={(a) => {
+              pendingLabel.current = null;
+              void add.run(a);
+            }}
+            confirming={add.mine}
+            disabled={busy || full}
           />
-          <div className="mt-3 flex justify-end">
-            <Button
-              className={SMALL_BUTTON_CLASS}
-              onClick={() => void add.run(draft.trim())}
-              loading={add.mine}
-              disabled={!draftValid || busy || full}
-            >
-              {opButtonLabel(add.state, "Add merchant")}
-            </Button>
-          </div>
         </div>
       ) : null}
     </div>

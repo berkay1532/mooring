@@ -17,6 +17,11 @@ export const keys = {
    * owner has used).
    */
   nextSalt: (owner: string): QueryKey => ["cards", owner, "next-salt"],
+  /**
+   * Whether a contract runs the Mooring card WASM (its instance's code hash).
+   * Card code is immutable, so this never changes for an address.
+   */
+  cardCode: (address: string): QueryKey => ["card", address, "code"],
   /** A single card's `info()` read. */
   info: (address: string): QueryKey => ["card", address, "info"],
   /** A single card's `merchants()` allowlist read. */
