@@ -42,10 +42,11 @@ function setup(over: Partial<MerchantResolverProps> = {}) {
 }
 
 /** Ticks the responsibility box in the open confirmation modal and confirms. */
-function approve() {
+async function approve() {
   const dialog = screen.getByRole("dialog");
   fireEvent.click(within(dialog).getByRole("checkbox"));
   fireEvent.click(within(dialog).getByRole("button", { name: /^(Allow and sign|Add to list)$/ }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 }
 
 async function lookUp(url = URL_) {
@@ -70,12 +71,11 @@ describe("MerchantResolver", () => {
     fireEvent.click(screen.getByRole("button", { name: "Allow demo.rail402.dev" }));
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "Allow demo.rail402.dev?" })).toBeInTheDocument();
-    approve();
+    await approve();
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ payTo: PAY_TO, host: "demo.rail402.dev", name: "Rail402 demo", amount: "10000" }),
     );
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Cancel in the modal closes it and leaves the preview", async () => {
@@ -94,6 +94,73 @@ describe("MerchantResolver", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add to list" }));
     const dialog = screen.getByRole("dialog", { name: "Add demo.rail402.dev to the list?" });
     expect(within(dialog).getByRole("button", { name: "Add to list" })).toBeDisabled();
+  });
+
+  it("does nothing when the primary is clicked before ticking the box", async () => {
+    const { onConfirm } = setup();
+    await lookUp();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Allow and sign" }));
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("confirms the merchant the modal showed", async () => {
+    const { onConfirm } = setup();
+    await lookUp();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    expect(within(screen.getByRole("dialog")).getByText(PAY_TO)).toBeInTheDocument();
+    await approve();
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ payTo: PAY_TO }));
+  });
+
+  it("disables the modal primary when the resolver becomes disabled", async () => {
+    const resolve = vi.fn().mockResolvedValue(ok());
+    const props = { existing: [], onConfirm: vi.fn(), confirmLabel: (h: string) => `Allow ${h}`, resolve };
+    const { rerender } = render(<MerchantResolver {...props} />);
+    await lookUp();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    expect(within(dialog).getByRole("button", { name: "Allow and sign" })).toBeEnabled();
+    rerender(<MerchantResolver {...props} disabled />);
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Allow and sign" })).toBeDisabled();
+  });
+
+  it("closes the modal when the merchant becomes already allowed", async () => {
+    const resolve = vi.fn().mockResolvedValue(ok());
+    const props = { onConfirm: vi.fn(), confirmLabel: (h: string) => `Allow ${h}`, resolve };
+    const { rerender } = render(<MerchantResolver {...props} existing={[]} />);
+    await lookUp();
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    rerender(<MerchantResolver {...props} existing={[PAY_TO]} />);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Already allowed" })).toBeDisabled();
+  });
+
+  it("Escape closes the modal and focus returns to the opener", async () => {
+    const { onConfirm } = setup();
+    await lookUp();
+    const opener = await screen.findByRole("button", { name: "Allow demo.rail402.dev" });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(opener).toHaveFocus();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("leaves no dialog when initialUrl changes while it is open", async () => {
+    const resolve = vi.fn().mockResolvedValue(ok());
+    const props = { existing: [], onConfirm: vi.fn(), confirmLabel: (h: string) => `Allow ${h}`, resolve, autoResolve: true };
+    const { rerender } = render(<MerchantResolver {...props} initialUrl={URL_} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    rerender(<MerchantResolver {...props} initialUrl="https://other.example/x" />);
+    await waitFor(() => expect(resolve).toHaveBeenCalledWith("https://other.example/x"));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("passes linkOrigin into the modal", async () => {
@@ -244,7 +311,11 @@ describe("MerchantResolver", () => {
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(onConfirm).toHaveBeenCalledTimes(1);
+    // The modal stays up, busy, until the confirm settles.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" })).toBeDisabled();
     release();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("resets and re-resolves when initialUrl changes", async () => {
@@ -285,7 +356,7 @@ describe("MerchantResolver", () => {
     expect(await screen.findByRole("button", { name: "Copy address" })).toBeInTheDocument();
   });
 
-  it("adds by address through the disclosure", async () => {
+  it("adds by address only through the confirmation modal", async () => {
     const onAddByAddress = vi.fn();
     setup({ onAddByAddress, existing: [] });
     expect(screen.queryByLabelText("Merchant address")).toBeNull();
@@ -295,7 +366,28 @@ describe("MerchantResolver", () => {
     expect(add).toBeDisabled();
     fireEvent.change(input, { target: { value: PAY_TO } });
     fireEvent.click(add);
+    expect(onAddByAddress).not.toHaveBeenCalled();
+    const short = `${PAY_TO.slice(0, 4)}…${PAY_TO.slice(-4)}`;
+    const dialog = screen.getByRole("dialog", { name: `Allow ${short}?` });
+    expect(dialog).toHaveTextContent(PAY_TO);
+    expect(dialog).toHaveTextContent("This address was entered by hand");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Allow and sign" }));
+    expect(onAddByAddress).not.toHaveBeenCalled();
+    await approve();
+    expect(onAddByAddress).toHaveBeenCalledTimes(1);
     expect(onAddByAddress).toHaveBeenCalledWith(PAY_TO);
+  });
+
+  it("Cancel on the address modal adds nothing", () => {
+    const onAddByAddress = vi.fn();
+    setup({ onAddByAddress, confirmMode: "list" });
+    fireEvent.click(screen.getByRole("button", { name: "Add by address instead" }));
+    fireEvent.change(screen.getByLabelText("Merchant address"), { target: { value: PAY_TO } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByRole("dialog", { name: /to the list\?$/ })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onAddByAddress).not.toHaveBeenCalled();
   });
 
   it("omits the disclosure without onAddByAddress", () => {

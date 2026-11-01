@@ -105,4 +105,38 @@ describe("MerchantConfirmModal", () => {
     setup({ merchant: null });
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("does not call onConfirm when the primary is clicked before ticking", () => {
+    const { onConfirm } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Allow and sign" }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("starts with focus on the checkbox", () => {
+    setup();
+    expect(screen.getByRole("checkbox")).toHaveFocus();
+  });
+
+  it("keeps the primary disabled when disabled, even once ticked", () => {
+    setup({ disabled: true });
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(screen.getByRole("button", { name: "Allow and sign" })).toBeDisabled();
+  });
+
+  it("locks Cancel while confirming", () => {
+    setup({ confirming: true });
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
+
+  it("shows an address-only variant for a hand-entered address", () => {
+    setup({ merchant: { payTo: PAY_TO, name: "x" } });
+    const short = `${PAY_TO.slice(0, 4)}…${PAY_TO.slice(-4)}`;
+    const dialog = screen.getByRole("dialog", { name: `Allow ${short}?` });
+    expect(dialog).toHaveTextContent(PAY_TO);
+    expect(dialog).toHaveTextContent("This address was entered by hand; Mooring has not checked that it accepts x402 payments.");
+    expect(dialog).not.toHaveTextContent("USDC / request");
+    cleanup();
+    setup({ merchant: { payTo: PAY_TO, name: "x" }, mode: "list" });
+    expect(screen.getByRole("dialog", { name: `Add ${short} to the list?` })).toBeInTheDocument();
+  });
 });

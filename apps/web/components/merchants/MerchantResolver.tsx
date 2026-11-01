@@ -4,7 +4,7 @@ import { StrKey } from "@stellar/stellar-sdk";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { SMALL_BUTTON_CLASS, SURFACE_CLASS } from "@/components/cards/PolicySection";
-import { MerchantConfirmModal } from "@/components/merchants/MerchantConfirmModal";
+import { MerchantConfirmModal, type ConfirmTarget } from "@/components/merchants/MerchantConfirmModal";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { config, isDev } from "@/lib/config";
@@ -34,7 +34,7 @@ export interface MerchantResolverProps {
   existing: readonly string[];
   onConfirm: (m: ResolvedMerchant) => void | Promise<void>;
   /** When provided, the "Add by address instead" disclosure is shown. */
-  onAddByAddress?: (address: string) => void;
+  onAddByAddress?: (address: string) => void | Promise<void>;
   confirmLabel: (host: string) => string;
   confirming?: boolean;
   disabled?: boolean;
@@ -91,6 +91,7 @@ export function MerchantResolver({
   const [state, setState] = useState<State>({ kind: "idle" });
   const [addrOpen, setAddrOpen] = useState(false);
   const [address, setAddress] = useState("");
+  const [pendingAddr, setPendingAddr] = useState<ConfirmTarget | null>(null);
   const seq = useRef(0);
   const autoStarted = useRef(false);
 
@@ -216,10 +217,7 @@ export function MerchantResolver({
                 variant="ghost"
                 className={`${SMALL_BUTTON_CLASS} mb-0.5`}
                 disabled={disabled || !addressOk}
-                onClick={() => {
-                  onAddByAddress(address);
-                  setAddress("");
-                }}
+                onClick={() => setPendingAddr({ payTo: address, name: shortAddress(address) })}
               >
                 Add
               </Button>
@@ -227,7 +225,76 @@ export function MerchantResolver({
           ) : null}
         </div>
       ) : null}
+      <ConfirmFlow
+        target={pendingAddr}
+        mode={confirmMode}
+        confirming={confirming}
+        disabled={disabled}
+        already={pendingAddr ? existing.includes(pendingAddr.payTo) : false}
+        onClose={() => setPendingAddr(null)}
+        onConfirm={async (t) => {
+          await onAddByAddress?.(t.payTo);
+          setAddress("");
+        }}
+      />
     </div>
+  );
+}
+
+/**
+ * Owns the confirmation modal for one target: open only while a target is set
+ * (so its checkbox cannot outlive a close), closes itself if the target becomes
+ * already-allowed, and keeps the modal up with a spinner until the confirm
+ * settles. The in-flight ref makes a double click on the primary a no-op.
+ */
+function ConfirmFlow({
+  target,
+  mode,
+  linkOrigin,
+  confirming,
+  disabled,
+  already,
+  onClose,
+  onConfirm,
+}: {
+  target: ConfirmTarget | null;
+  mode: "sign" | "list";
+  linkOrigin?: boolean;
+  confirming?: boolean;
+  disabled?: boolean;
+  already: boolean;
+  onClose: () => void;
+  onConfirm: (t: ConfirmTarget) => void | Promise<void>;
+}) {
+  const inFlight = useRef(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (target && already) onClose();
+  }, [target, already, onClose]);
+  if (!target) return null;
+  return (
+    <MerchantConfirmModal
+      key={target.payTo}
+      open
+      merchant={target}
+      mode={mode}
+      linkOrigin={linkOrigin}
+      confirming={confirming || busy}
+      disabled={disabled || already}
+      onCancel={onClose}
+      onConfirm={async () => {
+        if (inFlight.current) return;
+        inFlight.current = true;
+        setBusy(true);
+        try {
+          await onConfirm(target);
+        } finally {
+          inFlight.current = false;
+          setBusy(false);
+          onClose();
+        }
+      }}
+    />
   );
 }
 
@@ -239,21 +306,11 @@ type PreviewProps = { result: ResolveOk } & Pick<
 function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabled, linkOrigin, confirmMode = "sign" }: PreviewProps) {
   const m = toMerchant(result);
   const already = existing.includes(m.payTo);
-  const inFlight = useRef(false);
   const [pending, setPending] = useState<ResolvedMerchant | null>(null);
+  const closePending = useCallback(() => setPending(null), []);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
-
-  async function confirm() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    try {
-      await onConfirm(m);
-    } finally {
-      inFlight.current = false;
-    }
-  }
 
   function copy() {
     const p = navigator.clipboard?.writeText(m.payTo);
@@ -295,17 +352,15 @@ function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabl
           </Button>
         )}
       </div>
-      <MerchantConfirmModal
-        open={pending !== null}
-        merchant={pending}
+      <ConfirmFlow
+        target={pending}
         mode={confirmMode}
         linkOrigin={linkOrigin}
         confirming={confirming}
-        onCancel={() => setPending(null)}
-        onConfirm={() => {
-          setPending(null);
-          void confirm();
-        }}
+        disabled={disabled}
+        already={pending ? existing.includes(pending.payTo) : false}
+        onClose={closePending}
+        onConfirm={(t) => onConfirm(t as ResolvedMerchant)}
       />
     </div>
   );

@@ -72,6 +72,7 @@ async function lookUpOnCard(page: Page) {
 async function confirmInModal(page: Page, primary: string) {
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(NOTICE)).toBeVisible();
   const confirm = dialog.getByRole("button", { name: primary });
   await expect(confirm).toBeDisabled();
   await dialog.getByRole("checkbox").check();
@@ -193,6 +194,7 @@ test.describe("adding a merchant by URL", () => {
     await page.getByRole("button", { name: "Add by address instead" }).click();
     await page.getByLabel("Merchant address").fill(PAY_TO);
     await page.getByRole("button", { name: "Add", exact: true }).click();
+    await confirmInModal(page, "Allow and sign");
 
     await expect.poll(() => rpc.submitted.map((call) => call.fn)).toEqual(["add_merchant"]);
     await expect(page.getByText(PAY_TO, { exact: true })).toBeVisible({ timeout: 30_000 });
