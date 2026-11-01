@@ -4,13 +4,14 @@ import { StrKey } from "@stellar/stellar-sdk";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { SMALL_BUTTON_CLASS, SURFACE_CLASS } from "@/components/cards/PolicySection";
+import { MerchantConfirmModal, type ConfirmTarget } from "@/components/merchants/MerchantConfirmModal";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { config, isDev } from "@/lib/config";
 import { shortAddress } from "@/lib/format/address";
-import { formatUsdc } from "@/lib/format/usdc";
 import { resolveMerchantUrl } from "@/lib/merchants/client";
 import { describeTerms, networkLabel } from "@/lib/merchants/describe";
+import { formatMerchantPrice } from "@/lib/merchants/price";
 import type { ResolveErr, ResolveOk } from "@/lib/merchants/resolve";
 import { seedServices } from "@/lib/merchants/seed";
 
@@ -33,10 +34,12 @@ export interface MerchantResolverProps {
   existing: readonly string[];
   onConfirm: (m: ResolvedMerchant) => void | Promise<void>;
   /** When provided, the "Add by address instead" disclosure is shown. */
-  onAddByAddress?: (address: string) => void;
+  onAddByAddress?: (address: string) => void | Promise<void>;
   confirmLabel: (host: string) => string;
   confirming?: boolean;
   disabled?: boolean;
+  /** `sign` (default): approving starts a transaction; `list`: only adds to a draft list. */
+  confirmMode?: "sign" | "list";
   /** The request arrived through a link; adds a caution sentence. */
   linkOrigin?: boolean;
   /** Injectable for tests. */
@@ -51,13 +54,6 @@ type State =
 
 const NAME_MAX = 64;
 const CAPTION_CLASS = "font-mono text-[11px] uppercase tracking-[0.16em] text-text-lo";
-
-/** Exact price with trailing zeros trimmed, keeping two decimals ("0.001", "1.00"): micro-prices must not round to 0.00. */
-function price(amount: string): string {
-  const full = formatUsdc(amount, { full: true });
-  const [whole, frac] = full.split(".");
-  return `${whole}.${frac.replace(/0+$/, "").padEnd(2, "0")}`;
-}
 
 function toMerchant(r: ResolveOk): ResolvedMerchant {
   const host = new URL(r.url).host;
@@ -87,6 +83,7 @@ export function MerchantResolver({
   confirming,
   disabled,
   linkOrigin,
+  confirmMode = "sign",
   resolve = resolveMerchantUrl,
 }: MerchantResolverProps) {
   const inputId = useId();
@@ -94,6 +91,7 @@ export function MerchantResolver({
   const [state, setState] = useState<State>({ kind: "idle" });
   const [addrOpen, setAddrOpen] = useState(false);
   const [address, setAddress] = useState("");
+  const [pendingAddr, setPendingAddr] = useState<ConfirmTarget | null>(null);
   const seq = useRef(0);
   const autoStarted = useRef(false);
 
@@ -199,7 +197,7 @@ export function MerchantResolver({
         </div>
       ) : null}
 
-      {state.kind === "ok" ? <Preview result={state.result} {...{ existing, onConfirm, confirmLabel, confirming, disabled, linkOrigin }} /> : null}
+      {state.kind === "ok" ? <Preview result={state.result} {...{ existing, onConfirm, confirmLabel, confirming, disabled, linkOrigin, confirmMode }} /> : null}
 
       {onAddByAddress ? (
         <div className="mt-4">
@@ -219,10 +217,7 @@ export function MerchantResolver({
                 variant="ghost"
                 className={`${SMALL_BUTTON_CLASS} mb-0.5`}
                 disabled={disabled || !addressOk}
-                onClick={() => {
-                  onAddByAddress(address);
-                  setAddress("");
-                }}
+                onClick={() => setPendingAddr({ payTo: address, name: shortAddress(address) })}
               >
                 Add
               </Button>
@@ -230,32 +225,92 @@ export function MerchantResolver({
           ) : null}
         </div>
       ) : null}
+      <ConfirmFlow
+        target={pendingAddr}
+        mode={confirmMode}
+        confirming={confirming}
+        disabled={disabled}
+        already={pendingAddr ? existing.includes(pendingAddr.payTo) : false}
+        onClose={() => setPendingAddr(null)}
+        onConfirm={async (t) => {
+          await onAddByAddress?.(t.payTo);
+          setAddress("");
+        }}
+      />
     </div>
+  );
+}
+
+/**
+ * Owns the confirmation modal for one target: open only while a target is set
+ * (so its checkbox cannot outlive a close), closes itself if the target becomes
+ * already-allowed, and keeps the modal up with a spinner until the confirm
+ * settles. The in-flight ref makes a double click on the primary a no-op.
+ */
+function ConfirmFlow({
+  target,
+  mode,
+  linkOrigin,
+  confirming,
+  disabled,
+  already,
+  onClose,
+  onConfirm,
+}: {
+  target: ConfirmTarget | null;
+  mode: "sign" | "list";
+  linkOrigin?: boolean;
+  confirming?: boolean;
+  disabled?: boolean;
+  already: boolean;
+  onClose: () => void;
+  onConfirm: (t: ConfirmTarget) => void | Promise<void>;
+}) {
+  const inFlight = useRef(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (target && already) onClose();
+  }, [target, already, onClose]);
+  if (!target) return null;
+  return (
+    <MerchantConfirmModal
+      key={target.payTo}
+      open
+      merchant={target}
+      mode={mode}
+      linkOrigin={linkOrigin}
+      confirming={confirming || busy}
+      disabled={disabled || already}
+      onCancel={onClose}
+      onConfirm={async () => {
+        if (inFlight.current) return;
+        inFlight.current = true;
+        setBusy(true);
+        try {
+          await onConfirm(target);
+        } finally {
+          inFlight.current = false;
+          setBusy(false);
+          onClose();
+        }
+      }}
+    />
   );
 }
 
 type PreviewProps = { result: ResolveOk } & Pick<
   MerchantResolverProps,
-  "existing" | "onConfirm" | "confirmLabel" | "confirming" | "disabled" | "linkOrigin"
+  "existing" | "onConfirm" | "confirmLabel" | "confirming" | "disabled" | "linkOrigin" | "confirmMode"
 >;
 
-function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabled, linkOrigin }: PreviewProps) {
+function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabled, linkOrigin, confirmMode = "sign" }: PreviewProps) {
   const m = toMerchant(result);
   const already = existing.includes(m.payTo);
-  const inFlight = useRef(false);
+  const [pending, setPending] = useState<ResolvedMerchant | null>(null);
+  const closePending = useCallback(() => setPending(null), []);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
-
-  async function confirm() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    try {
-      await onConfirm(m);
-    } finally {
-      inFlight.current = false;
-    }
-  }
 
   function copy() {
     const p = navigator.clipboard?.writeText(m.payTo);
@@ -269,7 +324,7 @@ function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabl
     <div role="group" aria-label={`Service ${m.name}`} className="mt-4 rounded-[10px] border border-text-hi/[0.12] p-3.5">
       <p className="text-sm font-bold text-text-hi">{m.name}</p>
       {m.description ? <p className="mt-1 text-xs text-text-lo">{m.description.slice(0, 280)}</p> : null}
-      <p className="mt-2 font-mono text-sm text-text-hi">{price(m.amount)} USDC / request</p>
+      <p className="mt-2 font-mono text-sm text-text-hi">{formatMerchantPrice(m.amount)} USDC / request</p>
       <div className="mt-1 flex items-center gap-2 text-xs text-text-lo">
         <span>{networkLabel(m.network)}</span>
         <span className="font-mono" title={m.payTo}>
@@ -292,11 +347,21 @@ function Preview({ result, existing, onConfirm, confirmLabel, confirming, disabl
         {already ? (
           <Button disabled>Already allowed</Button>
         ) : (
-          <Button loading={confirming} disabled={disabled} onClick={() => void confirm()}>
+          <Button loading={confirming} disabled={disabled} onClick={() => setPending(m)}>
             {confirmLabel(m.host)}
           </Button>
         )}
       </div>
+      <ConfirmFlow
+        target={pending}
+        mode={confirmMode}
+        linkOrigin={linkOrigin}
+        confirming={confirming}
+        disabled={disabled}
+        already={pending ? existing.includes(pending.payTo) : false}
+        onClose={closePending}
+        onConfirm={(t) => onConfirm(t as ResolvedMerchant)}
+      />
     </div>
   );
 }

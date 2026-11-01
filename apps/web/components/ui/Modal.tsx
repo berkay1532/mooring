@@ -41,7 +41,13 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     document.body.style.overflow = "hidden";
 
     const panel = panelRef.current;
-    (panel ? (dialogFocusables(panel).find((el) => panel.contains(el)) ?? panel) : null)?.focus();
+    // `data-autofocus` lets a dialog name its own first stop (e.g. a confirmation gate).
+    (panel
+      ? (panel.querySelector<HTMLElement>("[data-autofocus]:not(:disabled)") ??
+        dialogFocusables(panel).find((el) => panel.contains(el)) ??
+        panel)
+      : null
+    )?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {

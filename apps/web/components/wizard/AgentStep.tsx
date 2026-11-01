@@ -105,6 +105,7 @@ export function AgentStep({ draft, patch, agentError, agentValid, locked, onBack
           <MerchantResolver
             existing={draft.merchants}
             confirmLabel={() => "Add to list"}
+            confirmMode="list"
             onConfirm={(m) => addAddress(m.payTo, { name: m.name, url: m.url })}
             onAddByAddress={(address) => addAddress(address)}
             disabled={locked}

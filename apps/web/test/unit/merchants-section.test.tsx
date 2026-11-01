@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,6 +54,9 @@ async function resolveAndAllow() {
   fireEvent.change(input, { target: { value: URL_ } });
   fireEvent.keyDown(input, { key: "Enter" });
   fireEvent.click(await screen.findByRole("button", { name: "Allow demo.rail402.dev" }));
+  const dialog = await screen.findByRole("dialog", { name: "Allow demo.rail402.dev?" });
+  fireEvent.click(within(dialog).getByRole("checkbox"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Allow and sign" }));
 }
 
 beforeEach(() => {
@@ -116,12 +119,18 @@ describe("MerchantsSection", () => {
     expect(await screen.findByRole("button", { name: "Already allowed" })).toBeDisabled();
   });
 
-  it("adds a raw address through the by-address path", () => {
+  it("adds a raw address through the by-address path, via the confirmation modal", async () => {
     section([]);
     fireEvent.click(screen.getByRole("button", { name: "+ Add" }));
     fireEvent.click(screen.getByRole("button", { name: "Add by address instead" }));
     fireEvent.change(screen.getByLabelText("Merchant address"), { target: { value: OTHER } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    expect(ops.add.run).toHaveBeenCalledWith(OTHER);
+    expect(ops.add.run).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(OTHER);
+    expect(dialog).toHaveTextContent("entered by hand");
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Allow and sign" }));
+    await waitFor(() => expect(ops.add.run).toHaveBeenCalledWith(OTHER));
   });
 });

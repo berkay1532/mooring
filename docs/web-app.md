@@ -291,6 +291,14 @@ resolver.
   accepts payments from this card's network and token. It does not vouch for the service.
   Allowing it lets your agent pay it up to the card's limits — whether to trust it is your
   decision." The wizard shows it once on the Confirm step.
+- **Confirmation modal.** The preview button does not sign or add anything by itself: it opens
+  a modal ("Allow `<host>`?" on the card screen and `/allow`, "Add `<host>` to the list?" in the
+  wizard) showing the service name, host, price, network and the full receiving address, the
+  responsibility notice, and the scope ("every payment to this address within the card's
+  limits, not just this URL"). The confirm button (**Allow and sign** / **Add to list**) stays
+  disabled until the owner ticks "I understand Mooring has not vetted this service and I take
+  responsibility for allowing it."; the box starts unticked on every opening. The same modal
+  appears on all three screens because they share the resolver.
 - **Already allowed.** A service whose `payTo` is already on the card's list shows a disabled
   "Already allowed" button.
 - **Names are per device.** The approved name and URL are kept in `localStorage`

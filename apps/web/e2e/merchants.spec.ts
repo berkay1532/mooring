@@ -68,6 +68,18 @@ async function lookUpOnCard(page: Page) {
   await page.getByRole("button", { name: "Look up" }).click();
 }
 
+/** Ticks the responsibility box in the confirmation modal and confirms. */
+async function confirmInModal(page: Page, primary: string) {
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(NOTICE)).toBeVisible();
+  const confirm = dialog.getByRole("button", { name: primary });
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("checkbox").check();
+  await confirm.click();
+  await expect(dialog).toHaveCount(0);
+}
+
 test.describe("adding a merchant by URL", () => {
   test("the wizard adds a service by URL and the card lands with its name", async ({ page, rpc }) => {
     await stubResolveOk(page, RAIL402);
@@ -85,6 +97,7 @@ test.describe("adding a merchant by URL", () => {
     await page.getByRole("button", { name: "Look up" }).click();
     await expect(page.getByText(NOTICE)).toBeVisible();
     await page.getByRole("button", { name: "Add to list" }).click();
+    await confirmInModal(page, "Add to list");
     await expect(page.getByRole("list", { name: "Merchants" })).toContainText("Rail402 demo");
     await page.getByRole("button", { name: "Continue →" }).click();
 
@@ -106,6 +119,7 @@ test.describe("adding a merchant by URL", () => {
 
     await expect(page.getByText(NOTICE)).toBeVisible();
     await page.getByRole("button", { name: "Allow demo.rail402.dev" }).click();
+    await confirmInModal(page, "Allow and sign");
 
     await expect(page.getByTestId("tx-toast").first()).toHaveAttribute("data-state", "confirmed", {
       timeout: 30_000,
@@ -132,6 +146,7 @@ test.describe("adding a merchant by URL", () => {
     await expect(page.getByText("This request came from a link. Make sure it is a service your agent is meant to use.")).toBeVisible();
     await expect(page.getByText(NOTICE)).toBeVisible();
     await page.getByRole("button", { name: "Allow demo.rail402.dev" }).click();
+    await confirmInModal(page, "Allow and sign");
 
     await expect(page.getByText("Merchant allowed.")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("link", { name: "Open card" })).toHaveAttribute("href", "/cards");
@@ -179,6 +194,7 @@ test.describe("adding a merchant by URL", () => {
     await page.getByRole("button", { name: "Add by address instead" }).click();
     await page.getByLabel("Merchant address").fill(PAY_TO);
     await page.getByRole("button", { name: "Add", exact: true }).click();
+    await confirmInModal(page, "Allow and sign");
 
     await expect.poll(() => rpc.submitted.map((call) => call.fn)).toEqual(["add_merchant"]);
     await expect(page.getByText(PAY_TO, { exact: true })).toBeVisible({ timeout: 30_000 });
@@ -191,13 +207,22 @@ test.describe("adding a merchant by URL", () => {
     await lookUpOnCard(page);
     await expect(page.getByRole("button", { name: "Allow demo.rail402.dev" })).toBeVisible();
     await page.waitForTimeout(1_000);
+    await expectNoBlocking(page);
 
-    const results = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-      .analyze();
-    const blocking = results.violations
-      .filter((v) => v.impact === "serious" || v.impact === "critical")
-      .map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(" ")) }));
-    expect(blocking).toEqual([]);
+    // Once more with the confirmation modal open.
+    await page.getByRole("button", { name: "Allow demo.rail402.dev" }).click();
+    await expect(page.getByRole("dialog", { name: "Allow demo.rail402.dev?" })).toBeVisible();
+    await page.waitForTimeout(1_000);
+    await expectNoBlocking(page);
   });
 });
+
+async function expectNoBlocking(page: Page) {
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  const blocking = results.violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+    .map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target.join(" ")) }));
+  expect(blocking).toEqual([]);
+}

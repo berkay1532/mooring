@@ -202,10 +202,16 @@ function fillPolicy(over: { label?: string; budget?: string; perTx?: string } = 
 }
 
 /** Adds a bare address through the "Add by address instead" disclosure. */
-function addByAddress(address: string) {
+async function addByAddress(address: string) {
   if (!screen.queryByLabelText(/merchant address/i)) click(/add by address instead/i);
   type(/merchant address/i, address);
   click(/^add$/i);
+  // An address already on the list leaves Add disabled, so no modal opens.
+  const dialog = screen.queryByRole("dialog");
+  if (!dialog) return;
+  fireEvent.click(within(dialog).getByRole("checkbox"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Add to list" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 }
 
 /** Looks a service URL up on step 2 and approves it. */
@@ -214,6 +220,10 @@ async function addByUrl(url = RAIL_URL) {
   click(/look up/i);
   await screen.findByRole("group", { name: /service rail402 demo/i });
   click(/add to list/i);
+  // The explicit confirmation modal: tick the responsibility box, then add.
+  const dialog = await screen.findByRole("dialog", { name: /to the list\?/i });
+  fireEvent.click(within(dialog).getByRole("checkbox"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Add to list" }));
 }
 
 /** Fills a valid step 2 and advances to step 3. */
@@ -338,8 +348,8 @@ describe("new-card wizard · step 2 (agent & merchants)", () => {
   it("deduplicates merchants and removes them from the chip list", async () => {
     wizard();
     fillPolicy();
-    addByAddress(MERCHANT);
-    addByAddress(MERCHANT);
+    await addByAddress(MERCHANT);
+    await addByAddress(MERCHANT);
 
     const list = screen.getByRole("list", { name: /merchants/i });
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
@@ -372,16 +382,16 @@ describe("new-card wizard · step 2 (agent & merchants)", () => {
     fireEvent.click(screen.getByRole("button", { name: /remove merchant/i }));
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
     // The same payTo again, now as a bare address: no stale name comes back.
-    addByAddress(RAIL_PAY);
+    await addByAddress(RAIL_PAY);
     const item = within(screen.getByRole("list", { name: /merchants/i })).getByRole("listitem");
     expect(item).toHaveTextContent(RAIL_PAY);
     expect(item).not.toHaveTextContent("Rail402 demo");
   });
 
-  it("still adds a bare address through the disclosure, shown in full", () => {
+  it("still adds a bare address through the disclosure, shown in full", async () => {
     wizard();
     fillPolicy();
-    addByAddress(MERCHANT);
+    await addByAddress(MERCHANT);
     expect(within(screen.getByRole("list", { name: /merchants/i })).getByText(MERCHANT)).toBeInTheDocument();
   });
 
@@ -496,7 +506,7 @@ describe("new-card wizard · step 3 (confirm)", () => {
     confirmImmediately = true;
     wizard();
     fillPolicy();
-    addByAddress(MERCHANT);
+    await addByAddress(MERCHANT);
     fillAgent();
     await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
 
@@ -578,7 +588,7 @@ describe("new-card wizard · step 3 (confirm)", () => {
     wizard();
     fillPolicy();
     await addByUrl();
-    addByAddress(MERCHANT);
+    await addByAddress(MERCHANT);
     fillAgent();
     expect(screen.getByText("Rail402 demo")).toBeInTheDocument();
     expect(screen.getAllByText(/does not vouch for the service/i)).toHaveLength(1);
@@ -596,7 +606,7 @@ describe("new-card wizard · step 3 (confirm)", () => {
     wizard();
     fillPolicy();
     await addByUrl();
-    addByAddress(MERCHANT);
+    await addByAddress(MERCHANT);
     fillAgent();
     await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
     click(/create with freighter/i);
@@ -626,8 +636,8 @@ describe("new-card wizard · step 3 (confirm)", () => {
     confirmImmediately = true;
     wizard();
     fillPolicy();
-    addByAddress(MERCHANT);
-    addByAddress(MERCHANT_2);
+    await addByAddress(MERCHANT);
+    await addByAddress(MERCHANT_2);
     fillAgent();
     await waitFor(() => expect(screen.getByText(expected())).toBeInTheDocument());
 
