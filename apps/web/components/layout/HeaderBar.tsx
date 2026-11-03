@@ -1,5 +1,6 @@
 "use client";
 
+import { Logo } from "@/components/layout/Logo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -21,7 +22,10 @@ export function HeaderBar() {
     // It has no effect at any width where the row already fits.
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-text-hi/[0.07] bg-bg-raised/60 px-6 py-4 sm:px-8">
       <div className="flex items-center gap-6">
-        <span className="font-display text-lg tracking-[0.06em] text-text-hi">MOORING</span>
+        <span className="inline-flex items-center gap-2">
+          <Logo />
+          <span className="font-display text-lg tracking-[0.06em] text-text-hi">MOORING</span>
+        </span>
         <nav className="flex items-center gap-5">
           <Link
             href="/cards"
