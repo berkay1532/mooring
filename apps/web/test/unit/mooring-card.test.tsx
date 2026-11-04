@@ -54,7 +54,8 @@ describe("MooringCard", () => {
     const leftLabel = screen.getByText("left this period");
     expect(leftLabel.parentElement).toContainElement(screen.getByTestId("budget-remaining"));
     expect(footer).toContainElement(leftLabel);
-    expect(footer).toContainElement(screen.getByTestId("footer-label"));
+    // The label now sits under the top row (not in the footer); it stays on the face.
+    expect(container.firstElementChild).toContainElement(screen.getByTestId("footer-label"));
     expect(footer).toContainElement(screen.getByTestId("footer-address"));
     expect(screen.getAllByText("left this period")).toHaveLength(1);
     expect(screen.getByTestId("status")).toHaveTextContent(/active/);
