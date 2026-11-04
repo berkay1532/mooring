@@ -199,4 +199,24 @@ describe("MooringCard", () => {
     expect(screen.getByTestId("balance")).toHaveTextContent("— USDC");
     expect(screen.getByTestId("footer-address")).toHaveTextContent("—");
   });
+
+  it("shows both budget texts for a four-digit budget on the preview face", () => {
+    render(<MooringCard size="preview" state="active" label="x" periodAmount={2500n * BASE} spent={1000n * BASE} />);
+    expect(screen.getByTestId("budget-remaining")).toHaveTextContent("1500.00 / 2500.00");
+    expect(screen.getByText("1000.00 spent")).toBeInTheDocument();
+  });
+
+  it("draws the allowlist count, the shortened signer with its full title, and STELLAR", () => {
+    const signer = "GDHDJL3RT6S3OABSHLOEOCBH4BMMAKLVOR5FPEHXG5ZW2DDJDRRJJSM7";
+    render(<MooringCard size="carousel" state="active" label="x" allowCount={1} signer={signer} />);
+    expect(screen.getByText("allowlist · 1")).toBeInTheDocument();
+    expect(screen.getByTitle(signer)).toHaveTextContent("GDHD…JSM7");
+    expect(screen.getByText("stellar")).toBeInTheDocument();
+  });
+
+  it("falls back to — for the allowlist count and signer", () => {
+    render(<MooringCard size="carousel" state="active" label="x" />);
+    expect(screen.getByText("allowlist · —")).toBeInTheDocument();
+    expect(screen.getByText(/signer ·/)).toHaveTextContent("signer · —");
+  });
 });

@@ -186,7 +186,7 @@ export function MooringCard({
 
   const desaturated = state === "frozen";
   const dimmed = state === "expired" || state === "cancelled";
-  
+
   const baseStyle: CSSProperties = {
     width: dims.width,
     height: dims.height,
@@ -241,7 +241,7 @@ export function MooringCard({
   const footerGapClass = isCarousel ? "pt-3" : "pt-2";
   const paddingClass = isCarousel ? "px-6 py-5" : "px-6 py-4";
   const budgetText = periodAmount === undefined ? "no budget set" : `${formatUsdc(remaining ?? 0n)} / ${formatUsdc(periodAmount)}`;
-  const spentText = `${formatUsdc(spent ?? 0n)} spent${isCarousel ? "" : " this period"}`;
+  const spentText = `${formatUsdc(spent ?? 0n)} spent`;
   const signerText = signer ? shortAddress(signer) : "—";
 
   return (
@@ -289,7 +289,7 @@ export function MooringCard({
 
       {/* middle: balance */}
       <div className={`relative ${balanceGapClass}`}>
-        <div className="font-mono text-[10px] uppercase leading-[12px] tracking-[0.3em] text-text-lo/70">balance</div>
+        <div className="font-mono text-[10px] uppercase leading-[12px] tracking-[0.3em] text-text-lo/80">balance</div>
         <div data-testid="balance" className={`mt-1 font-display leading-none text-text-hi ${balanceSizeClass}`}>
           {balance === undefined ? "—" : formatUsdc(balance)} <span className="font-display text-[15px] text-seaglass">USDC</span>
         </div>
@@ -309,12 +309,12 @@ export function MooringCard({
               </span>
             </span>
             {periodAmount !== undefined && isCarousel ? (
-              <span className="min-w-0 truncate font-body text-[10px] normal-case tracking-normal text-text-lo/70">
+              <span className="min-w-0 truncate font-body text-[10px] normal-case tracking-normal text-text-lo">
                 left this period
               </span>
             ) : null}
           </span>
-          <span className="shrink-0 normal-case text-text-lo/60">{spentText}</span>
+          <span className="min-w-0 truncate normal-case text-text-lo">{spentText}</span>
         </div>
         <div className="mt-1.5 h-[5px] overflow-hidden rounded-full bg-text-hi/10">
           <div
@@ -332,12 +332,16 @@ export function MooringCard({
             <span className="tracking-[0.1em]">allowlist · {allowCount === undefined ? "—" : allowCount}</span>
           </div>
           <div className="mt-0.5 flex justify-between gap-3">
-            <span className="min-w-0 truncate tracking-[0.05em]">
-              signer · <span title={signer}>{signerText}</span>
-              <span className="mx-1.5 text-text-lo/40">·</span>
-              <span data-testid="budget-expiry">expires {expiresText}</span>
+            <span className="flex min-w-0 items-baseline tracking-[0.05em]">
+              <span className="min-w-0 truncate">
+                signer · <span title={signer}>{signerText}</span>
+              </span>
+              <span className="mx-1.5 shrink-0 text-text-lo/40">·</span>
+              <span data-testid="budget-expiry" className="shrink-0">
+                expires {expiresText}
+              </span>
             </span>
-            <span className="shrink-0 tracking-[0.15em] text-text-lo/60">stellar</span>
+            <span className="shrink-0 tracking-[0.15em] text-text-lo">stellar</span>
           </div>
         </div>
       </div>
