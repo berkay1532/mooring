@@ -35,31 +35,22 @@ function bitt(o) {
   if (o.cap === 'mushroom') s += `<rect x="${-cw/2}" y="${-h-18}" width="${cw}" height="30" rx="15" fill="${o.ink}"/><rect x="${-cw/2}" y="${-h-18}" width="${cw}" height="12" rx="6" fill="rgba(255,255,255,.3)"/>`;
   if (o.cap === 'peaked') s += `<path d="M${-cw/2} ${-h-6} q 0 -30 ${cw/2} -30 q ${cw/2} 0 ${cw/2} 30 Z" fill="#16283f"/><rect x="${-cw/2}" y="${-h-10}" width="${cw}" height="12" rx="4" fill="#16283f"/><rect x="${-cw/2+2}" y="${-h-10}" width="${cw-4}" height="4" fill="#f2b44a"/><path d="M${-cw/2-10} ${-h+2} q ${cw/2+10} 10 ${cw+20} 0 l -6 -6 q ${-cw/2-4} -6 ${-cw-8} 0 Z" fill="#0d1b2e"/><g transform="translate(0,${-h-26}) scale(.22)"><rect x="-36" y="-24" width="20" height="62" rx="10" fill="#f2eee4"/><rect x="16" y="-24" width="20" height="62" rx="10" fill="#f2eee4"/><path d="M-22 -14 L 0 30 L 22 -14" stroke="#f2b44a" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`;
   if (o.cap === 'beanie') s += `<path d="M${-hw-6} ${-h+6} q 0 -40 ${hw+6} -40 q ${hw+6} 0 ${hw+6} 40 Z" fill="#7fb8a8"/><rect x="${-hw-8}" y="${-h-2}" width="${w+16}" height="14" rx="6" fill="#6aa595"/><circle cx="0" cy="${-h-36}" r="7" fill="#f2b44a"/>`;
-  if (o.cap === 'captain') { const B = -h - 2; const bw = cw + 12; // band width
+  if (o.cap === 'captain') { const B = -h - 4; const bw = cw - 4; const W = bw + 14; // compact cartoon captain hat
     s += `<g id="captain">`
-      // crown: wide, puffed, slightly forward-leaning
-      + `<path d="M${-bw/2-26} ${B-20} C ${-bw/2-34} ${B-78}, ${bw/2+34} ${B-78}, ${bw/2+26} ${B-20} Q 0 ${B-6} ${-bw/2-26} ${B-20} Z" fill="#f7f3ea"/>`
-      + `<path d="M${-bw/2-26} ${B-20} C ${-bw/2-34} ${B-78}, ${bw/2+34} ${B-78}, ${bw/2+26} ${B-20}" fill="none" stroke="rgba(10,21,34,.12)" stroke-width="2"/>`
-      + `<path d="M${-bw/2-16} ${B-30} Q 0 ${B-62} ${bw/2+16} ${B-30}" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="3" stroke-linecap="round"/>`
-      // crown shade under the overhang
-      + `<path d="M${-bw/2-26} ${B-20} Q 0 ${B-6} ${bw/2+26} ${B-20} Q 0 ${B-14} ${-bw/2-26} ${B-20} Z" fill="rgba(10,21,34,.18)"/>`
+      // crown: a soft dome, barely wider than the head, slight forward tilt
+      + `<path d="M${-W/2} ${B-12} C ${-W/2-2} ${B-50}, ${W/2+2} ${B-50}, ${W/2} ${B-12} Z" fill="#f7f3ea"/>`
+      + `<path d="M${-W/2+10} ${B-24} Q 0 ${B-42} ${W/2-10} ${B-24}" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="3" stroke-linecap="round"/>`
       // band
-      + `<rect x="${-bw/2}" y="${B-22}" width="${bw}" height="30" rx="5" fill="#16283f"/>`
-      + `<rect x="${-bw/2}" y="${B-22}" width="${bw}" height="30" rx="5" fill="url(#shade)"/>`
-      // chin cord (double amber cord across the lower band)
-      + `<path d="M${-bw/2+6} ${B+2} Q 0 ${B-8} ${bw/2-6} ${B+2}" fill="none" stroke="#f2b44a" stroke-width="3" stroke-linecap="round"/>`
-      + `<path d="M${-bw/2+6} ${B+6} Q 0 ${B-4} ${bw/2-6} ${B+6}" fill="none" stroke="#d99a30" stroke-width="2" stroke-linecap="round"/>`
-      + `<circle cx="${-bw/2+6}" cy="${B+4}" r="3.5" fill="#f2b44a"/><circle cx="${bw/2-6}" cy="${B+4}" r="3.5" fill="#f2b44a"/>`
-      // visor: glossy black, curving down, with gold braid on its edge
-      + `<path d="M${-bw/2-16} ${B+6} Q 0 ${B+46} ${bw/2+16} ${B+6} Q 0 ${B+16} ${-bw/2-16} ${B+6} Z" fill="#0a1522"/>`
-      + `<path d="M${-bw/2-8} ${B+14} Q 0 ${B+38} ${bw/2+8} ${B+14}" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="2"/>`
-      + `<path d="M${-bw/2-12} ${B+10} q 6 8 12 0 q 6 8 12 0 q 6 8 12 0 q 6 8 12 0 q 6 8 12 0 q 6 8 12 0 q 6 8 12 0 q 6 8 12 0 q 6 8 12 0" fill="none" stroke="#f2b44a" stroke-width="2" stroke-linecap="round" opacity=".9"/>`
-      // badge: laurel wreath + the mark
-      + `<g transform="translate(0,${B-14})">`
-      + `<path d="M-18 8 q -10 -14 -2 -28 M-18 8 q -6 -4 -4 -10 M-16 -2 q -6 -3 -5 -9 M-13 -11 q -5 -3 -3 -9 M18 8 q 10 -14 2 -28 M18 8 q 6 -4 4 -10 M16 -2 q 6 -3 5 -9 M13 -11 q 5 -3 3 -9" fill="none" stroke="#f2b44a" stroke-width="2.2" stroke-linecap="round"/>`
-      + `<circle r="12" fill="#0a1522" stroke="#f2b44a" stroke-width="1.8"/>`
-      + `<g transform="translate(0,-1) scale(.19)"><rect x="-36" y="-30" width="20" height="62" rx="10" fill="#f2eee4"/><rect x="16" y="-30" width="20" height="62" rx="10" fill="#f2eee4"/><path d="M-22 -20 L 0 24 L 22 -20" stroke="#f2b44a" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`
-      + `</g></g>`; }
+      + `<rect x="${-bw/2}" y="${B-14}" width="${bw}" height="20" rx="6" fill="#16283f"/>`
+      // one amber cord across the band
+      + `<path d="M${-bw/2+8} ${B+1} Q 0 ${B-7} ${bw/2-8} ${B+1}" fill="none" stroke="#f2b44a" stroke-width="3" stroke-linecap="round"/>`
+      // badge: amber ring, navy centre, the mark
+      + `<circle cx="0" cy="${B-5}" r="9" fill="#0a1522" stroke="#f2b44a" stroke-width="2"/>`
+      + `<g transform="translate(0,${B-5}) scale(.14)"><rect x="-36" y="-30" width="20" height="62" rx="10" fill="#f2eee4"/><rect x="16" y="-30" width="20" height="62" rx="10" fill="#f2eee4"/><path d="M-22 -20 L 0 24 L 22 -20" stroke="#f2b44a" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`
+      // visor: short rounded wedge
+      + `<path d="M${-bw/2-4} ${B+4} Q 0 ${B+28} ${bw/2+4} ${B+4} Q 0 ${B+10} ${-bw/2-4} ${B+4} Z" fill="#0a1522"/>`
+      + `<path d="M${-bw/2+2} ${B+8} Q 0 ${B+22} ${bw/2-2} ${B+8}" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="2"/>`
+      + `</g>`; }
   if (o.cap === 'fisherman') { const W = cw + 16, B = -h - 4; s += `<path d="M${-W/2} ${B} q 0 -40 ${W/2} -40 q ${W/2} 0 ${W/2} 40 Z" fill="#16283f"/><rect x="${-W/2}" y="${B-4}" width="${W}" height="16" rx="4" fill="#0d1b2e"/><path d="M${-W/2+8} ${B+3} q ${W/2-8} 8 ${W-16} 0" fill="none" stroke="#f2b44a" stroke-width="4" stroke-dasharray="6 3" stroke-linecap="round"/><path d="M${-W/2-8} ${B+12} q ${W/2+8} 10 ${W+16} 0 l -6 -6 q ${-W/2-2} -5 ${-W-4} 0 Z" fill="#0a1522"/>`; }
   if (o.cap === 'rope-band') s += `<path d="M${-cw/2} ${-h-6} q 0 -30 ${cw/2} -30 q ${cw/2} 0 ${cw/2} 30 Z" fill="#16283f"/><rect x="${-cw/2}" y="${-h-10}" width="${cw}" height="12" rx="4" fill="#16283f"/><path d="M${-cw/2+2} ${-h-5} q ${cw/4} 7 ${cw/2-2} 0 q ${cw/4} -7 ${cw/2-2} 0" fill="none" stroke="#f2b44a" stroke-width="5" stroke-linecap="round"/><path d="M${-cw/2-10} ${-h+2} q ${cw/2+10} 10 ${cw+20} 0 l -6 -6 q ${-cw/2-4} -6 ${-cw-8} 0 Z" fill="#0d1b2e"/><g transform="translate(0,${-h-26}) scale(.2)"><rect x="-36" y="-24" width="20" height="62" rx="10" fill="#f2eee4"/><rect x="16" y="-24" width="20" height="62" rx="10" fill="#f2eee4"/><path d="M-22 -14 L 0 30 L 22 -14" stroke="#f2b44a" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`;
   if (o.cap === 'dixie') s += `<path d="M${-cw/2+6} ${-h-6} q 0 -26 ${cw/2-6} -26 q ${cw/2-6} 0 ${cw/2-6} 26 Z" fill="#f7f3ea"/><path d="M${-cw/2-4} ${-h-10} q 4 18 ${cw/2+4} 18 q ${cw/2} 0 ${cw/2+4} -18 q 0 14 ${-cw/2-4} 14 q ${-cw/2-4} 0 ${-cw/2-4} -14 Z" fill="#ebe5d8"/><rect x="${-cw/2-4}" y="${-h-12}" width="${cw+8}" height="12" rx="6" fill="#f7f3ea"/>`;
