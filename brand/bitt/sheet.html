@@ -1,0 +1,58 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Manrope:wght@500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root { --bg:#050b14; --amber:#f2b44a; --sea:#7fb8a8; --hi:#f2eee4; --lo:#93a3b5; --navy:#0a1522; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:1600px; background:var(--bg); color:var(--lo); font-family:"Manrope", sans-serif; }
+  .sheet { width:1600px; padding:56px 64px 48px; }
+  h1 { font-family:"Instrument Serif", serif; font-weight:400; font-size:44px; color:var(--hi); } h1 em { color:var(--amber); font-style:italic; }
+  .sub { margin-top:6px; font-family:"IBM Plex Mono", monospace; font-size:13px; letter-spacing:.3em; text-transform:uppercase; }
+  .sec { margin-top:34px; font-family:"IBM Plex Mono", monospace; font-size:12px; letter-spacing:.3em; text-transform:uppercase; color:rgba(147,163,181,.75); border-top:1px solid rgba(242,238,228,.08); padding-top:16px; }
+  .poses { display:grid; grid-template-columns:repeat(5, 1fr); gap:20px; margin-top:16px; }
+  .cell { position:relative; background:#0a1522; border:1px solid rgba(242,238,228,.08); border-radius:18px; padding:18px 16px 14px; height:330px; display:flex; flex-direction:column; }
+  .cell.light { background:#f2eee4; }
+  .cell svg { flex:1; width:100%; }
+  .cell .t { font-family:"Instrument Serif", serif; font-size:22px; color:var(--hi); } .cell.light .t { color:var(--navy); }
+  .cell .d { margin-top:3px; font-size:12px; line-height:16px; color:var(--lo); } .cell.light .d { color:#4b5b6e; }
+  .row { display:grid; grid-template-columns:repeat(6, 1fr); gap:16px; margin-top:16px; }
+  .ex { background:#0a1522; border:1px solid rgba(242,238,228,.08); border-radius:16px; padding:12px 8px 10px; text-align:center; }
+  .ex svg { width:100%; height:170px; }
+  .ex .t { font-family:"IBM Plex Mono", monospace; font-size:12px; letter-spacing:.25em; text-transform:uppercase; color:var(--hi); margin-top:6px; }
+  .ex .d { font-size:12px; color:var(--lo); margin-top:2px; }
+  .scale { display:flex; align-items:flex-end; gap:34px; margin-top:16px; padding:18px 22px; background:#0a1522; border:1px solid rgba(242,238,228,.08); border-radius:18px; }
+  .scale .s { text-align:center; } .scale .s .k { font-family:"IBM Plex Mono", monospace; font-size:11px; letter-spacing:.2em; color:var(--lo); margin-top:8px; }
+  .tokens { margin-left:auto; display:grid; grid-template-columns:repeat(2, auto); gap:8px 22px; font-family:"IBM Plex Mono", monospace; font-size:12px; letter-spacing:.1em; color:var(--lo); }
+  .tokens i { display:inline-block; width:14px; height:14px; border-radius:4px; vertical-align:-2px; margin-right:8px; border:1px solid rgba(242,238,228,.15); }
+  .foot { margin-top:26px; display:flex; justify-content:space-between; font-family:"IBM Plex Mono", monospace; font-size:12px; letter-spacing:.3em; text-transform:uppercase; color:rgba(147,163,181,.6); }
+</style></head><body><div class="sheet">
+<h1>Bitt <em>v2</em> — character sheet</h1>
+<div class="sub">the bollard from the mark, given a face · the rope is its arm · bosun of the mooring pier</div>
+<div class="sec">poses</div><div class="poses" id="poses"></div>
+<div class="sec">expressions · mapped to card states</div><div class="row" id="row"></div>
+<div class="sec">scale · light surface</div>
+<div class="scale" id="scale"></div>
+<div class="foot"><span>mooring.live · brand/bitt</span><span>2026-11-12</span></div></div>
+<script src="bitt.js"></script>
+<script>
+const POSES = [
+  { t:'Idle', d:'Rope coiled at the waist. The default, the avatar.', o:{ rope:'coil' } },
+  { t:'Hello', d:'The rope is the arm; the loop is the hand.', o:{ rope:'arm' } },
+  { t:'Throw', d:'Lasso out: the mooring moment.', o:{ rope:'throw', tilt:-8, mouth:'o', eyes:'open' } },
+  { t:'Card', d:'Holding a Mooring card. Onboarding, docs.', o:{ rope:'coil', extra:'card', mouth:'grin' } },
+  { t:'Captain', d:'The announcement hat. News, releases, changelog.', o:{ rope:'arm', cap:'captain' } },
+];
+document.getElementById('poses').innerHTML = POSES.map(v => `<div class="cell">${wrap(bitt(v.o), '-135 -240 270 265', true)}<div class="t">${v.t}</div><div class="d">${v.d}</div></div>`).join('');
+const EXPR = [
+  { t:'active', d:'paying, content', o:{ mouth:'smile' } },
+  { t:'paid', d:'wink on settlement', o:{ eyes:'wink', mouth:'grin' } },
+  { t:'refused', d:'arms crossed, firm', o:{ brows:'angry', mouth:'flat', arms:'crossed' } },
+  { t:'frozen', d:'seaglass, dozing', o:{ ink:'#9fc6ba', eyes:'closed', mouth:'sleep', blush:'rgba(127,184,168,.5)', cap:'beanie' } },
+  { t:'expired', d:'needs a new date', o:{ brows:'sad', mouth:'worry' } },
+  { t:'cancelled', d:'withdrawn, quiet', o:{ ink:'#93a3b5', eyes:'x', mouth:'flat', cheeks:false } },
+];
+document.getElementById('row').innerHTML = EXPR.map(e => `<div class="ex">${wrap(bitt(Object.assign({rope:'coil'}, e.o)), '-100 -205 200 230', false)}<div class="t">${e.t}</div><div class="d">${e.d}</div></div>`).join('');
+const sizes = [160, 96, 64, 40, 24];
+document.getElementById('scale').innerHTML = sizes.map(z => `<div class="s"><svg width="${z}" height="${z}" viewBox="-100 -200 200 220">${DEFS}${bitt({rope:'coil'})}</svg><div class="k">${z}px</div></div>`).join('')
+  + `<div class="s" style="background:#f2eee4;border-radius:14px;padding:10px 14px"><svg width="110" height="110" viewBox="-100 -200 200 220">${DEFS}${bitt({rope:'arm', ink:'#0a1522', eye:'#f2eee4', blush:'rgba(242,180,74,.55)'})}</svg><div class="k" style="color:#4b5b6e">light</div></div>`
+  + `<div class="tokens"><span><i style="background:#f2eee4"></i>cream #f2eee4 body</span><span><i style="background:#f2b44a"></i>amber #f2b44a rope</span><span><i style="background:#0a1522"></i>navy #0a1522 eyes · light body</span><span><i style="background:#7fb8a8"></i>seaglass #7fb8a8 frozen</span><span><i style="background:#16283f"></i>#16283f cap band</span><span><i style="background:#f7f3ea"></i>#f7f3ea cap crown</span></div>`;
+</script></body></html>
