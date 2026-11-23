@@ -8,7 +8,7 @@ The pieces:
 | Piece | Where | What it is |
 |---|---|---|
 | `@mooring-live/x402-client` | `packages/x402-client` | x402 client whose payer is a card (`C…`), plus the local policy mirror and typed denials |
-| `@mooring-live/cli` | `packages/cli` | `mooring keygen` / `status` / `pay` |
+| `@mooring-live/cli` | `packages/cli` | `mooring keygen` / `create` / `status` / `pay` |
 | Example merchant server | `examples/merchant-server` | stock `@x402/express` + `@x402/stellar` resource server |
 | Facilitator | OpenZeppelin Channels | unmodified; verifies and settles, sponsors the Stellar fee |
 
@@ -262,6 +262,7 @@ Install it with `npm i -g @mooring-live/cli`, or run it from the workspace
 ```sh
 
 mooring keygen --hex                       # new agent keypair (--hex prints the BytesN<32> signer)
+OWNER_SECRET=S… mooring create --label ops-agent --signer G… --budget 5 --period 1d   # owner-signed create_card at the next discoverable salt
 mooring status --card C… --json            # label, on-chain policy, period, remaining budget, allowlist
 AGENT_SECRET=S… mooring pay http://localhost:3001/weather --card C…
 ```

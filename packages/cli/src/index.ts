@@ -3,20 +3,25 @@ import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { Keypair } from "@stellar/stellar-sdk";
+import { Server } from "@stellar/stellar-sdk/rpc";
 import { getNetworkPassphrase, getRpcUrl } from "@x402/stellar";
 import { Command, Option } from "commander";
 import {
   CardPolicyDenied,
   DEFAULT_APP_URL,
   allowMerchantUrl,
+  createCard,
   createMooringFetch,
+  deploymentFor,
   getSettlement,
+  nextCardIndex,
   readCardInfo,
   readMerchants,
   type CardInfo,
   type Settlement,
   type StellarNetwork,
 } from "@mooring-live/x402-client";
+import { buildPolicy } from "./create-args.js";
 
 /** Everything `buildProgram` needs from the outside world; tests inject fakes. */
 export interface CliDeps {
@@ -24,6 +29,8 @@ export interface CliDeps {
   readMerchants: typeof readMerchants;
   createMooringFetch: typeof createMooringFetch;
   getSettlement: typeof getSettlement;
+  createCard: typeof createCard;
+  nextCardIndex: typeof nextCardIndex;
   stdout: (line: string) => void;
 }
 
@@ -32,6 +39,8 @@ const realDeps: CliDeps = {
   readMerchants,
   createMooringFetch,
   getSettlement,
+  createCard,
+  nextCardIndex,
   stdout: (line: string) => process.stdout.write(`${line}\n`),
 };
 
@@ -56,7 +65,7 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
   program
     .name("mooring")
     .description("CLI for Mooring spending cards (Soroban custom accounts on Stellar)")
-    .version("0.2.0");
+    .version("0.3.0");
 
   program
     .command("keygen")
@@ -167,6 +176,108 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
           }
           throw err;
         }
+      },
+    );
+
+  program
+    .command("create")
+    .description("Create a card through the factory, signed by the owner (OWNER_SECRET), at the next discoverable salt")
+    .requiredOption("--label <text>", "card name shown in the app (1-32 bytes)")
+    .requiredOption("--signer <key>", "the agent's public key (G... or 64 hex from `mooring keygen --hex`)")
+    .requiredOption("--budget <usdc>", "spending budget per period, in USDC (e.g. 5 or 0.25)")
+    .requiredOption("--period <duration>", "budget period: 1d, 12h, 30m or seconds")
+    .option("--max-per-tx <usdc>", "cap for a single payment (default: the budget)")
+    .option("--expiry <when>", "+30d, +12h or an ISO date (default +30d)")
+    .option("--owner-secret-env <name>", "env var holding the owner's Stellar secret key", "OWNER_SECRET")
+    .option("--salt <index>", "deployer salt index (default: the next unused one, so the app discovers the card)")
+    .option("--factory <address>", "factory contract (default: the known deployment for --network)")
+    .option("--token <address>", "token the card holds (default: the network's USDC SAC)")
+    .addOption(
+      new Option("--network <network>", "stellar network").choices(["stellar:testnet", "stellar:pubnet"]).default("stellar:testnet"),
+    )
+    .option("--rpc <url>", "override the default RPC URL for the network")
+    .option("--json", "print machine-readable JSON")
+    .action(
+      async (opts: {
+        label: string;
+        signer: string;
+        budget: string;
+        period: string;
+        maxPerTx?: string;
+        expiry?: string;
+        ownerSecretEnv: string;
+        salt?: string;
+        factory?: string;
+        token?: string;
+        network: StellarNetwork;
+        rpc?: string;
+        json?: boolean;
+      }) => {
+        const secretEnvName = opts.ownerSecretEnv ?? "OWNER_SECRET";
+        const secret = process.env[secretEnvName];
+        if (!secret) {
+          deps.stdout(`Missing owner secret: set ${secretEnvName} to the card owner's Stellar secret key (S...).`);
+          process.exitCode = 2;
+          return;
+        }
+        let owner: Keypair;
+        try {
+          owner = Keypair.fromSecret(secret);
+        } catch {
+          deps.stdout(`Invalid owner secret in $${secretEnvName}`);
+          process.exitCode = 1;
+          return;
+        }
+        let built: ReturnType<typeof buildPolicy>;
+        try {
+          built = buildPolicy(opts);
+        } catch (err) {
+          deps.stdout(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+          return;
+        }
+        let factory = opts.factory;
+        let token = opts.token;
+        if (!factory || !token) {
+          try {
+            const d = deploymentFor(opts.network);
+            factory ??= d.factory;
+            token ??= d.usdc;
+          } catch (err) {
+            deps.stdout(err instanceof Error ? err.message : String(err));
+            process.exitCode = 1;
+            return;
+          }
+        }
+        const rpcUrl = getRpcUrl(opts.network, opts.rpc ? { url: opts.rpc } : undefined);
+        const networkPassphrase = getNetworkPassphrase(opts.network);
+        const server = new Server(rpcUrl);
+        let saltIndex: number;
+        if (opts.salt !== undefined) {
+          saltIndex = Number(opts.salt);
+          if (!Number.isInteger(saltIndex) || saltIndex < 0) {
+            deps.stdout("salt: must be a non-negative integer");
+            process.exitCode = 1;
+            return;
+          }
+        } else {
+          saltIndex = await deps.nextCardIndex(owner.publicKey(), { rpc: server, factory, passphrase: networkPassphrase });
+        }
+        const result = await deps.createCard(
+          { owner, signer: built.signer, token, label: built.label, policy: built.policy, saltIndex, factory, networkPassphrase },
+          { rpc: server },
+        );
+        if (opts.json) {
+          deps.stdout(toJson({ ...result, network: opts.network, factory, token, policy: built.policy, label: built.label }));
+          return;
+        }
+        deps.stdout(`Card: ${result.card}`);
+        deps.stdout(`Label: ${built.label}`);
+        deps.stdout(`Owner: ${result.owner}`);
+        deps.stdout(`Salt index: ${result.saltIndex}`);
+        deps.stdout(`Network: ${opts.network}`);
+        deps.stdout(`Tx: ${result.txHash}`);
+        deps.stdout(`Next: send USDC to the card address, then open ${DEFAULT_APP_URL}/cards with the owner's wallet — the card is discovered there without importing it.`);
       },
     );
 
