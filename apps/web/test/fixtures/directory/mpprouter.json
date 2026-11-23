@@ -1,0 +1,229 @@
+{
+ "version": 1,
+ "base_url": "https://apiserver.mpprouter.dev",
+ "generated_at": "2026-11-23T13:05:18.842Z",
+ "supported_payment_methods": [
+  {
+   "scheme": "stellar.mpp",
+   "network": "stellar:pubnet"
+  },
+  {
+   "scheme": "stellar.x402",
+   "network": "stellar:pubnet"
+  }
+ ],
+ "summary": {
+  "total": 675,
+  "payable": 448,
+  "verified": 27,
+  "available_unverified": 421,
+  "unavailable": 227,
+  "degraded_now": 0,
+  "direct_settlement": 7,
+  "third_party_directory": 5
+ },
+ "services": [
+  {
+   "id": "rozo-agent-api_pay-invoice",
+   "name": "Rozo Agent API",
+   "category": "AI",
+   "categories": [
+    "AI",
+    "crypto",
+    "utility",
+    "OpenRouter",
+    "CoinbaseCommerce"
+   ],
+   "description": "Pay a Coinbase Payments checkout URL (payment-links or payment-sessions) or Stripe-style invoice link",
+   "public_path": "/v1/services/rozo-agent-api/pay-invoice",
+   "method": "POST",
+   "price": "$0.010/request",
+   "payment_method": "stellar",
+   "network": "stellar-mainnet",
+   "asset": "USDC",
+   "status": "limited",
+   "payment_status": "available",
+   "payment_enabled": true,
+   "charge_rozo_verified": null,
+   "charge_rozo_verified_at": null,
+   "session_rozo_verified": null,
+   "session_rozo_verified_at": null,
+   "methods": {
+    "stellar": {
+     "intents": [
+      "charge"
+     ]
+    },
+    "stellar_x402": {
+     "scheme": "exact",
+     "network": "stellar:pubnet",
+     "pay_to": "GDK3AVW3YE6UL3J4WLNKBMP65KSY32YPUKIOC6PXW65XJ3LEG3YIDXXB",
+     "asset": "USDC"
+    },
+    "tempo": {
+     "intents": [
+      "charge"
+     ],
+     "role": "upstream"
+    }
+   },
+   "payment_hints": {
+    "network": "stellar:pubnet",
+    "intent": "charge",
+    "dialect": "both",
+    "pay_to": "GDK3AVW3YE6UL3J4WLNKBMP65KSY32YPUKIOC6PXW65XJ3LEG3YIDXXB",
+    "amount_usdc": "0.0100000",
+    "asset_sac": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+    "requires_classic_usdc_trustline": true,
+    "recommended_wallet_preflight": [
+     "account_exists",
+     "classic_usdc_trustline",
+     "usdc_balance_gte_amount",
+     "xlm_reserve_ok"
+    ]
+   },
+   "docs": {
+    "homepage": "https://agentapi.rozo.ai/openapi.json",
+    "api_reference": "https://agentapi.rozo.ai/openapi.json"
+   },
+   "live_status": "ok"
+  },
+  {
+   "id": "mercury_events_by_contract",
+   "name": "Mercury",
+   "category": "blockchain",
+   "categories": [
+    "blockchain",
+    "stellar",
+    "indexer"
+   ],
+   "description": "Contract events, full history (ledger range + topic filters)",
+   "public_path": "/v1/services/mercury/events/by-contract",
+   "method": "GET",
+   "path_params": [
+    "contract_id"
+   ],
+   "price": "$0.001/request",
+   "payment_method": "stellar",
+   "network": "stellar-mainnet",
+   "asset": "USDC",
+   "status": "active",
+   "payment_status": "verified",
+   "payment_enabled": true,
+   "charge_rozo_verified": true,
+   "charge_rozo_verified_at": "2026-08-11T16:48:00Z",
+   "session_rozo_verified": null,
+   "session_rozo_verified_at": null,
+   "methods": {
+    "stellar": {
+     "intents": []
+    },
+    "tempo": {
+     "intents": [],
+     "role": "upstream"
+    }
+   },
+   "payment_hints": {
+    "network": "stellar:pubnet",
+    "intent": "charge",
+    "dialect": "x402",
+    "relayed": false,
+    "pay_to": "GC5KJLF3UOKRWWWQCRGNXP4A3CFBNUD6ZQFVSJNBA4UVNICZXPBLMHC3",
+    "requires_classic_usdc_trustline": true
+   },
+   "docs": {
+    "homepage": "https://docs.mercurydata.app/",
+    "llms_txt": "https://docs.mercurydata.app/llms.txt"
+   },
+   "verified_mode": "charge",
+   "settlement": "direct",
+   "settlement_mode": "router_paywall",
+   "operator": {
+    "id": "mercurydata",
+    "name": "Mercury Data",
+    "verified_at": "2026-08-11T16:48:00Z",
+    "payouts": [
+     {
+      "network": "stellar:pubnet",
+      "pay_to": "GC5KJLF3UOKRWWWQCRGNXP4A3CFBNUD6ZQFVSJNBA4UVNICZXPBLMHC3",
+      "asset": "USDC"
+     }
+    ]
+   },
+   "live_status": "ok"
+  },
+  {
+   "id": "allium_developer_tokens_search",
+   "name": "Allium \u2013 Search tokens by name or symbol",
+   "category": "blockchain",
+   "categories": [
+    "blockchain",
+    "data"
+   ],
+   "description": "Search tokens by name or symbol",
+   "public_path": "/v1/services/allium/developer_tokens_search",
+   "method": "GET",
+   "price": "$0.030/request",
+   "payment_method": "stellar",
+   "network": "stellar-mainnet",
+   "asset": "USDC",
+   "status": "limited",
+   "payment_status": "unavailable",
+   "payment_enabled": false,
+   "charge_rozo_verified": null,
+   "charge_rozo_verified_at": null,
+   "session_rozo_verified": null,
+   "session_rozo_verified_at": null,
+   "methods": {
+    "tempo": {
+     "intents": [
+      "charge"
+     ],
+     "role": "upstream"
+    }
+   },
+   "docs": {
+    "homepage": "https://docs.allium.so"
+   },
+   "verified_mode": false,
+   "live_status": "ok"
+  }
+ ],
+ "third_party_providers": {
+  "note": "Provider-operated services listed with the operator's written permission. Settlement is direct to the operator and MPP Router does not proxy or sell these calls \u2014 pay the operator at resource_url.",
+  "services": [
+   {
+    "id": "agent402_stablecoin_peg",
+    "operator": {
+     "id": "agent402",
+     "name": "Agent402",
+     "homepage": "https://agent402.tools"
+    },
+    "operation": "stablecoin-peg",
+    "method": "GET",
+    "description": "Live USD stablecoin peg deviation and stress status.",
+    "categories": [
+     "crypto",
+     "data",
+     "monitoring"
+    ],
+    "price": "$0.003/request",
+    "price_usd": "0.003",
+    "resource_url": "https://agent402.tools/api/stablecoin-peg",
+    "settlement": "direct",
+    "payable_through_router": false,
+    "payouts": [
+     {
+      "network": "stellar:pubnet",
+      "pay_to": "GDNJXCKW7ZM7GEEVP674TWPU26YJNBQ2FI4ZIPRKTPTNUEJMDHFJWWRL",
+      "asset": "USDC",
+      "asset_id": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"
+     }
+    ],
+    "evaluation_tx": "4a0850f9567573904d04f9b211bbcd8d1c3afa2854092efd9021ed36cd1c1f4f",
+    "listing_source": "Written approval from Mike Petrillo (Agent402), founder-forwarded 2026-09-05.",
+    "listed_prices_read_at": "2026-09-05"
+   }
+  ]
+ }
+}

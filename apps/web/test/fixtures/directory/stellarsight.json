@@ -1,0 +1,132 @@
+{
+ "x402Version": 2,
+ "items": [
+  {
+   "resource": "https://stellarsight.xyz/v1/ocr/nota-fiscal",
+   "type": "http",
+   "x402Version": 2,
+   "accepts": [
+    {
+     "scheme": "exact",
+     "network": "stellar:testnet",
+     "asset": "CAYCPWN5YZEHKPGZOXGU3O7R2Q5H7LT7SZ45YIO26VMFM47VBUHOGPO2",
+     "amount": "500000",
+     "payTo": "GCWHOZD7PS6EJOJ3EEGDVWPWQKU7RCKRK6WTTQPI5Q3TGX7XLH7GKG3O",
+     "maxTimeoutSeconds": 120,
+     "extra": {}
+    }
+   ],
+   "lastUpdated": "2026-11-23T11:37:10.603Z",
+   "description": "Invoice OCR \u2014 Brazilian electronic invoice (NF-e), returning structured line items and totals.",
+   "serviceName": "stellarsight-ocr",
+   "tags": [
+    "ocr",
+    "invoice",
+    "nfe",
+    "brazil",
+    "document"
+   ],
+   "extensions": {
+    "bazaar": {
+     "info": {
+      "input": {
+       "type": "http",
+       "method": "POST",
+       "bodyType": "json"
+      }
+     }
+    }
+   },
+   "id": "https://stellarsight.xyz/v1/ocr/nota-fiscal",
+   "network": "stellar:testnet",
+   "scheme": "exact",
+   "payTo": "GCWHOZD7PS6EJOJ3EEGDVWPWQKU7RCKRK6WTTQPI5Q3TGX7XLH7GKG3O",
+   "asset": "CAYCPWN5YZEHKPGZOXGU3O7R2Q5H7LT7SZ45YIO26VMFM47VBUHOGPO2",
+   "maxAmountRequired": "500000",
+   "lastSeenAt": 1795433830603,
+   "firstSeenAt": 1795433830603,
+   "settlements": 1
+  },
+  {
+   "resource": "https://stellarsight.xyz/v1/cep/:cep",
+   "type": "http",
+   "x402Version": 2,
+   "accepts": [
+    {
+     "scheme": "exact",
+     "network": "stellar:testnet",
+     "asset": "CAYCPWN5YZEHKPGZOXGU3O7R2Q5H7LT7SZ45YIO26VMFM47VBUHOGPO2",
+     "amount": "50000",
+     "payTo": "GCWHOZD7PS6EJOJ3EEGDVWPWQKU7RCKRK6WTTQPI5Q3TGX7XLH7GKG3O",
+     "maxTimeoutSeconds": 120,
+     "extra": {}
+    }
+   ],
+   "lastUpdated": "2026-11-23T11:37:10.559Z",
+   "description": "Brazilian postal code lookup returning street, neighborhood, city and state.",
+   "serviceName": "stellarsight-postal",
+   "tags": [
+    "postal-code",
+    "address",
+    "brazil",
+    "geocoding",
+    "lookup"
+   ],
+   "extensions": {},
+   "id": "https://stellarsight.xyz/v1/cep/:cep",
+   "network": "stellar:testnet",
+   "scheme": "exact",
+   "payTo": "GCWHOZD7PS6EJOJ3EEGDVWPWQKU7RCKRK6WTTQPI5Q3TGX7XLH7GKG3O",
+   "asset": "CAYCPWN5YZEHKPGZOXGU3O7R2Q5H7LT7SZ45YIO26VMFM47VBUHOGPO2",
+   "maxAmountRequired": "50000",
+   "routeTemplate": "/v1/cep/:cep",
+   "lastSeenAt": 1795433830559,
+   "firstSeenAt": 1795433830559,
+   "settlements": 2
+  },
+  {
+   "resource": "https://stellarsight.xyz/v1/fx/usd-brl",
+   "type": "http",
+   "x402Version": 2,
+   "accepts": [
+    {
+     "scheme": "exact",
+     "network": "stellar:testnet",
+     "asset": "CAYCPWN5YZEHKPGZOXGU3O7R2Q5H7LT7SZ45YIO26VMFM47VBUHOGPO2",
+     "amount": "100000",
+     "payTo": "GCWHOZD7PS6EJOJ3EEGDVWPWQKU7RCKRK6WTTQPI5Q3TGX7XLH7GKG3O",
+     "maxTimeoutSeconds": 120,
+     "extra": {}
+    }
+   ],
+   "lastUpdated": "2026-11-23T11:37:10.437Z",
+   "description": "USD/BRL exchange rate with bid, ask and mid price.",
+   "serviceName": "stellarsight-fx",
+   "tags": [
+    "fx",
+    "forex",
+    "usd",
+    "brl",
+    "quote"
+   ],
+   "extensions": {},
+   "id": "https://stellarsight.xyz/v1/fx/usd-brl",
+   "network": "stellar:testnet",
+   "scheme": "exact",
+   "payTo": "GCWHOZD7PS6EJOJ3EEGDVWPWQKU7RCKRK6WTTQPI5Q3TGX7XLH7GKG3O",
+   "asset": "CAYCPWN5YZEHKPGZOXGU3O7R2Q5H7LT7SZ45YIO26VMFM47VBUHOGPO2",
+   "maxAmountRequired": "100000",
+   "lastSeenAt": 1795433830437,
+   "firstSeenAt": 1795433830437,
+   "settlements": 73
+  }
+ ],
+ "total": 3,
+ "limit": 100,
+ "offset": 0,
+ "pagination": {
+  "limit": 100,
+  "offset": 0,
+  "total": 3
+ }
+}

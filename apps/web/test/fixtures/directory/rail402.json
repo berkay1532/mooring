@@ -1,0 +1,280 @@
+{
+ "x402Version": 2,
+ "items": [
+  {
+   "resource": "https://demo.rail402.dev/weather",
+   "type": "http",
+   "x402Version": 2,
+   "accepts": [
+    {
+     "asset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+     "extra": {
+      "areFeesSponsored": true
+     },
+     "payTo": "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP",
+     "amount": "10000",
+     "scheme": "exact",
+     "network": "stellar:testnet",
+     "maxTimeoutSeconds": 300
+    }
+   ],
+   "lastUpdated": "2026-10-02T15:30:23.482Z",
+   "description": "Current weather for a city",
+   "mimeType": "application/json",
+   "extensions": {
+    "bazaar": {
+     "info": {
+      "input": {
+       "type": "http",
+       "method": "GET"
+      }
+     }
+    }
+   },
+   "rail402": {
+    "method": "GET",
+    "trust": "domain_verified",
+    "settlements": 781,
+    "listings": [
+     {
+      "id": "96eab768-fe71-47c4-9325-8907a4d6da78",
+      "network": "stellar:testnet",
+      "version": 4,
+      "trust": "domain_verified",
+      "owner": "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP",
+      "settlements": 781,
+      "firstCataloged": "2026-09-29T14:52:57.854Z",
+      "lastSettled": "2026-11-19T19:54:10.685Z",
+      "stellar": {
+       "checkedAt": "2026-11-23T09:34:06.226Z",
+       "domain": {
+        "host": "demo.rail402.dev",
+        "claimsOwner": true,
+        "homeDomainMatches": true
+       }
+      }
+     }
+    ],
+    "options": [
+     {
+      "listing": "96eab768-fe71-47c4-9325-8907a4d6da78",
+      "name": "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "symbol": "USDC",
+      "decimals": 7,
+      "receivable": true
+     }
+    ]
+   }
+  },
+  {
+   "resource": "https://demo.rail402.dev/mcp",
+   "type": "mcp",
+   "x402Version": 2,
+   "accepts": [
+    {
+     "asset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+     "extra": {
+      "areFeesSponsored": true
+     },
+     "payTo": "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP",
+     "amount": "10000",
+     "scheme": "exact",
+     "network": "stellar:testnet",
+     "maxTimeoutSeconds": 300
+    }
+   ],
+   "lastUpdated": "2026-10-31T19:18:41.642Z",
+   "description": "Weather forecast for a city",
+   "mimeType": "application/json",
+   "extensions": {
+    "bazaar": {
+     "info": {
+      "input": {
+       "type": "http",
+       "method": "GET"
+      }
+     }
+    }
+   },
+   "rail402": {
+    "toolName": "forecast",
+    "trust": "domain_verified",
+    "settlements": 6,
+    "listings": [
+     {
+      "id": "34a3139b-2e76-4e86-a94c-2012560f4bf9",
+      "network": "stellar:testnet",
+      "version": 8,
+      "trust": "domain_verified",
+      "owner": "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP",
+      "settlements": 6,
+      "firstCataloged": "2026-09-29T14:54:38.002Z",
+      "lastSettled": "2026-11-07T11:47:25.645Z",
+      "stellar": {
+       "checkedAt": "2026-11-23T07:20:45.922Z",
+       "domain": {
+        "host": "demo.rail402.dev",
+        "claimsOwner": true,
+        "homeDomainMatches": true
+       }
+      }
+     }
+    ],
+    "options": [
+     {
+      "listing": "34a3139b-2e76-4e86-a94c-2012560f4bf9",
+      "name": "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "symbol": "USDC",
+      "decimals": 7,
+      "receivable": true
+     }
+    ]
+   }
+  },
+  {
+   "resource": "https://try-cli-1.onrender.com/sketch",
+   "type": "http",
+   "x402Version": 2,
+   "accepts": [
+    {
+     "asset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+     "extra": {
+      "areFeesSponsored": true
+     },
+     "payTo": "GBCKZHYGFWRS77UVZCOGTST55OL3HHXDSAYZRKPNBQGO5DXHSCBGRL7B",
+     "amount": "2500000",
+     "scheme": "exact",
+     "network": "stellar:testnet",
+     "maxTimeoutSeconds": 300
+    }
+   ],
+   "lastUpdated": "2026-10-27T12:25:26.525Z",
+   "description": "Turns a photo of a dog, cat, or other pet into a black pen-drawn line-art portrait of its head, as a print-ready single-color SVG (for wedding napkins, cards, and invitations).",
+   "mimeType": "image/svg+xml",
+   "serviceName": "Pet Pen Portraits",
+   "tags": [
+    "pet-portrait",
+    "line-art",
+    "svg",
+    "wedding",
+    "print"
+   ],
+   "iconUrl": "https://try-cli-1.onrender.com/icon.svg",
+   "extensions": {
+    "bazaar": {
+     "info": {
+      "input": {
+       "type": "http",
+       "method": "POST"
+      }
+     }
+    }
+   },
+   "rail402": {
+    "method": "POST",
+    "trust": "origin_verified",
+    "settlements": 75,
+    "listings": [
+     {
+      "id": "47d5d1cf-9604-4f6a-97c6-384c6e7e0eb8",
+      "network": "stellar:testnet",
+      "version": 3,
+      "trust": "origin_verified",
+      "owner": "GBCKZHYGFWRS77UVZCOGTST55OL3HHXDSAYZRKPNBQGO5DXHSCBGRL7B",
+      "settlements": 75,
+      "firstCataloged": "2026-10-26T10:51:28.131Z",
+      "lastSettled": "2026-11-21T20:50:12.042Z",
+      "stellar": {
+       "checkedAt": "2026-11-23T12:28:58.579Z",
+       "domain": {
+        "host": "try-cli-1.onrender.com",
+        "claimsOwner": false,
+        "homeDomainMatches": false
+       }
+      }
+     }
+    ],
+    "options": [
+     {
+      "listing": "47d5d1cf-9604-4f6a-97c6-384c6e7e0eb8",
+      "name": "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "symbol": "USDC",
+      "decimals": 7,
+      "receivable": true
+     }
+    ]
+   }
+  },
+  {
+   "resource": "https://demo-mainnet.rail402.dev/weather",
+   "type": "http",
+   "x402Version": 2,
+   "accepts": [
+    {
+     "asset": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+     "extra": {
+      "areFeesSponsored": true
+     },
+     "payTo": "GDHHQIRALXCYTDSSLTY5JX5RXRINF2VRDUT5TF2436QNJINY7Z54PQA2",
+     "amount": "10000",
+     "scheme": "exact",
+     "network": "stellar:pubnet",
+     "maxTimeoutSeconds": 300
+    }
+   ],
+   "lastUpdated": "2026-11-05T18:17:40.734Z",
+   "description": "Current weather for a city",
+   "mimeType": "application/json",
+   "extensions": {
+    "bazaar": {
+     "info": {
+      "input": {
+       "type": "http",
+       "method": "GET"
+      }
+     }
+    }
+   },
+   "rail402": {
+    "method": "GET",
+    "trust": "domain_verified",
+    "settlements": 75,
+    "listings": [
+     {
+      "id": "10238c14-f9f6-437f-8ee6-5143f8203c14",
+      "network": "stellar:pubnet",
+      "version": 3,
+      "trust": "domain_verified",
+      "owner": "GDHHQIRALXCYTDSSLTY5JX5RXRINF2VRDUT5TF2436QNJINY7Z54PQA2",
+      "settlements": 75,
+      "firstCataloged": "2026-11-05T06:17:35.700Z",
+      "lastSettled": "2026-11-06T13:53:44.132Z",
+      "stellar": {
+       "checkedAt": "2026-11-23T12:18:41.585Z",
+       "domain": {
+        "host": "demo-mainnet.rail402.dev",
+        "claimsOwner": true,
+        "homeDomainMatches": true
+       }
+      }
+     }
+    ],
+    "options": [
+     {
+      "listing": "10238c14-f9f6-437f-8ee6-5143f8203c14",
+      "name": "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "symbol": "USDC",
+      "decimals": 7,
+      "receivable": true
+     }
+    ]
+   }
+  }
+ ],
+ "pagination": {
+  "limit": 100,
+  "offset": 0,
+  "total": 4,
+  "asOf": "2026-11-23T13:05:16.398Z"
+ }
+}
