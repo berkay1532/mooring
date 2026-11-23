@@ -13,6 +13,11 @@ export interface X402Extras {
   method?: "GET" | "POST";
 }
 
+function hostPath(url: string): string {
+  const u = new URL(url);
+  return `${u.host}${u.pathname === "/" ? "" : u.pathname}`.slice(0, 64);
+}
+
 export function fromX402Item(source: DirectorySource, raw: unknown, extras: X402Extras = {}): DirectoryEntry[] {
   const item = obj(raw);
   if (!item) return [];
@@ -21,7 +26,8 @@ export function fromX402Item(source: DirectorySource, raw: unknown, extras: X402
   if (!url || !host) return [];
   const kind = item.type === "mcp" ? "mcp" : "http";
   const info = obj(obj(obj(item.extensions)?.bazaar)?.info);
-  const baseName = str(item.serviceName, 64) ?? str(info?.serviceName, 64) ?? host;
+  // Without a service name, "host/path" tells rows of the same seller apart.
+  const baseName = str(item.serviceName, 64) ?? str(info?.serviceName, 64) ?? hostPath(url);
   const name = extras.tool ? `${baseName} · ${extras.tool}`.slice(0, 64) : baseName;
   const out: DirectoryEntry[] = [];
   for (const a of arr(item.accepts).map(obj)) {
