@@ -9,6 +9,7 @@
  */
 import { test as base, expect as baseExpect, type Page } from "@playwright/test";
 
+import { stubDirectory } from "./directory";
 import { RPC_URL } from "./env";
 import { installRpcMock, type RpcMock } from "./rpc-mock";
 
@@ -27,6 +28,10 @@ export const test = base.extend<{
   rpc: [
     async ({ page, baseURL }, use) => {
       const mock = await installRpcMock(page);
+      // The directory route would otherwise fetch public catalogues from the
+      // dev server; the canned answer keeps the suite offline. A spec that
+      // needs another answer re-routes on top of this one.
+      await stubDirectory(page);
       await installNetworkGuard(page, baseURL as string);
       await use(mock);
       // An RPC method the mock does not implement answers -32601, which the

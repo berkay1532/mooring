@@ -324,6 +324,37 @@ resolver.
 - **By address.** "Add by address instead" keeps the raw `G…` / `C…` path for a seller that
   cannot be resolved.
 
+## Merchant directory (flow 3)
+
+"Browse services" sits under the URL field of every resolver (wizard step 2 and the card
+screen's "+ Add"; the `/allow` link flow keeps its single URL). It is fed by
+`GET /api/directory?network=stellar:testnet|stellar:pubnet` (`lib/directory/`), which
+aggregates public Stellar x402/MPP catalogues server-side:
+
+| Source | Endpoint | Notes |
+|---|---|---|
+| Rail402 | `testnet.rail402.dev/discovery/resources` | testnet + pubnet sellers in one catalogue; `rail402.trust = domain_verified` → "verified by source", `settlements` shown |
+| StellarSight | `stellarsight.xyz/discovery/resources?seeded=false` | small testnet catalogue; its rows use a non-USDC asset today, so they are fetched but not payable |
+| MPP Router | `apiserver.mpprouter.dev/v1/services/catalog` | pubnet; rows paying the router's own address are flagged **proxy** (one allow covers the whole catalogue) |
+| CDP x402 Bazaar | `api.cdp.coinbase.com/platform/v2/x402/discovery/resources` | ~40k resources, ~1.3k on `stellar:pubnet`; a full scan is ~40 × 3 MB, so it runs only with `MOORING_DIRECTORY_BAZAAR=1` |
+
+Normalisation: one entry per Stellar `accepts[]` row, prices in USDC base units (MPP Router's
+`$0.010/request` strings are converted), dedupe on `network|payTo|url` with source priority
+Rail402 > StellarSight > Bazaar > MPP Router, and any payee fronting 25+ hosts is a proxy
+regardless of source. **Payable** means the card's network *and* its USDC SAC; the other
+network's payable rows are returned separately for the read-only "On Stellar mainnet · N
+services" section (proxied rows are counted, not listed).
+
+Caching: an in-memory snapshot per server instance (fresh 1 h, served stale up to 24 h while a
+refresh runs) plus `Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400`, so the
+CDN does the hourly cache; a failing source keeps the last good list and is reported in
+`sources[]`. The browser memoises the response for ten minutes.
+
+Picking a row does **not** add anything: it fills the URL field and runs the same live 402
+lookup as a pasted URL, then the same preview and confirmation modal. If the live lookup fails,
+the resolver offers the directory's payee through the add-by-address path instead. The seed
+"Examples" buttons are shown only when no directory is available to a screen.
+
 ## Known limitations and follow-ups
 
 - **Merchants are added one transaction at a time.** The card constructor and the factory's
@@ -333,8 +364,9 @@ resolver.
   transaction. Scheduled before mainnet, with the audit.
 - **Merchant names are per device** (`localStorage`) until the indexer lands; the chain keeps
   only the address.
-- **No merchant directory yet.** Merchants are found by URL or address; a browsable directory is
-  the next step (flow 3).
+- **The merchant directory is a mirror of public catalogues.** Rows are listed, not vetted;
+  the CDP Bazaar scan is off by default (see "Merchant directory" above) until the indexer
+  worker takes it over, so the mainnet section is Rail402's and MPP Router's view only.
 - **Freighter only.** The wallet interface in `lib/wallet` is what a Stellar Wallets Kit adapter
   would implement; multi-wallet support is post-v1.
 - **No activity history.** Payments and owner actions per card need an indexer — RPC keeps

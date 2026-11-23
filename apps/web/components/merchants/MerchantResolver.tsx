@@ -5,9 +5,12 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { SMALL_BUTTON_CLASS, SURFACE_CLASS } from "@/components/cards/PolicySection";
 import { MerchantConfirmModal, type ConfirmTarget } from "@/components/merchants/MerchantConfirmModal";
+import { BrowseServices } from "@/components/merchants/BrowseServices";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { config, isDev } from "@/lib/config";
+import type { DirectoryLoader } from "@/lib/directory/client";
+import type { DirectoryEntry } from "@/lib/directory/types";
 import { shortAddress } from "@/lib/format/address";
 import { resolveMerchantUrl } from "@/lib/merchants/client";
 import { describeTerms, networkLabel } from "@/lib/merchants/describe";
@@ -42,6 +45,12 @@ export interface MerchantResolverProps {
   confirmMode?: "sign" | "list";
   /** The request arrived through a link; adds a caution sentence. */
   linkOrigin?: boolean;
+  /**
+   * When set, the merchant directory is offered under the URL field; picking
+   * an entry fills the URL and runs the same lookup. Seeds are shown only
+   * while no directory is given (or it lists nothing).
+   */
+  directory?: DirectoryLoader;
   /** Injectable for tests. */
   resolve?: typeof resolveMerchantUrl;
 }
@@ -84,6 +93,7 @@ export function MerchantResolver({
   disabled,
   linkOrigin,
   confirmMode = "sign",
+  directory,
   resolve = resolveMerchantUrl,
 }: MerchantResolverProps) {
   const inputId = useId();
@@ -92,6 +102,8 @@ export function MerchantResolver({
   const [addrOpen, setAddrOpen] = useState(false);
   const [address, setAddress] = useState("");
   const [pendingAddr, setPendingAddr] = useState<ConfirmTarget | null>(null);
+  /** The directory row the owner picked, so a failed live lookup can still offer its address. */
+  const [picked, setPicked] = useState<DirectoryEntry | null>(null);
   const seq = useRef(0);
   const autoStarted = useRef(false);
 
@@ -131,7 +143,7 @@ export function MerchantResolver({
   const resolving = state.kind === "resolving";
   // The local example seller only makes sense where the resolver may reach
   // loopback: the mock-wallet e2e build and `next dev`.
-  const seeds = state.kind === "idle" ? seedServices(config.network, config.walletMode === "mock" || isDev) : [];
+  const seeds = state.kind === "idle" && !directory ? seedServices(config.network, config.walletMode === "mock" || isDev) : [];
   const addressOk =
     (StrKey.isValidEd25519PublicKey(address) || StrKey.isValidContract(address)) &&
     !existing.includes(address);
@@ -147,6 +159,7 @@ export function MerchantResolver({
         invalid={state.kind === "error"}
         onChange={(e) => {
           setUrl(e.target.value);
+          setPicked(null);
           seq.current++;
           setState({ kind: "idle" });
         }}
@@ -164,6 +177,19 @@ export function MerchantResolver({
                   <li key={i}>This service accepts: {line}</li>
                 ))}
               </ul>
+            ) : null}
+            {picked && onAddByAddress && !existing.includes(picked.payTo) ? (
+              <p className="mt-2 text-xs text-text-lo">
+                The directory lists {shortAddress(picked.payTo)} as its payee.{" "}
+                <Button
+                  variant="ghost"
+                  className={SMALL_BUTTON_CLASS}
+                  disabled={disabled}
+                  onClick={() => setPendingAddr({ payTo: picked.payTo, name: picked.name, host: picked.host, url: picked.url, amount: picked.amount, network: picked.network })}
+                >
+                  Add that address instead
+                </Button>
+              </p>
             ) : null}
           </>
         ) : null}
@@ -197,7 +223,35 @@ export function MerchantResolver({
         </div>
       ) : null}
 
-      {state.kind === "ok" ? <Preview result={state.result} {...{ existing, onConfirm, confirmLabel, confirming, disabled, linkOrigin, confirmMode }} /> : null}
+      {directory && state.kind !== "ok" ? (
+        <BrowseServices
+          load={directory}
+          existing={existing}
+          disabled={disabled || resolving}
+          onPick={(e) => {
+            setPicked(e);
+            setUrl(e.url);
+            void lookUp(e.url);
+          }}
+        />
+      ) : null}
+
+      {state.kind === "ok" ? (
+        <Preview
+          result={state.result}
+          {...{ existing, confirmLabel, confirming, disabled, linkOrigin, confirmMode }}
+          onConfirm={async (m) => {
+            await onConfirm(m);
+            // With a directory the owner usually adds several: go back to the list.
+            if (directory) {
+              seq.current++;
+              setPicked(null);
+              setUrl("");
+              setState({ kind: "idle" });
+            }
+          }}
+        />
+      ) : null}
 
       {onAddByAddress ? (
         <div className="mt-4">
