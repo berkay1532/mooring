@@ -22,11 +22,28 @@ testnet; mainnet follows an audit. Never describe the web app or the client as a
 
 ## Award / sprint context
 
-- **SCF Instaward #2 — APPROVED.** ~30-day sprint. Nominal start was **2026-08-11**;
-  actually starting later (approval came late) — that's fine, run the 30-day window from the
-  real start.
-- Budget **$5,000**, milestone-based. Chapter: **Stellar Türkiye** (lead **İrem Koçi**).
-- **testnet-only.** License **Apache-2.0**.
+- **First month (SCF Instaward #2) — DELIVERED.** ~30-day sprint, nominal start **2026-08-11**,
+  run from the real start. D1–D3 below are its deliverables (all merged). Budget **$5,000**.
+- **Second month — APPROVED 2026-11-23, IN PROGRESS.** 30-day window runs from the approval
+  date. Budget **$5,000**, split D1 35% / D2 40% / D3 25%. Full SOW (git-ignored):
+  `instawards/2026-11-instaward-2nd-month-sow.md`; customer development plan next to it.
+  - **D1 — Discovery & onboarding:** (a) merchant directory ("Browse services" in the wizard and
+    on the card screen, fed server-side from Rail402, StellarSight, MPP Router and the CDP x402
+    Bazaar, hourly cache, "Add" via the existing resolver + confirmation modal); (b) `npx
+    create-mooring-agent` + a hosted example seller on `api.mooring.live`; (c) `@mooring-live/mcp`
+    MCP server (`list_services`, `card_status`, `pay`, `explain_denial`) + a Mooring skill.
+  - **D2 — Indexer, activity, alerts:** (a) indexer v1 (Node + Neon Postgres, factory/card events,
+    read API, activity feed, merchant-name sync); (b) `mooring create` in the CLI using the app's
+    index-based salt so CLI cards are discovered everywhere; (c) e-mail/webhook alerts (denial,
+    low balance, threshold, 80% of period) + per-card CSV export.
+  - **D3 — Protocol coverage & agent-side safety:** (a) MPP charge in the client/CLI behind one
+    `pay()`; (b) guard parity (local caps, `stop()`, reservations, signed receipt ledger);
+    (c) `stellar:pubnet` config behind a flag, simulation-level fee/flow check, mainnet runbook draft.
+  - **Weekly plan:** W1 D1(a) + D2(b) · W2 D2(a) · W3 D3(a) + D3(b) + D1(b) · W4 D1(c) + D2(c) +
+    D3(c) + docs/Loom/evidence. Evidence list in SOW §6.1 (hashes, screenshots, Loom, npm packages).
+  - **Out of scope:** audit, real mainnet deployment, merchant-side product, recurring billing,
+    passkey signer, other chains.
+- Chapter: **Stellar Türkiye** (lead **İrem Koçi**). **testnet-only.** License **Apache-2.0**.
 
 ## Architecture (agreed)
 
@@ -83,11 +100,13 @@ D1/D2 addresses earlier in the same file.
 evidence in `docs/testnet.md`, the integration guide in `docs/x402-integration.md`, the web app guide
 in `docs/web-app.md`. Remaining work is the post-sprint roadmap below.
 
-### Post-sprint roadmap (not in the 30-day SOW)
-v1.1 (in progress): merchants added by service URL (402 resolution) + `/allow` denial links — PR TBD; next: merchant directory (flow 3).
-v1.1: indexer + activity history, hosted example merchant API. v2: Soroban Audit Bank audit,
-mainnet, merchant side (registration / receiving / incoming payments). Never: recurring billing
-with fee split, passkey signer (until a wallet can sign Soroban auth entries for a C address).
+### Roadmap after the first month
+Shipped since (v1.1): merchants added by service URL (402 resolution) + `/allow` denial links
+(PR #15), confirmation modal (PR #16), brand + mascot "Bitt" (`brand/`). **Now:** the second-month
+Instaward scope above (directory, indexer, MPP charge, MCP, alerts, pubnet prep). **Next sprint
+(v2):** Soroban Audit Bank audit, mainnet, merchant side (registration / receiving / incoming
+payments). Never: recurring billing with fee split, passkey signer (until a wallet can sign
+Soroban auth entries for a C address).
 
 ## Tech stack
 Rust / Soroban (contracts) · `@x402/stellar` + OZ Channels facilitator (payments) ·
