@@ -12,6 +12,7 @@ import {
 } from "@/components/cards/PolicySection";
 import { MerchantIdentity } from "@/components/merchants/MerchantIdentity";
 import { MerchantResolver, type ResolvedMerchant } from "@/components/merchants/MerchantResolver";
+import { directoryLoader } from "@/lib/directory/loader";
 import { Button } from "@/components/ui/Button";
 import { buildAddMerchant, buildRemoveMerchant } from "@/lib/chain/card";
 import { shortAddress } from "@/lib/format/address";
@@ -153,6 +154,7 @@ export function MerchantsSection({ address, owner, merchants, loading, disabled 
             }}
             confirming={add.mine}
             disabled={busy || full}
+            directory={directoryLoader}
           />
         </div>
       ) : null}

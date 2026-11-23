@@ -1,0 +1,82 @@
+{
+ "items": [
+  {
+   "accepts": [
+    {
+     "amount": "1000",
+     "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+     "extra": {
+      "name": "USD Coin",
+      "version": "2"
+     },
+     "maxTimeoutSeconds": 300,
+     "network": "eip155:8453",
+     "payTo": "0x6B0F4651eD42893ab58139938175E4a69f175F25",
+     "scheme": "exact"
+    },
+    {
+     "amount": "10000",
+     "asset": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
+     "extra": {
+      "areFeesSponsored": true
+     },
+     "maxTimeoutSeconds": 300,
+     "network": "stellar:pubnet",
+     "payTo": "GCH2J5UAY24YNKA65MPAATVKWRCZZRZNF3JZKYYS5MIBZPG6U7WJ6CDQ",
+     "scheme": "exact"
+    }
+   ],
+   "description": "x402 preflight check: is this x402 endpoint or seller safe to pay? Check it before your AI agent pays an endpoint it has not used before. Returns a go / caution / no_go verdict, the recommended payment option (network and amount) and the reasons (payment would fail, payout address on the OFAC sanctions list, over your budget, price above advertised, not HTTPS, unknown token). Never pays the endpoint. Cached 10 min. Bulk: 1000 credits for $0.80 via /api/v1/credits.",
+   "iconUrl": "https://res.cloudinary.com/bdb-prod/image/upload/c_fill,ar_1:1,w_256,h_256,f_auto,q_auto/v1791125195/bazaar-icons/061c165bc4e51e45.png",
+   "lastUpdated": "2026-11-23T04:43:18.607Z",
+   "quality": {
+    "l30DaysTotalCalls": 13,
+    "l30DaysUniquePayers": 7,
+    "lastCalledAt": "2026-11-23T04:43:18.267Z"
+   },
+   "resource": "https://x402-doctor.fizzl.eu/api/v1/preflight",
+   "serviceName": "x402 Doctor",
+   "tags": [
+    "x402",
+    "payments",
+    "safety",
+    "pre-payment",
+    "sanctions"
+   ],
+   "type": "http",
+   "x402Version": 2
+  },
+  {
+   "accepts": [
+    {
+     "amount": "50000",
+     "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+     "extra": {
+      "name": "USD Coin",
+      "version": "2"
+     },
+     "maxTimeoutSeconds": 3600,
+     "network": "eip155:8453",
+     "payTo": "0x17cd53C04D707eF0Dd615EF56c633f02915a7905",
+     "scheme": "exact"
+    }
+   ],
+   "description": "Pay the send-native execution fee (native coin transfer)",
+   "lastUpdated": "2026-11-23T13:00:02.282Z",
+   "quality": {
+    "l30DaysTotalCalls": 12974,
+    "l30DaysUniquePayers": 5594,
+    "lastCalledAt": "2026-11-23T12:05:31.598Z"
+   },
+   "resource": "https://keyring-agent.blockchhub.link/api/send-native",
+   "type": "http",
+   "x402Version": 2
+  }
+ ],
+ "pagination": {
+  "limit": 1000,
+  "offset": 0,
+  "total": 39974
+ },
+ "x402Version": 2
+}

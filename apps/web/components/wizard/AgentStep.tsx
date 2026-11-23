@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { MerchantIdentity } from "@/components/merchants/MerchantIdentity";
 import { MerchantResolver } from "@/components/merchants/MerchantResolver";
+import { directoryLoader } from "@/lib/directory/loader";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { shortAddress } from "@/lib/format/address";
@@ -109,6 +110,7 @@ export function AgentStep({ draft, patch, agentError, agentValid, locked, onBack
             onConfirm={(m) => addAddress(m.payTo, { name: m.name, url: m.url })}
             onAddByAddress={(address) => addAddress(address)}
             disabled={locked}
+            directory={directoryLoader}
           />
         </div>
         {merchantError ? <p className="mt-1.5 text-xs text-danger-text">{merchantError}</p> : null}

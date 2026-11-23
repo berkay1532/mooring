@@ -429,3 +429,66 @@ describe("resolveMerchantUrl", () => {
     expect(await resolveMerchantUrl(URL_, html as unknown as typeof fetch)).toEqual(expected);
   });
 });
+
+describe("MerchantResolver with a directory", () => {
+  const ENTRY = {
+    id: "rail402:stellar:testnet:GB:https://demo.rail402.dev/weather",
+    source: "rail402" as const,
+    url: URL_,
+    host: "demo.rail402.dev",
+    name: "Rail402 demo",
+    payTo: PAY_TO,
+    network: "stellar:testnet" as const,
+    asset: "CASSET",
+    amount: "10000",
+    scheme: "exact" as const,
+    kind: "http" as const,
+    tags: [],
+    proxy: false,
+    verified: false,
+  };
+  const directory = async () => ({
+    network: "stellar:testnet" as const,
+    fetchedAt: "",
+    sources: [],
+    items: [ENTRY],
+    other: { network: "stellar:pubnet" as const, count: 0, proxyCount: 0, items: [] },
+  });
+
+  it("hides the seeds, and picking a row fills the URL and runs the lookup", async () => {
+    const seedSpy = vi.spyOn(seed, "seedServices");
+    const { resolve } = setup({ directory });
+    fireEvent.click(await screen.findByRole("button", { name: "Add Rail402 demo" }));
+    expect(resolve).toHaveBeenCalledWith(URL_);
+    expect(screen.getByLabelText("Service URL")).toHaveValue(URL_);
+    await screen.findByRole("group", { name: "Service Rail402 demo" });
+    expect(seedSpy).not.toHaveBeenCalled();
+    // The list steps aside while a preview is shown.
+    expect(screen.queryByRole("list", { name: "Services" })).toBeNull();
+  });
+
+  it("after confirming a picked service it returns to the list for the next one", async () => {
+    const { onConfirm } = setup({ directory, confirmMode: "list", confirmLabel: () => "Add to list" });
+    fireEvent.click(await screen.findByRole("button", { name: "Add Rail402 demo" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add to list" }));
+    await approve();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Service URL")).toHaveValue("");
+    await screen.findByRole("list", { name: "Services" });
+  });
+
+  it("when the live lookup fails it offers the directory's payee through the address path", async () => {
+    const resolve = vi.fn().mockResolvedValue({ ok: false, code: "unreachable", message: "Could not reach that service." });
+    const onAddByAddress = vi.fn();
+    setup({ directory, resolve, onAddByAddress });
+    fireEvent.click(await screen.findByRole("button", { name: "Add Rail402 demo" }));
+    await screen.findByText("Could not reach that service.");
+    expect(screen.getByText(/The directory lists .* as its payee\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add that address instead" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(PAY_TO);
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Allow and sign" }));
+    await waitFor(() => expect(onAddByAddress).toHaveBeenCalledWith(PAY_TO));
+  });
+});
