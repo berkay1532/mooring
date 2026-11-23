@@ -105,3 +105,66 @@ describe("mooring pay", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("mooring create", () => {
+  const OWNER_SECRET = "SDCXRZMPIMR74JONSVNG7MQJS7SLQX2KTNKO5EIZHZLUFQYQ3JTT26SC";
+  const AGENT = "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP";
+  const result = { card: CARD, saltIndex: 2, txHash: "cafe".repeat(16), owner: "GOWNER" };
+
+  it("discovers the next salt, creates with the known testnet deployment and prints the card", async () => {
+    const out: string[] = [];
+    process.env.OWNER_SECRET = OWNER_SECRET;
+    const nextCardIndex = vi.fn(async () => 2);
+    const createCard = vi.fn(async () => result);
+    const program = buildProgram({ stdout: (s: string) => out.push(s), nextCardIndex, createCard } as never);
+    await program.parseAsync(["node", "mooring", "create", "--label", "ops", "--signer", AGENT, "--budget", "5", "--period", "1d", "--max-per-tx", "1"]);
+    expect(nextCardIndex).toHaveBeenCalledTimes(1);
+    const [params] = createCard.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(params.saltIndex).toBe(2);
+    expect(params.factory).toBe("CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE");
+    expect(params.token).toBe("CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA");
+    expect(params.label).toBe("ops");
+    expect((params.policy as { period_amount: bigint }).period_amount).toBe(50_000_000n);
+    expect((params.policy as { max_per_tx: bigint }).max_per_tx).toBe(10_000_000n);
+    expect(out[0]).toBe(`Card: ${CARD}`);
+    expect(out.join("\n")).toContain("Salt index: 2");
+    expect(out.join("\n")).toContain(`Tx: ${"cafe".repeat(16)}`);
+  });
+
+  it("--salt skips discovery and --json prints the result", async () => {
+    const out: string[] = [];
+    process.env.OWNER_SECRET = OWNER_SECRET;
+    const nextCardIndex = vi.fn(async () => 9);
+    const createCard = vi.fn(async () => ({ ...result, saltIndex: 7 }));
+    const program = buildProgram({ stdout: (s: string) => out.push(s), nextCardIndex, createCard } as never);
+    await program.parseAsync(["node", "mooring", "create", "--label", "ops", "--signer", AGENT, "--budget", "5", "--period", "1d", "--salt", "7", "--json"]);
+    expect(nextCardIndex).not.toHaveBeenCalled();
+    const parsed = JSON.parse(out.join(""));
+    expect(parsed.card).toBe(CARD);
+    expect(parsed.saltIndex).toBe(7);
+    expect(parsed.policy.period_amount).toBe("50000000");
+  });
+
+  it("exits 2 without an owner secret and 1 on bad arguments or an unknown deployment", async () => {
+    const createCard = vi.fn();
+    const run = async (args: string[], env?: string) => {
+      const out: string[] = [];
+      process.exitCode = 0;
+      if (env === undefined) delete process.env.OWNER_SECRET;
+      else process.env.OWNER_SECRET = env;
+      const program = buildProgram({ stdout: (s: string) => out.push(s), nextCardIndex: vi.fn(async () => 0), createCard } as never);
+      await program.parseAsync(["node", "mooring", "create", "--label", "ops", "--signer", AGENT, "--budget", "5", "--period", "1d", ...args]);
+      return { out: out.join("\n"), code: process.exitCode };
+    };
+    expect(await run([])).toMatchObject({ code: 2 });
+    expect((await run([])).out).toContain("Missing owner secret");
+    expect(await run([], "not-a-secret")).toMatchObject({ code: 1 });
+    expect(await run(["--max-per-tx", "6"], OWNER_SECRET)).toMatchObject({ code: 1 });
+    expect((await run(["--expiry", "2020-01-01"], OWNER_SECRET)).out).toContain("expiry: must be in the future");
+    const pubnet = await run(["--network", "stellar:pubnet"], OWNER_SECRET);
+    expect(pubnet.code).toBe(1);
+    expect(pubnet.out).toContain("not deployed on stellar:pubnet");
+    expect(createCard).not.toHaveBeenCalled();
+    process.exitCode = 0;
+  });
+});

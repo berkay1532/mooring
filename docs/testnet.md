@@ -424,3 +424,22 @@ The resolver was also probed directly against the real sellers (Rail402 demo, pl
 fortune seller) and refused `127.0.0.1`, `localhost` (without `MOORING_RESOLVER_ALLOW_LOCAL`) and a non-x402
 page with the expected codes; the WASM check accepted both Mooring cards and refused the USDC SAC and the
 factory.
+
+## `mooring create` — CLI cards at the app's salt (2026-11-23, Instaward #2 D2(b))
+
+`@mooring-live/cli@0.3.0` adds `mooring create`: an owner-signed `create_card` through the v2
+factory at the **next unused index-based salt**, the same derivation the web app probes
+(`deriveCardAddress`, `discoverCards`, now exported from `@mooring-live/x402-client`). Cards made
+this way appear on every device without "Add existing card". Run with a throwaway, friendbot-funded
+owner (`stellar keys generate … --fund`; the secret only ever lived in `OWNER_SECRET` of a subshell):
+
+| | Card | Salt | Tx |
+|---|---|---|---|
+| `--label "cli card" --budget 1 --period 1d --max-per-tx 0.25` | `CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY` | 0 | `ca2a7f2d27c256027258cecd46cea644c75da890c6847435365202be04a7ba95` |
+| `--label "cli card 2" --budget 2 --period 12h --expiry +7d` | `CAXB2N4XYXXIUJNOCJVRAHVZJD262GSBIEJRHVW6BD3GY5LGPVDVD2D5` | 1 | `dc318b7e1f498b16fc0f42740bbbfce702ef4486ba86a0b76af5041f02b90d4b` |
+
+Owner `GBXKAJETATENTZ2TAYVBYGOCNUWRRJHSIKUC2NPWKYN7ZULYHKJHTGIR`, agent signer
+`GASYAIZQLKZKVLD233MDOTKKBHCB2NGP46RL7TYP6DNPOYAERYWSKRRR`. `mooring status --card … --json` read
+the first card back (`label "cli card"`, `period_amount 10000000`, `max_per_tx 2500000`,
+`period_duration 86400`); `discoverCards(owner)` against `soroban-testnet.stellar.org` returned
+exactly these two addresses in salt order, so the app lists both for that owner with no import.
