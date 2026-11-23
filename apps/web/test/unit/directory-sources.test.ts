@@ -34,10 +34,14 @@ describe("Rail402 normaliser", () => {
       proxy: false,
     });
   });
+  it("falls back to host/path when a row has no service name", () => {
+    expect(entries[0].name).toBe("demo.rail402.dev/weather");
+    expect(entries[3].name).toBe("demo-mainnet.rail402.dev/weather");
+  });
   it("names MCP rows after the tool and reads trust/settlements from the rail402 block", () => {
     const mcp = entries[1];
     expect(mcp.kind).toBe("mcp");
-    expect(mcp.name).toMatch(/· forecast$/);
+    expect(mcp.name).toBe("demo.rail402.dev/mcp · forecast");
     expect(mcp.id).toMatch(/#forecast$/);
     const sketch = entries[2];
     expect(sketch.name).toBe("Pet Pen Portraits");
