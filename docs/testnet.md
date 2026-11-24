@@ -443,3 +443,33 @@ Owner `GBXKAJETATENTZ2TAYVBYGOCNUWRRJHSIKUC2NPWKYN7ZULYHKJHTGIR`, agent signer
 the first card back (`label "cli card"`, `period_amount 10000000`, `max_per_tx 2500000`,
 `period_duration 86400`); `discoverCards(owner)` against `soroban-testnet.stellar.org` returned
 exactly these two addresses in salt order, so the app lists both for that owner with no import.
+
+## Merchant directory → `mooring pay` (2026-11-24, Instaward #2 D1(a) + D2(b) evidence)
+
+Week-1 evidence run on app.mooring.live (PRs #24–#26 deployed) with the `mooring create` cards
+above. The owner imported the throwaway owner key into a fresh browser profile's Freighter; the app
+listed both CLI cards without "Add existing card" ([screenshot](screenshots/20-cli-cards-discovered.jpg)).
+`cli card` was funded with 1 USDC from the merchant test account
+([`6b0248fd…29b9`](https://stellar.expert/explorer/testnet/tx/6b0248fdee3fcd27ae9ce59e6561833a1f749e381696fa9f55503dbb0e8c29b9)),
+then `demo.rail402.dev/weather` was picked from **Browse services** (Rail402 source, 0.001 USDC),
+re-confirmed through the live 402 lookup and the confirmation modal, and signed in Freighter —
+Merchants `1 / 32` ([screenshot](screenshots/21-directory-merchant-added.jpg)). The agent then paid it:
+
+| Step | Result |
+|---|---|
+| `mooring pay https://demo.rail402.dev/weather --card CBI3…V7RY` (agent key `GASY…KRRR`) | HTTP 200 `{"city":"Istanbul","temperature":21,"conditions":"sunny"}`; settlement [`e343161a…3be0`](https://stellar.expert/explorer/testnet/tx/e343161a4264c407bf1556d32080b54195fe4eb978c55478f9ca18b5da0f3be0) (`stellar:testnet`, fees sponsored, ledger 5904134) |
+| `mooring status --card CBI3…V7RY --json` afterwards | `period.spent 10000`, `remaining 9990000`, `balance 9990000`, merchants `[GBSV…ELYP]` |
+
+`GET /api/directory?network=stellar:testnet` on the same day returned 19 payable testnet rows
+(Rail402, StellarSight, MPP Router) and 379 read-only mainnet rows (367 flagged `proxy`).
+
+### Testnet protocol 30 and the SDK bump
+
+The first `mooring pay` attempt with the published `0.3.0` packages failed before signing with
+`LedgerHeader.scpValue.ext.v: unknown enum value 3`: testnet had upgraded to **protocol 30**, and
+`@stellar/stellar-sdk` 17.0.1 (and the 16.x copy nested under `@x402/stellar` 2.25.0) decode the
+ledger header in `getLatestLedger()` with an XDR that predates it. The workspace now pins
+`@stellar/stellar-sdk` **17.4.0** and `@x402/{core,fetch,stellar,express}` **2.32.0** (a single
+hoisted SDK copy), the runtime guard still sees legacy (v1) credentials, and the payment above
+was made with the rebuilt client. Published as `@mooring-live/x402-client@0.3.1` and
+`@mooring-live/cli@0.3.1`; `0.3.0` cannot pay on protocol-30 networks.

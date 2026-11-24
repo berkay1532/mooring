@@ -14,7 +14,7 @@
     "generate": "scripts/generate.sh"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "17.0.1",
+    "@stellar/stellar-sdk": "17.4.0",
     "buffer": "6.0.3"
   },
   "devDependencies": {

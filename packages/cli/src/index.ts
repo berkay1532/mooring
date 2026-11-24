@@ -65,7 +65,7 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
   program
     .name("mooring")
     .description("CLI for Mooring spending cards (Soroban custom accounts on Stellar)")
-    .version("0.3.0");
+    .version("0.3.1");
 
   program
     .command("keygen")
