@@ -86,7 +86,7 @@ what it waits for. Only one action per card can be in flight; the rest are disab
 runs.
 
 **Generated bindings.** `packages/contracts-ts` holds `stellar contract bindings typescript`
-output for the card and factory, pinned to the workspace's exact `@stellar/stellar-sdk` 17.0.1.
+output for the card and factory, pinned to the workspace's exact `@stellar/stellar-sdk` 17.4.0.
 CI regenerates them from the freshly built WASM and fails if the committed files drifted.
 
 ## Configuration

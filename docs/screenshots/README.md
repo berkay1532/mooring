@@ -16,6 +16,8 @@ the checklist are the primary evidence; these images show the app at the corresp
 | `07-policy-edited.jpg` | Policy panel (legacy card) |
 | `11-frozen.jpg` | Frozen card face (legacy card) |
 | `15-cancelled.jpg` | `inference-agent-2` cancelled, balance 0.00 |
+| `20-cli-cards-discovered.jpg` | 2026-11-24, app.mooring.live: the two `mooring create` cards listed for the throwaway owner on a fresh browser profile, no "Add existing card" |
+| `21-directory-merchant-added.jpg` | 2026-11-24, app.mooring.live: `cli card` after adding `demo.rail402.dev` from Browse services — Merchants `1 / 32`, balance 1.00 USDC |
 
 Not captured: 08 (second merchant added), 09 (merchant removed), 10 (signer rotated),
 12 (unfrozen), 13 (budget after `mooring pay` — a 0.001 USDC payment is below the two-decimal

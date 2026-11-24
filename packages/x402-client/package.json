@@ -1,6 +1,6 @@
 {
   "name": "@mooring-live/x402-client",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Pay x402-protected APIs from a Mooring spending card on Stellar.",
   "license": "Apache-2.0",
   "repository": {
@@ -56,10 +56,10 @@
   },
   "//": "@stellar/stellar-sdk is pinned exactly: CardExactStellarScheme records legacy (v1) auth credentials via `useUpgradedAuth: false`, a transitional flag the deployed OZ Channels facilitator still requires (see docs/x402-integration.md, CAP-71 note). An SDK that changes how auth credentials are recorded would silently change the payload; the client also asserts the recorded format at build time.",
   "dependencies": {
-    "@stellar/stellar-sdk": "17.0.1",
-    "@x402/core": "2.25.0",
-    "@x402/fetch": "2.25.0",
-    "@x402/stellar": "2.25.0"
+    "@stellar/stellar-sdk": "17.4.0",
+    "@x402/core": "2.32.0",
+    "@x402/fetch": "2.32.0",
+    "@x402/stellar": "2.32.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

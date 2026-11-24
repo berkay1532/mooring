@@ -8,8 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mooring-live/x402-client": "0.3.0",
-    "@stellar/stellar-sdk": "17.0.1",
+    "@mooring-live/x402-client": "0.3.1",
+    "@stellar/stellar-sdk": "17.4.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

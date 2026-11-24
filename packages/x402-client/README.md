@@ -158,7 +158,7 @@ of the app with the `appUrl` option (default `https://app.mooring.live`).
 - The client records legacy (v1) auth credentials (`useUpgradedAuth: false`) because the deployed
   OZ Channels stack rejects CAP-71 `ADDRESS_V2` as malformed. It also **asserts** what the RPC
   actually recorded and refuses to sign a v2 card entry, and `@stellar/stellar-sdk` is pinned
-  exactly to `17.0.1` while the workaround stands. All three go away together; see
+  exactly to `17.4.0` while the workaround stands. All three go away together; see
   `docs/x402-integration.md`.
 - The auth entry expires at `latestLedger + max(2, ceil(maxTimeoutSeconds / 6) - 2)` — a
   deliberately conservative ledger estimate, so the expiry stays inside the window the facilitator

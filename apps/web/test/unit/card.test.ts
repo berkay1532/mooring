@@ -1,3 +1,10 @@
+// @vitest-environment node
+//
+// Pure chain helpers, no DOM. Under jsdom the SDK's XDR layer (js-xdr 5)
+// rejects the `Buffer` it builds for a contract function name with
+// "expected Uint8Array": the `instanceof Uint8Array` check runs against
+// jsdom's realm, not Node's. A browser has one realm, so production is
+// unaffected; this suite just runs where the SDK's own tests run.
 import { Account, type Transaction } from "@stellar/stellar-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

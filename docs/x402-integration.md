@@ -329,7 +329,7 @@ sides:
   credentials…")` if the credentials came back as `ADDRESS_V2` — before the agent key signs
   anything. Without it, a payload recorded in the wrong format is signed, sent, and refused as
   `invalid_exact_stellar_payload_malformed`, a reason that says nothing about why.
-- **An exact SDK pin.** `@stellar/stellar-sdk` is pinned to **`17.0.1`** (no `^`) in
+- **An exact SDK pin.** `@stellar/stellar-sdk` is pinned to **`17.4.0`** (no `^`) in
   `packages/x402-client`, `packages/cli` and `scripts/agent` for as long as the workaround stands,
   since a minor SDK release could change how auth credentials are recorded. Drop the pin together
   with the flag and the guard.
