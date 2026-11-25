@@ -1,9 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ActivitySection, describeActivity, relativeTime } from "@/components/cards/ActivitySection";
 import type { ActivityItem } from "@/lib/indexer/client";
+import type { useActivity } from "@/lib/query/hooks";
 
 const CBI3 = "CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY";
 const NOW = Date.parse("2026-11-25T12:00:00Z");
@@ -21,9 +21,9 @@ const item = (over: Partial<ActivityItem>): ActivityItem => ({
   ...over,
 });
 
-type Feed = ReturnType<typeof ActivitySection extends (p: { useFeed?: infer U }) => unknown ? U : never>;
+type Feed = ReturnType<typeof useActivity>;
 
-function fakeFeed(over: Partial<Feed> = {}): () => Feed {
+function fakeFeed(over: Record<string, unknown> = {}): typeof useActivity {
   return () =>
     ({
       data: { pages: [{ card: CBI3, items: [], nextCursor: null, stale: false }] },
@@ -35,6 +35,7 @@ function fakeFeed(over: Partial<Feed> = {}): () => Feed {
       refetch: vi.fn(),
       ...over,
     }) as unknown as Feed;
+
 }
 
 describe("ActivitySection", () => {
@@ -60,7 +61,7 @@ describe("ActivitySection", () => {
     expect(relativeTime("2026-10-01T10:00:00Z", NOW)).toMatch(/2026/);
   });
 
-  it("renders rows with explorer links and a Load more button that fetches the next page", async () => {
+  it("renders rows with explorer links and a Load more button that fetches the next page", () => {
     const fetchNextPage = vi.fn();
     render(
       <ActivitySection
@@ -78,7 +79,7 @@ describe("ActivitySection", () => {
     expect(list.getByText("Paid 0.001 USDC to demo.rail402.dev")).toBeInTheDocument();
     expect(list.getByRole("link", { name: "tx e343161a" })).toHaveAttribute("href", expect.stringContaining("e343161a"));
     expect(list.getByText("2 h ago")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
     expect(fetchNextPage).toHaveBeenCalled();
   });
 

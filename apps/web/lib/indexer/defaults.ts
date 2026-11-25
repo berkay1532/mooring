@@ -33,7 +33,7 @@ export function indexerHandlers(): IndexerHandlers {
       }),
     readCard: async (card) => {
       const wasmHash = await readContractWasmHash(getRpcServer(), card);
-      if (wasmHash !== config.cardWasmHash) return { wasmHash, owner: null };
+      if (wasmHash !== config.cardWasmHash) return { wasmHash: wasmHash ?? "", owner: null };
       const info = await readInfo(card);
       return { wasmHash, owner: info.owner };
     },
