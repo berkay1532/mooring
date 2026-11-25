@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { ActivitySection } from "@/components/cards/ActivitySection";
 import { AgentSection } from "@/components/cards/AgentSection";
 import { CancelModal } from "@/components/cards/CancelModal";
 import { DangerZone } from "@/components/cards/DangerZone";
@@ -185,8 +186,9 @@ function CardDetailsInner({
       />
 
       <div className="mt-5 flex flex-col gap-5 lg:flex-row">
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-3.5">
           <PolicySection info={info} nowUnix={now} onEdit={() => setPanel("policy")} disabled={disabled} />
+          <ActivitySection address={address} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-3.5">
           <MerchantsSection

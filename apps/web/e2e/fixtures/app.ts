@@ -10,6 +10,7 @@
 import { test as base, expect as baseExpect, type Page } from "@playwright/test";
 
 import { stubDirectory } from "./directory";
+import { stubIndexerOff } from "./indexer";
 import { RPC_URL } from "./env";
 import { installRpcMock, type RpcMock } from "./rpc-mock";
 
@@ -32,6 +33,9 @@ export const test = base.extend<{
       // dev server; the canned answer keeps the suite offline. A spec that
       // needs another answer re-routes on top of this one.
       await stubDirectory(page);
+      // The indexer routes answer 503 unless a spec stubs them: the suite runs
+      // without a database, exactly like a fork without Neon.
+      await stubIndexerOff(page);
       await installNetworkGuard(page, baseURL as string);
       await use(mock);
       // An RPC method the mock does not implement answers -32601, which the

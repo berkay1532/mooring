@@ -25,6 +25,16 @@ vi.mock("@/components/cards/busy", () => ({
   },
 }));
 
+const indexed = vi.hoisted(() => ({
+  data: null as null | { card: string; merchants: Array<{ payTo: string; name: string | null; url: string | null; addedAt: string; addedTx: string | null; removedAt: string | null }> },
+  refetch: vi.fn(),
+}));
+vi.mock("@/lib/query/hooks", () => ({
+  useIndexedMerchants: () => indexed,
+}));
+const postMerchantLabel = vi.hoisted(() => vi.fn(async () => ({ name: "demo.rail402.dev", url: "https://demo.rail402.dev/weather" })));
+vi.mock("@/lib/indexer/client", () => ({ postMerchantLabel }));
+
 const resolveMerchantUrl = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/merchants/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/merchants/client")>()),
@@ -132,5 +142,18 @@ describe("MerchantsSection", () => {
     fireEvent.click(within(dialog).getByRole("checkbox"));
     fireEvent.click(within(dialog).getByRole("button", { name: "Allow and sign" }));
     await waitFor(() => expect(ops.add.run).toHaveBeenCalledWith(OTHER));
+  });
+
+  it("prefers the indexer's verified name over this device's label, and falls back to the local one", () => {
+    setMerchantLabel(OWNER, CARD, PAY_TO, { name: "local name", url: "https://local.example" });
+    indexed.data = {
+      card: CARD,
+      merchants: [{ payTo: PAY_TO, name: "demo.rail402.dev", url: "https://demo.rail402.dev/weather", addedAt: "2026-11-24T18:00:00Z", addedTx: null, removedAt: null }],
+    };
+    const view = section([PAY_TO]);
+    expect(screen.getByText("demo.rail402.dev")).toBeInTheDocument();
+    indexed.data = null;
+    view.rerender(<MerchantsSection address={CARD} owner={OWNER} merchants={[PAY_TO]} />);
+    expect(screen.getByText("local name")).toBeInTheDocument();
   });
 });

@@ -1,0 +1,34 @@
+/**
+ * One-time history import. Usage (from apps/web, with DATABASE_URL set):
+ *   npx tsx scripts/indexer-backfill.ts            # factory + every card
+ *   npx tsx scripts/indexer-backfill.ts --card C…  # one card (must already be tracked)
+ */
+import { backfillCard, backfillFactory, type BackfillDeps } from "../lib/indexer/backfill";
+import { neonClient } from "../lib/indexer/db";
+
+async function main() {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is not set");
+  const factory = process.env.NEXT_PUBLIC_FACTORY_ADDRESS;
+  const usdc = process.env.NEXT_PUBLIC_USDC_SAC;
+  if (!factory || !usdc) throw new Error("NEXT_PUBLIC_FACTORY_ADDRESS / NEXT_PUBLIC_USDC_SAC are not set");
+  const deps: BackfillDeps = {
+    sql: neonClient(url),
+    factory,
+    usdc,
+    async fetchJson(u) {
+      const res = await fetch(u, { headers: { accept: "application/json" } });
+      if (!res.ok) throw new Error(`${u}: HTTP ${res.status}`);
+      return res.json();
+    },
+    log: (msg, extra) => console.log(msg, extra ?? ""),
+  };
+  const i = process.argv.indexOf("--card");
+  const result = i > 0 ? await backfillCard(process.argv[i + 1], deps) : await backfillFactory(deps);
+  console.log(JSON.stringify(result));
+}
+
+main().catch((e) => {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+});

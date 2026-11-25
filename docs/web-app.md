@@ -355,6 +355,27 @@ lookup as a pasted URL, then the same preview and confirmation modal. If the liv
 the resolver offers the directory's payee through the add-by-address path instead. The seed
 "Examples" buttons are shown only when no directory is available to a screen.
 
+## Indexer (activity feed, discovery, merchant names)
+
+Since Instaward #2 week 2 the app reads an indexer that lives in the same Next.js deployment
+(`lib/indexer/`, `app/api/cards*`, `app/api/indexer/tick`) backed by Neon Postgres:
+
+- **Discovery.** `useCards` asks `GET /api/cards?owner=` first — every card the factory created for
+  the owner from any client (CLI included) plus manually tracked ones — and falls back to the salt
+  probe when the indexer is unavailable. "Add existing card" also registers the card with
+  `POST /api/cards/:card/track`.
+- **Activity.** `ActivitySection` on the card screen pages `GET /api/cards/:card/activity`:
+  payments (with the merchant's verified name), funding, withdrawals, freeze/unfreeze/cancel, merchant
+  changes, policy/signer/label changes, with Stellar Expert links. Refusals never reach the chain and
+  are not listed.
+- **Merchant names.** After an add, the app posts the merchant's URL to
+  `POST /api/cards/:card/merchants/:payTo/label`; the server re-resolves the 402 and stores the name
+  only if the payee matches, so names are the same on every device and cannot be spoofed. The
+  per-device `localStorage` copy stays as the offline fallback.
+
+Without `DATABASE_URL` the routes answer 503 and the app behaves exactly as before. Everything else
+(ingestion, backfill, schema, API) is in [`docs/indexer.md`](indexer.md).
+
 ## Known limitations and follow-ups
 
 - **Merchants are added one transaction at a time.** The card constructor and the factory's
