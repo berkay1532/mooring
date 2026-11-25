@@ -105,7 +105,7 @@ export async function markBackfilled(sql: SqlClient, card: string): Promise<void
  * Applies normalised events in order. `created` inserts the card (only for the
  * configured factory); card kinds and transfers are stored only for known cards —
  * `known` is updated in place as cards appear, so a card created and funded in the
- * same page is handled. Returns how many rows were written.
+ * same page is handled. Returns how many rows were actually inserted (re-applied events count as zero).
  */
 export async function applyEvents(
   sql: SqlClient,
@@ -127,12 +127,12 @@ export async function applyEvents(
         createdAt: e.ts,
       });
       known.add(card);
-      await sql.query(
+      const ins = await sql.query(
         `insert into card_events (event_id, card, kind, ledger, tx_hash, ts, payload)
-         values ($1, $2, 'created', $3, $4, $5, $6) on conflict (event_id) do nothing`,
+         values ($1, $2, 'created', $3, $4, $5, $6) on conflict (event_id) do nothing returning event_id`,
         [e.eventId, card, e.ledger, e.txHash, e.ts, JSON.stringify(e.payload)],
       );
-      written++;
+      written += ins.length;
       continue;
     }
     if (e.kind === "transfer") {
@@ -142,9 +142,9 @@ export async function applyEvents(
       if (known.has(from)) legs.push(["out", from, to]);
       if (known.has(to)) legs.push(["in", to, from]);
       for (const [direction, card, counterparty] of legs) {
-        await sql.query(
+        const ins = await sql.query(
           `insert into payments (event_id, card, direction, counterparty, amount, ledger, tx_hash, ts)
-           values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (event_id) do nothing`,
+           values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (event_id) do nothing returning event_id`,
           [
             legs.length === 1 ? e.eventId : `${e.eventId}:${direction}`,
             card,
@@ -156,20 +156,20 @@ export async function applyEvents(
             e.ts,
           ],
         );
-        written++;
+        written += ins.length;
       }
       continue;
     }
     if (!known.has(e.contract)) continue;
-    await sql.query(
+    const ins = await sql.query(
       `insert into card_events (event_id, card, kind, ledger, tx_hash, ts, payload)
-       values ($1, $2, $3, $4, $5, $6, $7) on conflict (event_id) do nothing`,
+       values ($1, $2, $3, $4, $5, $6, $7) on conflict (event_id) do nothing returning event_id`,
       [e.eventId, e.contract, e.kind, e.ledger, e.txHash, e.ts, JSON.stringify(e.payload)],
     );
     if (e.kind === "label_changed") {
       await sql.query("update cards set label = $2 where card = $1", [e.contract, String(e.payload.label)]);
     }
-    written++;
+    written += ins.length;
   }
   return written;
 }

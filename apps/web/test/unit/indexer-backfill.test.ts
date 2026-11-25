@@ -116,10 +116,8 @@ describe("indexer/backfill", () => {
   it("pages stellar.expert with the cursor until a short page", async () => {
     await db.query("delete from card_events where card = $1", [CAXB]);
     await db.query("update cards set backfilled_at = null where card = $1", [CAXB]);
-    const { fetchJson, urls } = fakeFetch({ pageSize: 3 });
-    // pageSize 3 < limit 200 would stop early; emulate a full page by making the fake honour limit=3
-    const paged = async (url: string) => fetchJson(url.replace("limit=200", "limit=3"));
-    const r = await backfillCard(CAXB, { ...deps(db, paged), fetchJson: paged });
+    const { fetchJson, urls } = fakeFetch();
+    const r = await backfillCard(CAXB, { ...deps(db, fetchJson), pageSize: 3 });
     expect(r.events).toBe(cardRecords.length);
     expect(urls.filter((u) => u.includes(`/contract/${CAXB}/events`)).length).toBeGreaterThanOrEqual(3);
   });

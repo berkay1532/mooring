@@ -20,6 +20,8 @@ export interface BackfillDeps {
   /** Pause between upstream requests; stellar.expert is a shared, unauthenticated API. */
   sleep?: (ms: number) => Promise<void>;
   pauseMs?: number;
+  /** stellar.expert page size (max 200). */
+  pageSize?: number;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }
 
@@ -36,6 +38,7 @@ const defaults = {
   horizonBase: "https://horizon-testnet.stellar.org",
   expertNetwork: "testnet" as const,
   pauseMs: 250,
+  pageSize: 200,
   sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
 };
 
@@ -44,7 +47,7 @@ type ExpertPage = { _links?: { next?: { href?: string } }; _embedded?: { records
 /** Walks `/contract/{id}/events` ascending until a page comes back short. */
 export async function* expertEvents(contract: string, deps: BackfillDeps, query: Record<string, string> = {}): AsyncGenerator<ExpertRecord[]> {
   const d = { ...defaults, ...deps };
-  const limit = 200;
+  const limit = d.pageSize;
   let cursor: string | undefined;
   for (;;) {
     const qs = new URLSearchParams({ order: "asc", limit: String(limit), ...query, ...(cursor ? { cursor } : {}) });

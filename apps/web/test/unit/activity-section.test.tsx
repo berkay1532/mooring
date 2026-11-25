@@ -40,16 +40,16 @@ function fakeFeed(over: Record<string, unknown> = {}): typeof useActivity {
 
 describe("ActivitySection", () => {
   it("feedAmount keeps sub-cent precision and at least two decimals", () => {
-    expect(["10000", "10000000", "2500000", "20000000", "0", "123456789"].map(feedAmount)).toEqual(["0.001", "1.00", "0.25", "20.00", "0.00", "12.3456789"]);
+    expect(["10000", "10000000", "2500000", "20000000", "0", "123456789"].map(feedAmount)).toEqual(["0.001", "1.00", "0.25", "2.00", "0.00", "12.3456789"]);
   });
 
   it("describes every kind in the owner's words", () => {
     expect(describeActivity(item({}))).toBe("Paid 0.001 USDC to demo.rail402.dev");
-    expect(describeActivity(item({ kind: "funded", amount: "10000000", merchantName: null }))).toMatch(/^Funded 10\.00 USDC from GBSV…ELYP$/);
+    expect(describeActivity(item({ kind: "funded", amount: "10000000", merchantName: null }))).toBe("Funded 1.00 USDC from GBSV…ELYP");
     expect(describeActivity(item({ kind: "withdrawn", payload: { to: "GBXKAJETATENTZ2TAYVBYGOCNUWRRJHSIKUC2NPWKYN7ZULYHKJHTGIR", amount: "500000" } }))).toBe("Withdrew 0.05 USDC to GBXK…TGIR");
     expect(describeActivity(item({ kind: "created" }))).toBe("Card created");
     expect(describeActivity(item({ kind: "merchant_added", payload: { merchant: "GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG" } }))).toBe("Merchant added GAW3…LOIG");
-    expect(describeActivity(item({ kind: "policy_changed", payload: { period_amount: "20000000", max_per_tx: "2500000" } }))).toBe("Policy changed · 20.00 USDC per period, max 0.25 per payment");
+    expect(describeActivity(item({ kind: "policy_changed", payload: { period_amount: "20000000", max_per_tx: "2500000" } }))).toBe("Policy changed · 2.00 USDC per period, max 0.25 per payment");
     expect(describeActivity(item({ kind: "signer_changed" }))).toBe("Agent signer rotated");
     expect(describeActivity(item({ kind: "label_changed", payload: { label: "cli card 2 renamed" } }))).toBe("Renamed to “cli card 2 renamed”");
     expect(describeActivity(item({ kind: "state_changed", payload: { stateName: "frozen" } }))).toBe("Frozen");
@@ -82,7 +82,7 @@ describe("ActivitySection", () => {
     expect(list.getAllByRole("listitem")).toHaveLength(2);
     expect(list.getByText("Paid 0.001 USDC to demo.rail402.dev")).toBeInTheDocument();
     expect(list.getByRole("link", { name: "tx e343161a" })).toHaveAttribute("href", expect.stringContaining("e343161a"));
-    expect(list.getByText("2 h ago")).toBeInTheDocument();
+    expect(list.getAllByText("2 h ago")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
     expect(fetchNextPage).toHaveBeenCalled();
   });
