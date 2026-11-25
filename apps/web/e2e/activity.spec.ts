@@ -5,7 +5,7 @@
  */
 import AxeBuilder from "@axe-core/playwright";
 import { connectWallet, expect, test } from "./fixtures/app";
-import { CARD_ONE, OWNER } from "./fixtures/cards";
+import { CARD_ONE, MERCHANT_1, OWNER } from "./fixtures/cards";
 import { PAYMENT_TX, stubIndexerOn } from "./fixtures/indexer";
 
 test.describe("activity feed (indexer)", () => {
@@ -31,15 +31,16 @@ test.describe("activity feed (indexer)", () => {
   });
 
   test("merchant names come from the indexer when this device has none", async ({ page }) => {
-    await stubIndexerOn(page, OWNER, [CARD_ONE.address]);
+    await stubIndexerOn(page, OWNER, [CARD_ONE.address], MERCHANT_1);
     await connectWallet(page);
-    await expect(page.getByRole("list", { name: "Merchants" })).toContainText("demo.rail402.dev");
+    await expect(page.getByText(/Merchants · 1 \/ 32/)).toBeVisible();
+    await expect(page.getByText("demo.rail402.dev").first()).toBeVisible();
   });
 
   test("without an indexer the feed says so and the rest of the screen works", async ({ page }) => {
     await connectWallet(page);
     await expect(page.getByTestId("activity-section")).toContainText("not available on this deployment");
-    await expect(page.getByRole("list", { name: "Merchants" })).toBeVisible();
+    await expect(page.getByText(/Merchants · 1 \/ 32/)).toBeVisible();
   });
 
   test("the activity section has no accessibility violations", async ({ page }) => {

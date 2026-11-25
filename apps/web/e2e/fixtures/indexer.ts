@@ -59,7 +59,7 @@ export async function stubIndexerOff(page: Page) {
 }
 
 /** A live indexer: `cards` lists the given cards; activity pages twice; merchants carries one label. */
-export async function stubIndexerOn(page: Page, owner: string, cards: string[]) {
+export async function stubIndexerOn(page: Page, owner: string, cards: string[], labelPayTo = "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP") {
   await page.route("**/api/cards**", (route) => {
     const url = new URL(route.request().url());
     const json = (body: unknown, status = 200) =>
@@ -82,7 +82,7 @@ export async function stubIndexerOn(page: Page, owner: string, cards: string[]) 
         card,
         merchants: [
           {
-            payTo: "GBSVTVRQ4AEFRNGH2MIOOWZSAVLZKOKNKI4UAGSMBZSNRP4I3FL3ELYP",
+            payTo: labelPayTo,
             name: "demo.rail402.dev",
             url: "https://demo.rail402.dev/weather",
             addedAt: new Date().toISOString(),
