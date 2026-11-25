@@ -7,6 +7,7 @@ import { Field } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { verifyOwnedCard } from "@/lib/chain/card";
 import { addCard } from "@/lib/prefs";
+import { trackCard } from "@/lib/indexer/client";
 
 export interface AddCardModalProps {
   open: boolean;
@@ -44,6 +45,7 @@ export function AddCardModal({ open, onClose, owner, onAdded }: AddCardModalProp
     try {
       await verifyOwnedCard(value, owner);
       addCard(owner, value);
+      void trackCard(value);
       onAdded(value);
       onClose();
     } catch (err) {

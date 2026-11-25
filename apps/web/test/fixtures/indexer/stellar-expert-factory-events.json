@@ -1,0 +1,65 @@
+{
+  "_links": {
+    "self": {
+      "href": "/explorer/testnet/contract/CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE/events?order=asc&limit=3"
+    },
+    "prev": {
+      "href": "/explorer/testnet/contract/CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE/events?order=desc&limit=3&cursor=019965168360427521-0000"
+    },
+    "next": {
+      "href": "/explorer/testnet/contract/CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE/events?order=asc&limit=3&cursor=023946512849465345-0000"
+    }
+  },
+  "_embedded": {
+    "records": [
+      {
+        "id": "019965168360427521-0000",
+        "ts": 1789266102,
+        "contract": "CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE",
+        "initiator": "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD",
+        "topics": [
+          "card_created",
+          "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD"
+        ],
+        "topicsXdr": [
+          "AAAADwAAAAxjYXJkX2NyZWF0ZWQ=",
+          "AAAAEgAAAAAAAAAAkpbmZeckRDTuZyZWmgOHST5M0HZX7GiZ1hs1BBLJJMU="
+        ],
+        "bodyXdr": "AAAAEQAAAAEAAAABAAAADwAAAARjYXJkAAAAEgAAAAFc50B25gH0nHbhFsVEtKBSULk5MHiL5TM8gGoTk7KTeg==",
+        "paging_token": "019965168360427521-0000"
+      },
+      {
+        "id": "020902768311062529-0000",
+        "ts": 1790357612,
+        "contract": "CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE",
+        "initiator": "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD",
+        "topics": [
+          "card_created",
+          "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD"
+        ],
+        "topicsXdr": [
+          "AAAADwAAAAxjYXJkX2NyZWF0ZWQ=",
+          "AAAAEgAAAAAAAAAAkpbmZeckRDTuZyZWmgOHST5M0HZX7GiZ1hs1BBLJJMU="
+        ],
+        "bodyXdr": "AAAAEQAAAAEAAAABAAAADwAAAARjYXJkAAAAEgAAAAGLmAQFGkgvb63o7JxfuzNQ52XmdsELsz9UQTYDV61WpA==",
+        "paging_token": "020902768311062529-0000"
+      },
+      {
+        "id": "023946512849465345-0000",
+        "ts": 1793901051,
+        "contract": "CBMSK4OSNLBEXTJWNEWX422RPVDEUNFEWADTSPECGBI26ESDYW65AUSE",
+        "initiator": "GDFKXHWC7PW5KPL6S4TSPNG3X6B5ABKHBQN7EDWRXVVB3JXVZXTUGOOX",
+        "topics": [
+          "card_created",
+          "GDFKXHWC7PW5KPL6S4TSPNG3X6B5ABKHBQN7EDWRXVVB3JXVZXTUGOOX"
+        ],
+        "topicsXdr": [
+          "AAAADwAAAAxjYXJkX2NyZWF0ZWQ=",
+          "AAAAEgAAAAAAAAAAyquewvvt1T1+lycntNu/g9AFRwwb8g7RvWodpvXN50M="
+        ],
+        "bodyXdr": "AAAAEQAAAAEAAAABAAAADwAAAARjYXJkAAAAEgAAAAHUQkMOTjTj5y2QLXtqrJbJsl5qPmpBHhL+iVfUH90ybA==",
+        "paging_token": "023946512849465345-0000"
+      }
+    ]
+  }
+}

@@ -34,8 +34,8 @@ export function EmptyState({ onCreate, onAddExisting }: EmptyStateProps) {
         </Button>
       </div>
       <p className="max-w-md text-xs text-text-lo">
-        Already created a card with the <span className="font-mono">mooring</span> CLI? Cards made with a custom salt
-        are not discovered automatically — add it by address.
+        Cards you create with the <span className="font-mono">mooring</span> CLI or on another device show up here
+        by themselves. Only a card made with a custom salt needs to be added by address.
       </p>
     </div>
   );

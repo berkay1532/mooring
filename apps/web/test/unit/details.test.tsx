@@ -77,6 +77,8 @@ function fakeUseContractAction(_build: unknown, opts: { onConfirmed?: (hash: str
 let confirmImmediately = false;
 
 vi.mock("@/lib/query/hooks", () => ({
+  useActivity: () => ({ data: { pages: [null] }, isLoading: false, isError: false, hasNextPage: false, isFetchingNextPage: false, fetchNextPage: vi.fn(), refetch: vi.fn() }),
+  useIndexedMerchants: () => ({ data: null, refetch: vi.fn() }),
   useCardInfo: () => ({ data: cardInfo, isLoading: false, error: infoError }),
   useMerchants: () => ({ data: merchants, isLoading: false, error: null }),
   useUsdcBalance: () => ({

@@ -53,6 +53,8 @@ PR #1, D2 in PR #2.
   merchant allowlist, agent signer rotation. Covered by 244 unit tests and 19
   Playwright flows in CI. Live at https://app.mooring.live — see [`docs/web-app.md`](docs/web-app.md).
   The manual testnet checklist (hashes + screenshots) is pending the repository owner.
+- **Indexer** (`apps/web/lib/indexer`, Neon Postgres) — built: every card an owner created from any
+  client, a per-card activity feed with tx hashes, verified merchant names across devices; `docs/indexer.md`.
 - **Evidence package** — delivered: `docs/testnet.md` (D1–D3 hashes), `docs/web-app.md` (checklist + screenshots), CI on every PR.
 
 ## Pay an API from a card

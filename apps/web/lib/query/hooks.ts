@@ -1,11 +1,12 @@
 "use client";
 
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, type UseInfiniteQueryResult, type UseQueryResult } from "@tanstack/react-query";
 
 import { readBalance, readInfo, readMerchants, type CardInfo } from "../chain/card";
 import { discoverCards } from "../chain/discover";
 import { getRpcServer } from "../chain/rpc";
 import { readContractWasmHash } from "../chain/verify";
+import { fetchActivity, fetchIndexedCards, fetchIndexedMerchants, type ActivityResponse, type MerchantsResponse } from "../indexer/client";
 import { getAddedCards } from "../prefs";
 import { config } from "../config";
 import { keys } from "./keys";
@@ -29,36 +30,78 @@ function isTabVisible(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "visible";
 }
 
+/** How `useCards` found the list; exposed for tests and the empty-state copy. */
+export type CardsSource = "indexer" | "probe";
+
 /**
- * `owner`'s cards: everything `discoverCards` finds, followed by any
- * manually-added addresses (see `lib/prefs.ts`) that discovery didn't
- * already surface, de-duplicated. Discovery failures (a network error, a
- * malformed RPC response) propagate as the query's `error` — this never
- * swallows a discovery failure into an empty "no cards" result.
+ * Lists `owner`'s cards, indexer first: `GET /api/cards?owner=` returns every
+ * card the factory created for this owner from any client (CLI included), plus
+ * manually tracked ones. When the indexer is unavailable (no database, network
+ * error) the salt probe (`discoverCards`) takes over, exactly as before. Either
+ * way, manually-added addresses from `lib/prefs.ts` are appended, de-duplicated.
+ * A probe failure still propagates as the query's `error` — this never turns a
+ * discovery failure into an empty "no cards" result.
  */
+export async function loadCards(
+  ownerAddress: string,
+  deps: {
+    indexed?: typeof fetchIndexedCards;
+    probe?: typeof discoverCards;
+  } = {},
+): Promise<{ cards: string[]; source: CardsSource }> {
+  const indexed = await (deps.indexed ?? fetchIndexedCards)(ownerAddress);
+  let discovered: string[];
+  let source: CardsSource;
+  if (indexed) {
+    discovered = indexed.cards.map((c) => c.card);
+    source = "indexer";
+  } else {
+    discovered = await (deps.probe ?? discoverCards)(ownerAddress, {
+      rpc: getRpcServer(),
+      factory: config.factory,
+      passphrase: config.networkPassphrase,
+    });
+    source = "probe";
+  }
+  const seen = new Set(discovered);
+  const merged = discovered.slice();
+  for (const address of getAddedCards(ownerAddress)) {
+    if (!seen.has(address)) {
+      seen.add(address);
+      merged.push(address);
+    }
+  }
+  return { cards: merged, source };
+}
+
 export function useCards(owner: string | null | undefined): UseQueryResult<string[]> {
   return useQuery({
     queryKey: keys.cards(owner ?? ""),
     enabled: owner != null,
     refetchInterval: 30_000,
-    queryFn: async () => {
-      const ownerAddress = owner as string;
-      const discovered = await discoverCards(ownerAddress, {
-        rpc: getRpcServer(),
-        factory: config.factory,
-        passphrase: config.networkPassphrase,
-      });
-      const added = getAddedCards(ownerAddress);
-      const seen = new Set(discovered);
-      const merged = discovered.slice();
-      for (const address of added) {
-        if (!seen.has(address)) {
-          seen.add(address);
-          merged.push(address);
-        }
-      }
-      return merged;
-    },
+    queryFn: async () => (await loadCards(owner as string)).cards,
+  });
+}
+
+/** A card's indexed activity, newest first, 25 per page. `null` pages mean the indexer is off. */
+export function useActivity(address: string | null | undefined): UseInfiniteQueryResult<{ pages: (ActivityResponse | null)[] }> {
+  return useInfiniteQuery({
+    queryKey: keys.activity(address ?? ""),
+    enabled: address != null,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => fetchActivity(address as string, pageParam),
+    getNextPageParam: (last) => last?.nextCursor ?? undefined,
+    refetchInterval: () => (isTabVisible() ? 30_000 : false),
+  });
+}
+
+/** The indexer's view of a card's merchants (verified labels included); `null` when it is off. */
+export function useIndexedMerchants(address: string | null | undefined): UseQueryResult<MerchantsResponse | null> {
+  return useQuery({
+    queryKey: keys.indexedMerchants(address ?? ""),
+    enabled: address != null,
+    queryFn: () => fetchIndexedMerchants(address as string),
+    staleTime: 30_000,
   });
 }
 

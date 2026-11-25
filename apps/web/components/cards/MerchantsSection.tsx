@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/Button";
 import { buildAddMerchant, buildRemoveMerchant } from "@/lib/chain/card";
 import { shortAddress } from "@/lib/format/address";
 import { getMerchantLabels, removeMerchantLabel, setMerchantLabel, type MerchantLabel } from "@/lib/prefs";
+import { postMerchantLabel } from "@/lib/indexer/client";
+import { useIndexedMerchants } from "@/lib/query/hooks";
 import { keys } from "@/lib/query/keys";
 
 /** The contract's `MAX_ALLOWLIST` (contracts/card/src/lib.rs). */
@@ -54,7 +56,16 @@ export function MerchantsSection({ address, owner, merchants, loading, disabled 
     setLabels(owner ? getMerchantLabels(owner, address) : {});
   }, [owner, address]);
 
-  const invalidates = () => [keys.merchants(address), keys.info(address)];
+  // Verified names from the indexer win over this device's copy; the local
+  // copy keeps working when the indexer is off.
+  const indexed = useIndexedMerchants(address);
+  const indexedLabels: Record<string, MerchantLabel> = {};
+  for (const m of indexed.data?.merchants ?? []) {
+    if (m.name && m.url) indexedLabels[m.payTo] = { name: m.name, url: m.url };
+  }
+  const labelFor = (merchant: string): MerchantLabel | undefined => indexedLabels[merchant] ?? labels[merchant];
+
+  const invalidates = () => [keys.merchants(address), keys.info(address), keys.activity(address), keys.indexedMerchants(address)];
 
   const add = useCardOp<string>("merchant-add", (merchant, wallet) => buildAddMerchant(address, merchant, wallet), {
     invalidates,
@@ -65,6 +76,10 @@ export function MerchantsSection({ address, owner, merchants, loading, disabled 
       if (pending && owner) {
         setMerchantLabel(owner, address, pending.payTo, { name: pending.name, url: pending.url });
         setLabels(getMerchantLabels(owner, address));
+        // Sync the name to every device: the indexer re-verifies the URL's payee.
+        void postMerchantLabel(address, pending.payTo, pending.url).then((ok) => {
+          if (ok) void indexed.refetch();
+        });
       }
       setAdding(false);
     },
@@ -119,7 +134,7 @@ export function MerchantsSection({ address, owner, merchants, loading, disabled 
       ) : null}
 
       {merchants.map((merchant) => {
-        const label = labels[merchant];
+        const label = labelFor(merchant);
         return (
           <div key={merchant} className={KV_CLASS}>
             <MerchantIdentity address={merchant} label={label} />

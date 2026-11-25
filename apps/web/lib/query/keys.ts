@@ -33,4 +33,8 @@ export const keys = {
    * `info()`, so it is keyed by `info`, not here.
    */
   balance: (address: string): QueryKey => ["balance", address],
+  /** A card's indexed activity feed (paged). Invalidated by every write to the card. */
+  activity: (address: string): QueryKey => ["card", address, "activity"],
+  /** A card's indexed merchants with their verified labels. */
+  indexedMerchants: (address: string): QueryKey => ["card", address, "indexed-merchants"],
 };
