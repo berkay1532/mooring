@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ActivitySection, describeActivity, relativeTime } from "@/components/cards/ActivitySection";
+import { ActivitySection, describeActivity, feedAmount, relativeTime } from "@/components/cards/ActivitySection";
 import type { ActivityItem } from "@/lib/indexer/client";
 import type { useActivity } from "@/lib/query/hooks";
 
@@ -39,6 +39,10 @@ function fakeFeed(over: Record<string, unknown> = {}): typeof useActivity {
 }
 
 describe("ActivitySection", () => {
+  it("feedAmount keeps sub-cent precision and at least two decimals", () => {
+    expect(["10000", "10000000", "2500000", "20000000", "0", "123456789"].map(feedAmount)).toEqual(["0.001", "1.00", "0.25", "20.00", "0.00", "12.3456789"]);
+  });
+
   it("describes every kind in the owner's words", () => {
     expect(describeActivity(item({}))).toBe("Paid 0.001 USDC to demo.rail402.dev");
     expect(describeActivity(item({ kind: "funded", amount: "10000000", merchantName: null }))).toMatch(/^Funded 10\.00 USDC from GBSV…ELYP$/);

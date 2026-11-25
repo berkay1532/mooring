@@ -118,7 +118,7 @@ describe("indexer/tick", () => {
     const { rpc } = fakeRpc({ oldest: 6_100_000, latest: 6_100_000 });
     expect((await tick({ sql: db, rpc, factory: FACTORY, usdc: USDC })).skipped).toBe("locked");
     await unlock(db);
-    const boom: EventsRpc = { getLedgerBounds: async () => ({ latest: 1, oldest: 1 }), getEvents: async () => { throw new Error("boom"); } };
+    const boom: EventsRpc = { getLedgerBounds: async () => ({ latest: 7_000_000, oldest: 6_000_000 }), getEvents: async () => { throw new Error("boom"); } };
     await expect(tick({ sql: db, rpc: boom, factory: FACTORY, usdc: USDC })).rejects.toThrow("boom");
     expect((await getState(db)).tick_lock).toBeNull();
   });

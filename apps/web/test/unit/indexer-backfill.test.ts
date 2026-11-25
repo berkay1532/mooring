@@ -31,7 +31,7 @@ function fakeFetch(opts: { pageSize?: number } = {}) {
     if (u.hostname.startsWith("horizon")) {
       return u.pathname.includes("/ledgers/5904134/") ? horizonLedger : { _embedded: { records: [] } };
     }
-    const contract = u.pathname.split("/")[5];
+    const contract = u.pathname.split("/")[4];
     const topic = u.searchParams.get("topic");
     const cursor = u.searchParams.get("cursor");
     let records: ExpertRecord[] = [];

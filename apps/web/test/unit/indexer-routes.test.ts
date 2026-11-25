@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createIndexerHandlers, type IndexerHandlerDeps } from "../../lib/indexer/handlers";
 import { fromRpcEvent, type RpcEventLike } from "../../lib/indexer/normalize/rpc";
 import type { EventsRpc } from "../../lib/indexer/rpc";
-import { applyEvents, knownCards, markTick } from "../../lib/indexer/store";
+import { applyEvents, knownCards, markTick, setCursor } from "../../lib/indexer/store";
 import type { IndexedEvent } from "../../lib/indexer/types";
 import rpcEvents from "../fixtures/indexer/rpc-events.json";
 import { testDb } from "../helpers/pglite";
@@ -46,6 +46,7 @@ describe("indexer/handlers", () => {
     const events = (rpcEvents as RpcEventLike[]).map(fromRpcEvent).filter((e): e is IndexedEvent => e !== null);
     await applyEvents(db, events, await knownCards(db), FACTORY);
     await markTick(db);
+    await setCursor(db, { cursor: null, lastLedger: 100 });
     deps = {
       sql: () => db,
       tick: { rpc: idleRpc, factory: FACTORY, usdc: USDC },

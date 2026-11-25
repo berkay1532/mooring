@@ -29,6 +29,14 @@ export function relativeTime(iso: string, nowMs = Date.now()): string {
   return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** Full precision with trailing zeros trimmed, never fewer than two decimals: 0.001, 0.25, 10.00. */
+export function feedAmount(base: string): string {
+  const full = formatUsdc(base, { full: true });
+  const trimmed = full.replace(/0+$/, "");
+  const [whole, frac = ""] = trimmed.split(".");
+  return `${whole}.${frac.padEnd(2, "0")}`;
+}
+
 function who(item: ActivityItem): string {
   if (item.merchantName) return item.merchantName;
   return item.counterparty ? shortAddress(item.counterparty) : "";
@@ -39,11 +47,11 @@ export function describeActivity(item: ActivityItem): string {
   const p = item.payload;
   switch (item.kind) {
     case "payment":
-      return `Paid ${formatUsdc(item.amount ?? "0")} USDC to ${who(item)}`;
+      return `Paid ${feedAmount(item.amount ?? "0")} USDC to ${who(item)}`;
     case "funded":
-      return `Funded ${formatUsdc(item.amount ?? "0")} USDC from ${who(item)}`;
+      return `Funded ${feedAmount(item.amount ?? "0")} USDC from ${who(item)}`;
     case "withdrawn":
-      return `Withdrew ${formatUsdc(String(p.amount ?? "0"))} USDC to ${shortAddress(String(p.to ?? ""))}`;
+      return `Withdrew ${feedAmount(String(p.amount ?? "0"))} USDC to ${shortAddress(String(p.to ?? ""))}`;
     case "created":
       return "Card created";
     case "merchant_added":
@@ -51,7 +59,7 @@ export function describeActivity(item: ActivityItem): string {
     case "merchant_removed":
       return `Merchant removed ${shortAddress(String(p.merchant ?? ""))}`;
     case "policy_changed":
-      return `Policy changed · ${formatUsdc(String(p.period_amount ?? "0"))} USDC per period, max ${formatUsdc(String(p.max_per_tx ?? "0"))} per payment`;
+      return `Policy changed · ${feedAmount(String(p.period_amount ?? "0"))} USDC per period, max ${feedAmount(String(p.max_per_tx ?? "0"))} per payment`;
     case "signer_changed":
       return "Agent signer rotated";
     case "label_changed":
