@@ -56,7 +56,10 @@ describe("indexer/handlers", () => {
         if (!r) return { ok: false, code: "unreachable", message: "nope" } as never;
         return { ok: true, url, payTo: r.payTo, network: r.network, asset: USDC, amount: "10000", scheme: "exact", feesSponsored: true } as never;
       },
-      readCard: async (card) => (card === OTHER_CARD ? { wasmHash: WASM, owner: "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD" } : { wasmHash: "00", owner: null }),
+      readCard: async (card) =>
+        card === OTHER_CARD
+          ? { wasmHash: WASM, owner: "GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD", label: "tracked card" }
+          : { wasmHash: "00", owner: null },
       cardWasmHash: WASM,
       network: "stellar:testnet",
       backfill: { fetchJson: async () => ({ _embedded: { records: [] } }), sleep: async () => {}, pauseMs: 0 },
@@ -129,7 +132,7 @@ describe("indexer/handlers", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ card: OTHER_CARD, tracked: true, backfilled: true });
     const cards = await (await h.cards(get("/api/cards?owner=GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD"))).json();
-    expect(cards.cards[0]).toMatchObject({ card: OTHER_CARD, trackedBy: "manual" });
+    expect(cards.cards[0]).toMatchObject({ card: OTHER_CARD, trackedBy: "manual", label: "tracked card" });
     const again = await h.track(post(`/api/cards/${OTHER_CARD}/track`, {}), ctx({ card: OTHER_CARD }));
     expect(await again.json()).toEqual({ card: OTHER_CARD, tracked: true, backfilled: true });
     const no = await h.track(post("/api/cards/CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC/track", {}), ctx({ card: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC" }));

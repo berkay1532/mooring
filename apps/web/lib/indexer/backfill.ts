@@ -5,7 +5,7 @@
  */
 import type { SqlClient } from "./db";
 import { fromExpertRecord, ledgerOf, txToidOf, type ExpertRecord } from "./normalize/stellarExpert";
-import { applyEvents, getCard, insertCard, knownCards, markBackfilled, setTxHashes } from "./store";
+import { applyEvents, fillLabel, getCard, insertCard, knownCards, markBackfilled, setTxHashes, type ReadLabel } from "./store";
 import type { IndexedEvent } from "./types";
 
 export interface BackfillDeps {
@@ -22,6 +22,8 @@ export interface BackfillDeps {
   pauseMs?: number;
   /** stellar.expert page size (max 200). */
   pageSize?: number;
+  /** Fills `cards.label` (a constructor argument, so no event carries it). */
+  readLabel?: ReadLabel;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }
 
@@ -137,11 +139,12 @@ export async function backfillFactory(deps: BackfillDeps): Promise<BackfillResul
     e.txHash = hashOf.get(e.eventId) ?? null;
     const card = String(e.payload.card);
     await insertCard(d.sql, { card, owner: String(e.payload.owner), factory: d.factory, createdLedger: e.ledger, createdTx: e.txHash, createdAt: e.ts });
-    await applyEvents(d.sql, [e], new Set(), d.factory);
+    await applyEvents(d.sql, [e], new Set(), d.factory, { readLabel: d.readLabel });
   }
   for (const e of created) {
     const card = String(e.payload.card);
     const row = await getCard(d.sql, card);
+    if (row && row.label == null && d.readLabel) await fillLabel(d.sql, card, d.readLabel);
     if (row?.backfilled_at) continue;
     const r = await backfillCard(card, d);
     total.cards += 1;

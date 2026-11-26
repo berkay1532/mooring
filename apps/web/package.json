@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
-    "db:migrate": "tsx scripts/db-migrate.ts",
-    "indexer:backfill": "tsx scripts/indexer-backfill.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db-migrate.ts",
+    "indexer:backfill": "tsx --env-file-if-exists=.env.local scripts/indexer-backfill.ts"
   },
   "dependencies": {
     "@mooring-live/x402-client": "0.3.1",

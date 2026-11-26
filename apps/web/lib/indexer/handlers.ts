@@ -20,7 +20,7 @@ export interface IndexerHandlerDeps {
   /** Live 402 lookup used to verify a merchant label (defaults to the resolver route's deps). */
   resolve: (url: string) => Promise<ResolveResult>;
   /** Reads a contract's WASM hash and, when it is a card, its owner. */
-  readCard: (card: string) => Promise<{ wasmHash: string; owner: string | null }>;
+  readCard: (card: string) => Promise<{ wasmHash: string; owner: string | null; label?: string | null }>;
   cardWasmHash: string;
   network: string;
   /** Backfill fetcher for `track`; defaults to global fetch. */
@@ -172,14 +172,14 @@ export function createIndexerHandlers(deps: IndexerHandlerDeps) {
       const sql = deps.sql();
       const existing = await getCard(sql, card);
       if (existing?.backfilled_at) return json({ card, tracked: true, backfilled: true }, 200, NO_STORE);
-      let read: { wasmHash: string; owner: string | null };
+      let read: { wasmHash: string; owner: string | null; label?: string | null };
       try {
         read = await deps.readCard(card);
       } catch {
         return json({ error: "not_a_card" }, 422, NO_STORE);
       }
       if (read.wasmHash !== deps.cardWasmHash || !read.owner) return json({ error: "not_a_card" }, 422, NO_STORE);
-      await insertCard(sql, { card, owner: read.owner, trackedBy: "manual" });
+      await insertCard(sql, { card, owner: read.owner, trackedBy: "manual", label: read.label || null });
       let backfilled = false;
       try {
         await backfillCard(card, { ...deps.backfill, sql, factory: deps.tick.factory, usdc: deps.tick.usdc });

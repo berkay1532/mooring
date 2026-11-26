@@ -41,12 +41,16 @@ on the USDC SAC yields a card's transfers) — with tx hashes resolved per ledge
 as the live tick, so it is safe to re-run.
 
 ```bash
-cd apps/web
-set -a; source .env.local; set +a      # DATABASE_URL + the NEXT_PUBLIC_* values
+cd apps/web                            # both scripts load apps/web/.env.local themselves
 npm run db:migrate                     # applies db/schema.sql (idempotent)
 npm run indexer:backfill               # factory + every card not yet backfilled
 npm run indexer:backfill -- --card C…  # one tracked card
 ```
+
+`.env.local` needs `DATABASE_URL` and the `NEXT_PUBLIC_*` values (do not `source` it: the Neon URL's
+`&` breaks the shell). A card's label is a constructor argument, so no event carries it: the tick,
+the backfill and `POST …/track` read it from `info()` when a card first appears, and re-running the
+backfill fills any label that is still `null`.
 
 ## API
 

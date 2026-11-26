@@ -4,7 +4,7 @@ import type { SqlClient } from "./db";
 import { fromRpcEvent } from "./normalize/rpc";
 import type { EventFilter, EventsRpc } from "./rpc";
 import { RpcError } from "./rpc";
-import { applyEvents, getState, knownCards, markTick, setCursor, tryLock, unlock } from "./store";
+import { applyEvents, getState, knownCards, markTick, setCursor, tryLock, unlock, type ReadLabel } from "./store";
 import type { IndexedEvent } from "./types";
 
 export interface TickDeps {
@@ -13,6 +13,8 @@ export interface TickDeps {
   factory: string;
   usdc: string;
   now?: () => number;
+  /** Fills `cards.label` for a newly created card (the label is a constructor argument, not an event). */
+  readLabel?: ReadLabel;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }
 
@@ -128,7 +130,7 @@ export async function tick(deps: TickDeps, opts: TickOptions = {}): Promise<Tick
       const events = page.events.map(fromRpcEvent).filter((e): e is IndexedEvent => e !== null);
       events.sort((a, b) => a.ledger - b.ledger || a.eventId.localeCompare(b.eventId));
       result.events += events.length;
-      result.written += await applyEvents(deps.sql, events, known, deps.factory);
+      result.written += await applyEvents(deps.sql, events, known, deps.factory, { readLabel: deps.readLabel });
       result.lastLedger = end - 1;
       await setCursor(deps.sql, { cursor: page.cursor ?? null, lastLedger: end - 1 });
       pos = end;
