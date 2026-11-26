@@ -473,3 +473,49 @@ ledger header in `getLatestLedger()` with an XDR that predates it. The workspace
 hoisted SDK copy), the runtime guard still sees legacy (v1) credentials, and the payment above
 was made with the rebuilt client. Published as `@mooring-live/x402-client@0.3.1` and
 `@mooring-live/cli@0.3.1`; `0.3.0` cannot pay on protocol-30 networks.
+
+## Indexer v1 live on app.mooring.live (2026-11-26, Instaward #2 D2(a) evidence)
+
+PR #28 (indexer inside `apps/web`, Neon Postgres through the Vercel Marketplace, read-time ticks +
+daily cron — see `docs/indexer.md`) went live on 2026-11-26. Before the database was connected the
+read API degraded as designed: `GET /api/cards?owner=…` answered `503 {"error":"no_database"}` and the
+app kept using the salt probe. The owner then connected Neon (Frankfurt, Free plan, `DATABASE_URL`
+on Production + Preview) and the history was imported in one run:
+
+| Step | Result |
+|---|---|
+| `npm run db:migrate` | `applied 9 statements` (idempotent schema) |
+| `npm run indexer:backfill` (stellar.expert history since the v2 factory, Horizon for hashes) | `{"cards":8,"events":128,"written":128,"hashesResolved":128,"unresolved":0}` — 8 cards, 114 card events, 22 USDC transfer legs, first event 2026-09-13 02:21:42 Z (factory v2's first `card_created`), every event with a tx hash |
+| Card labels | a label is a constructor argument, so no event carries it; the tick/backfill/`track` now read `info().label` on-chain (this PR). All 8 rows labelled: `inference-agent`, `inference-agent-2`, `Test`, `dry-agent`, `research-agent` ×2, `cli card`, `cli card 2 renamed` |
+| Live tick | the first reads after the import walked the RPC window in 10 000-ledger chunks (`x-mooring-index-stale: 1` while catching up): 13 read-time ticks of 4–11 s between 13:48 and 13:52 Z took the cursor from ledger 5 834 421 to 5 935 504 (head 5 935 509), after which `/api/cards` answered in ~0.5 s with `stale: false` |
+
+Live read API, same day (owner `GCJJ…KKBD`, the app's own two cards):
+
+```
+GET https://app.mooring.live/api/cards?owner=GCJJNZTF44SEINHOM4TFNGQDQ5ET4TGQOZL6Y2EZ2YNTKBASZESMKKBD   → 200
+{"owner":"GCJJ…KKBD","cards":[
+  {"card":"CBOOOQDW…UH5W","label":"inference-agent","createdAt":"2026-09-13T02:21:42.000Z",
+   "createdTx":"39cc9e2743f9a2866e7ce280774ec9c816d3220b281a7bb6f974e42b0cecca8e","trackedBy":"factory"},
+  {"card":"CCFZQBAF…IEYV","label":"inference-agent-2","createdAt":"2026-09-25T17:33:32.000Z",
+   "createdTx":"ceaceb7bd83cebb42fa3178da035e084506d956d166ab24f0da446941fc2039c","trackedBy":"factory"}],
+ "stale":false}
+```
+
+The week-1 CLI card's feed is the week-1 evidence seen from the index — the same funding, allowlist
+and settlement hashes recorded above, newest first:
+
+```
+GET https://app.mooring.live/api/cards/CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY/activity → 200
+payment        ledger 5904134  2026-11-24T18:18:32Z  10000 (0.001 USDC) → GBSV…ELYP  tx e343161a…3be0  merchantName "demo.rail402.dev"
+merchant_added ledger 5903743  2026-11-24T17:45:57Z  GBSV…ELYP                        tx 4e246e69…9293
+funded         ledger 5903661  2026-11-24T17:39:07Z  10000000 (1 USDC) ← GAW3…LOIG     tx 6b0248fd…29b9
+created        ledger 5883567  2026-11-23T13:44:37Z                                   tx ca2a7f2d…ba95
+```
+
+Merchant-name sync without a wallet signature: `POST …/merchants/GBSV…ELYP/label {"url":"https://demo.rail402.dev/weather"}`
+re-resolved the live 402, found `payTo` equal to the allowlisted key on `stellar:testnet`, and stored
+`{"name":"demo.rail402.dev","url":"https://demo.rail402.dev/weather"}` (200); the activity row above and
+`GET …/merchants` now carry that name on every device. `inference-agent` (`CBOO…UH5W`, the oldest card)
+lists 74 events and 8 transfer legs back to 2026-09-13, with the full 32-merchant allowlist history
+folded into `GET …/merchants` (added/removed timestamps and tx hashes). The card screen renders the same
+feed with tx links ([screenshot](screenshots/22-activity-feed.jpg)).
