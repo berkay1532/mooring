@@ -107,11 +107,34 @@ export async function markBackfilled(sql: SqlClient, card: string): Promise<void
  * `known` is updated in place as cards appear, so a card created and funded in the
  * same page is handled. Returns how many rows were actually inserted (re-applied events count as zero).
  */
+/** Reads a card's on-chain label (its constructor argument, which no event carries). */
+export type ReadLabel = (card: string) => Promise<string | null>;
+
+/**
+ * Stores the on-chain label of a card whose row has none yet. A failed read is
+ * not an error: the label is cosmetic and the next backfill run retries it.
+ */
+export async function fillLabel(sql: SqlClient, card: string, readLabel: ReadLabel): Promise<boolean> {
+  let label: string | null;
+  try {
+    label = await readLabel(card);
+  } catch {
+    return false;
+  }
+  if (!label) return false;
+  const rows = await sql.query<{ card: string }>(
+    "update cards set label = $2 where card = $1 and label is null returning card",
+    [card, label],
+  );
+  return rows.length > 0;
+}
+
 export async function applyEvents(
   sql: SqlClient,
   events: IndexedEvent[],
   known: Set<string>,
   factory: string,
+  opts: { readLabel?: ReadLabel } = {},
 ): Promise<number> {
   let written = 0;
   for (const e of events) {
@@ -126,6 +149,7 @@ export async function applyEvents(
         createdTx: e.txHash,
         createdAt: e.ts,
       });
+      if (opts.readLabel) await fillLabel(sql, card, opts.readLabel);
       known.add(card);
       const ins = await sql.query(
         `insert into card_events (event_id, card, kind, ledger, tx_hash, ts, payload)

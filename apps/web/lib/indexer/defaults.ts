@@ -14,11 +14,13 @@ import { jsonRpc } from "./rpc";
 
 let memo: IndexerHandlers | null = null;
 
+const readLabel = async (card: string) => (await readInfo(card)).label || null;
+
 export function indexerHandlers(): IndexerHandlers {
   if (memo) return memo;
   memo = createIndexerHandlers({
     sql: getSql,
-    tick: { rpc: jsonRpc(config.rpcUrl), factory: config.factory, usdc: config.usdc, log: (m, x) => console.warn(m, x ?? "") },
+    tick: { rpc: jsonRpc(config.rpcUrl), factory: config.factory, usdc: config.usdc, readLabel, log: (m, x) => console.warn(m, x ?? "") },
     limiter: createRateLimiter({ limit: 120, windowMs: 60_000 }),
     resolve: (url) =>
       resolveMerchant(url, {
@@ -35,11 +37,12 @@ export function indexerHandlers(): IndexerHandlers {
       const wasmHash = await readContractWasmHash(getRpcServer(), card);
       if (wasmHash !== config.cardWasmHash) return { wasmHash: wasmHash ?? "", owner: null };
       const info = await readInfo(card);
-      return { wasmHash, owner: info.owner };
+      return { wasmHash, owner: info.owner, label: info.label || null };
     },
     cardWasmHash: config.cardWasmHash,
     network: config.network,
     backfill: {
+      readLabel,
       async fetchJson(u) {
         const res = await fetch(u, { headers: { accept: "application/json" } });
         if (!res.ok) throw new Error(`${u}: HTTP ${res.status}`);

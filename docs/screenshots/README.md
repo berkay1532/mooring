@@ -18,6 +18,7 @@ the checklist are the primary evidence; these images show the app at the corresp
 | `15-cancelled.jpg` | `inference-agent-2` cancelled, balance 0.00 |
 | `20-cli-cards-discovered.jpg` | 2026-11-24, app.mooring.live: the two `mooring create` cards listed for the throwaway owner on a fresh browser profile, no "Add existing card" |
 | `21-directory-merchant-added.jpg` | 2026-11-24, app.mooring.live: `cli card` after adding `demo.rail402.dev` from Browse services — Merchants `1 / 32`, balance 1.00 USDC |
+| `22-activity-feed.jpg` | 2026-11-26, app.mooring.live: `inference-agent`'s indexed Activity panel — payments, allowlist changes and tx links back to 2026-09-13, served by the indexer (PR #28) |
 
 Not captured: 08 (second merchant added), 09 (merchant removed), 10 (signer rotated),
 12 (unfrozen), 13 (budget after `mooring pay` — a 0.001 USDC payment is below the two-decimal

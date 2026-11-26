@@ -79,6 +79,21 @@ describe("indexer/backfill", () => {
     const again = await backfillFactory(deps(db, fetchJson));
     expect(again.cards).toBe(0);
     expect(urls.some((u) => u.includes(`/contract/${FACTORY}/events`))).toBe(true);
+    // labels are constructor arguments (no event): a run with readLabel fills the ones still unknown
+    const unlabeled = (await db.query<{ card: string }>("select card from cards where label is null order by card")).map((c) => c.card);
+    expect(unlabeled.length).toBeGreaterThan(0);
+    const reads: string[] = [];
+    await backfillFactory({
+      ...deps(db, fetchJson),
+      readLabel: async (card) => {
+        reads.push(card);
+        return `label of ${card.slice(0, 4)}`;
+      },
+    });
+    expect(reads.sort()).toEqual(unlabeled.sort());
+    const relabeled = await db.query<{ card: string; label: string | null }>("select card, label from cards order by card");
+    expect(relabeled.every((c) => c.label !== null)).toBe(true);
+    expect(relabeled.filter((c) => unlabeled.includes(c.card)).map((c) => c.label)).toEqual(unlabeled.map((c) => `label of ${c.slice(0, 4)}`));
   });
 
   it("backfillCard imports card events and USDC transfers with resolved hashes, idempotently", async () => {

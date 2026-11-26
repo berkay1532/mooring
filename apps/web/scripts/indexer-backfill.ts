@@ -1,8 +1,8 @@
 /**
- * One-time history import. Usage (from apps/web, with DATABASE_URL set):
- *   npx tsx scripts/indexer-backfill.ts            # factory + every card
- *   npx tsx scripts/indexer-backfill.ts --card C…  # one card (must already be tracked)
+ * History import. Usage (from apps/web): `npm run indexer:backfill [-- --card C…]` — loads `.env.local`.
+ * Re-running is safe: events are upserted and cards whose label is still unknown get it read on-chain.
  */
+import { readInfo } from "../lib/chain/card";
 import { backfillCard, backfillFactory, type BackfillDeps } from "../lib/indexer/backfill";
 import { neonClient } from "../lib/indexer/db";
 
@@ -16,6 +16,7 @@ async function main() {
     sql: neonClient(url),
     factory,
     usdc,
+    readLabel: async (card) => (await readInfo(card)).label || null,
     async fetchJson(u) {
       const res = await fetch(u, { headers: { accept: "application/json" } });
       if (!res.ok) throw new Error(`${u}: HTTP ${res.status}`);

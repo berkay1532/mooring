@@ -42,8 +42,10 @@ testnet; mainnet follows an audit. Never describe the web app or the client as a
   - **Weekly plan:** W1 D1(a) + D2(b) · W2 D2(a) · W3 D3(a) + D3(b) + D1(b) · W4 D1(c) + D2(c) +
     D3(c) + docs/Loom/evidence. Evidence list in SOW §6.1 (hashes, screenshots, Loom, npm packages).
   - **Progress:** W1 delivered (PRs #24–#27: directory, `mooring create`, protocol-30 SDK bump, evidence
-    in `docs/testnet.md`). W2 indexer design `docs/superpowers/specs/2026-11-25-indexer-v1-design.md`,
-    runbook `docs/indexer.md` (Neon via Vercel Marketplace, Hobby plan → read-time ticks + daily cron).
+    in `docs/testnet.md`). W2 delivered: indexer v1 (PR #28, design
+    `docs/superpowers/specs/2026-11-25-indexer-v1-design.md`, runbook `docs/indexer.md`, Neon via Vercel
+    Marketplace, Hobby plan → read-time ticks + daily cron) **live on app.mooring.live since 2026-11-26**
+    with the full history since 2026-09-13 imported; evidence in `docs/testnet.md`.
   - **Out of scope:** audit, real mainnet deployment, merchant-side product, recurring billing,
     passkey signer, other chains.
 - Chapter: **Stellar Türkiye** (lead **İrem Koçi**). **testnet-only.** License **Apache-2.0**.

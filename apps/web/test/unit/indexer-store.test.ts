@@ -6,6 +6,7 @@ import {
   applyEvents,
   decodeCursor,
   encodeCursor,
+  fillLabel,
   getState,
   insertCard,
   knownCards,
@@ -62,6 +63,34 @@ describe("indexer/store", () => {
     expect(after[0].n).toBe(before[0].n);
     const pays = await db.query<{ n: string }>("select count(*)::text as n from payments");
     expect(pays[0].n).toBe("4");
+  });
+
+  it("reads a created card's on-chain label through readLabel; a failed read is retried by fillLabel later", async () => {
+    const NEW = "CNEWCARDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const created: IndexedEvent = {
+      ...events[0],
+      eventId: "created-new",
+      payload: { owner: OWNER, card: NEW },
+    };
+    const reads: string[] = [];
+    const flaky = async (card: string) => {
+      reads.push(card);
+      if (reads.length === 1) throw new Error("rpc down");
+      return "inference-agent";
+    };
+    const known = await knownCards(db);
+    expect(await applyEvents(db, [created], known, FACTORY, { readLabel: flaky })).toBe(1);
+    expect(known.has(NEW)).toBe(true);
+    expect(reads).toEqual([NEW]);
+    let row = await db.query<{ label: string | null }>("select label from cards where card = $1", [NEW]);
+    expect(row[0].label).toBeNull();
+
+    expect(await fillLabel(db, NEW, flaky)).toBe(true);
+    row = await db.query<{ label: string | null }>("select label from cards where card = $1", [NEW]);
+    expect(row[0].label).toBe("inference-agent");
+    // never overwrites a label that is already known (label_changed or an earlier read)
+    expect(await fillLabel(db, NEW, async () => "other")).toBe(false);
+    expect(await fillLabel(db, NEW, async () => null)).toBe(false);
   });
 
   it("ignores events from cards it does not know and card_created from other factories", async () => {
