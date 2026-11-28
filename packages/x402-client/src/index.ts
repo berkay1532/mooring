@@ -21,6 +21,8 @@ export { CardExactStellarScheme } from "./scheme.js";
 export type { CardSchemeOptions, StellarNetwork } from "./scheme.js";
 export { createMooringClient, createMooringFetch, getSettlement } from "./client.js";
 export type { MooringClientOptions, Settlement } from "./client.js";
+export { pay } from "./pay.js";
+export type { PayOptions, PayResult } from "./pay.js";
 export { contractInstanceKey, deriveCardAddress, saltBytes } from "./derive.js";
 export { discoverCards, nextCardIndex } from "./discover.js";
 export type { DiscoverCardsOptions, LedgerEntriesRpc } from "./discover.js";
