@@ -35,13 +35,16 @@ followed by the response body. Every refusal exits with code 1:
 
 `npm run status` prints the card's state, balance, budget and allowlist.
 
+Pay something else: pick a service in Browse services (app.mooring.live) and set `MOORING_SERVICE`.
+
 ## Guard rails
 
 The card's limits are enforced on-chain whatever the agent does. On top of them, the agent applies
 local caps before it signs, shared with the `mooring` CLI through the state directory
 (`MOORING_HOME`, default `~/.mooring`):
 
-- `MOORING_DAILY_CAP`, `MOORING_TOTAL_CAP`, `MOORING_MAX_PER_TX` in `.env` (decimal USDC), or a
+- `MOORING_DAILY_CAP`, `MOORING_TOTAL_CAP`, `MOORING_MAX_PER_TX` in `.env` (decimal USDC; the template
+  ships with a 1 USDC daily cap you can change), or a
   `mooring.guard.json` next to `package.json`: `{ "dailyCap": "0.05", "maxPerTx": "0.01" }`.
 - `mooring stop` / `mooring resume` (from `@mooring-live/cli`) flip the stop switch for every agent
   using the same state directory.
@@ -56,6 +59,6 @@ Each attempt is recorded as an agent-signed receipt in `receipts.jsonl` under th
 | `MOORING_CARD` | the card (C…) |
 | `AGENT_SECRET` | the card's agent key (S…); never commit it |
 | `MOORING_SERVICE` | the paid URL (default `__SERVICE__`) |
-| `MOORING_NETWORK` | `stellar:testnet` (default) or `stellar:pubnet` |
-| `MOORING_RPC_URL` | optional Soroban RPC; required on `stellar:pubnet` |
+| `MOORING_NETWORK` | `stellar:testnet` |
+| `MOORING_RPC_URL` | optional Soroban RPC URL |
 | `MOORING_HOME` | optional state directory (default `~/.mooring`) |

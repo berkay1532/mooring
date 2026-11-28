@@ -6,7 +6,7 @@ import { nextSteps, packageName, scaffold } from "./scaffold.js";
 
 const DEFAULT_SERVICE = "https://api.mooring.live/quote";
 const DEFAULT_NETWORK = "stellar:testnet";
-const NETWORKS = ["stellar:testnet", "stellar:pubnet"];
+const NETWORKS = ["stellar:testnet"];
 
 const USAGE = `Usage: create-mooring-agent <dir> [--service <url>] [--network <network>]
 
@@ -59,7 +59,7 @@ async function main(): Promise<number> {
     return 1;
   }
   if (!NETWORKS.includes(args.network)) {
-    console.error(`--network must be ${NETWORKS.join(" or ")} (got ${args.network})`);
+    console.error("only stellar:testnet is supported in this release; pubnet follows the audit");
     return 1;
   }
   try {

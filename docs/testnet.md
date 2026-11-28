@@ -609,7 +609,7 @@ $ mooring pay http://127.0.0.1:3002/quote/mpp --card CBI3…V7RY --daily-cap 0.0
 refused before signing: daily_cap (0.001 USDC attempted, limit 0.0005)
 exit 2
 $ mooring stop --reason "week-3 evidence"
-stopped (/Users/beko/.mooring/stop)
+stopped (~/.mooring/stop)
 $ mooring pay http://127.0.0.1:3002/quote/mpp --card CBI3…V7RY
 refused before signing: stopped (0.001 USDC attempted)
 exit 2
@@ -629,7 +629,7 @@ Stopped:      no
 
 Neither refusal reached the network: no transaction, no signature over a payment. Both are written
 to the ledger as signed `denied` receipts (`reason` `daily_cap` — the fourth CSV row below — and
-`stopped`, receipt `27b5af907b8503a68f6fdd835d9ff897`, the fifth entry).
+`stopped`, receipt `27b5af907b8503a68f6fdd835d9ff897`, the fifth ledger entry, not shown in the excerpt below).
 
 ### Receipt ledger
 
@@ -644,7 +644,7 @@ id,ts,protocol,card,agent,payTo,amount,asset,network,url,status,txHash,reason,si
 ```
 
 `mooring receipts verify` → `verified 5 receipts` (after the kit payment below: `verified 6
-receipts`). `sig` is the agent key's public Ed25519 signature over the receipt; it carries no secret.
+receipts`). `sig` is the agent key's Ed25519 signature over the canonical receipt, verifiable with the public `agent` key; it carries no secret.
 
 ### Kit — `create-mooring-agent`
 
@@ -673,7 +673,7 @@ $ npm run pay
 Paid 0.001 USDC to GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG via x402
 tx 46f5fdc724a66f386b95812bb31b57698f4a456d62588e7633c0de40cbab7df8 — https://stellar.expert/explorer/testnet/tx/46f5fdc724a66f386b95812bb31b57698f4a456d62588e7633c0de40cbab7df8
 Remaining this period: 0.996 USDC
-Receipt aa31fcbe07cf836eb45333dd759f3601 → /Users/beko/.mooring/receipts.jsonl
+Receipt aa31fcbe07cf836eb45333dd759f3601 → ~/.mooring/receipts.jsonl
 {"quote":"Hope is the thing with feathers that perches in the soul.","author":"Emily Dickinson","paidWith":"x402","ts":"2026-11-28T03:31:02.205Z"}
 ```
 

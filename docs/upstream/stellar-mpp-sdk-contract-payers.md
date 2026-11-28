@@ -4,8 +4,10 @@
 
 Mooring cards are Soroban custom accounts (`__check_auth`). The `@stellar/mpp` charge server refuses
 them as payers, even in pull mode, where the server's enforce-mode simulation already validates
-their authorization. Mooring's hosted seller carries this fix locally. This branch offers the same
-change upstream. Everything in this section is Mooring-internal context; only the fenced PR title
+their authorization. Mooring's hosted seller does not depend on `@stellar/mpp` and carries no patch: it has its own
+card-aware verifier on `mppx` that follows the same approach (a `C…` payer is accepted and its
+authorization is validated by the enforcing simulation). This branch offers the same change to
+`@stellar/mpp` upstream. Everything in this section is Mooring-internal context; only the fenced PR title
 and body below go into the upstream pull request.
 
 - **Fork:** https://github.com/berkay1532/stellar-mpp-sdk
@@ -114,7 +116,7 @@ server suite).
 Not run: `pnpm audit` (no dependency changes), `/e2e-check` and `test:integration`, which need live
 testnet access and secrets.
 
-Testnet evidence: a custom-account (card) payer settled in pull mode through Mooring's seller, which applies the same verifier rule — tx [`164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4`](https://stellar.expert/explorer/testnet/tx/164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4) (seller run locally against testnet; the hosted `api.mooring.live` run follows). The patched upstream server itself was exercised by its unit tests only.
+Testnet evidence: a custom-account (card) payer settled in pull mode through Mooring's seller, which has its own card-aware verifier following the same approach — tx [`164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4`](https://stellar.expert/explorer/testnet/tx/164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4). The patched upstream server itself was exercised by its unit tests only.
 
 A `CHANGELOG.md` entry is added under `[Unreleased] › Added`.
 ```

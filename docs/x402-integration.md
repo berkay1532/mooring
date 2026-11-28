@@ -374,7 +374,9 @@ CLI prints the friendbot link and exits 1).
 
 **Server-side limitation.** Stock `@stellar/mpp` charge servers currently accept only `G…` payers
 and refuse a contract account even in pull mode. Mooring's hosted seller (`api.mooring.live`,
-[`docs/seller.md`](seller.md)) carries a patch that accepts cards. The same change is prepared as an
+[`docs/seller.md`](seller.md)) does not depend on `@stellar/mpp` and carries no patch: it has its own
+card-aware verifier on `mppx` that follows the same approach (a `C…` payer is accepted and its
+authorization is validated by the enforcing simulation). The same change to `@stellar/mpp` is prepared as an
 upstream pull request to `stellar/stellar-mpp-sdk`; see
 [`docs/upstream/stellar-mpp-sdk-contract-payers.md`](upstream/stellar-mpp-sdk-contract-payers.md).
 Until it lands, an MPP seller built on the stock server will refuse a card.
@@ -383,13 +385,17 @@ Until it lands, an MPP seller built on the stock server will refuse a card.
 
 - `CardPolicyDenied` at stage `verify`: the card's `__check_auth` said no.
 - `PaymentError` `rejected` with `seller_refused: <line>`: the seller refused for another reason.
-  `not_payable: …` means the `402` carried neither x402 nor MPP terms.
+  `not_payable: …` is raised whenever the `402` offers nothing the card can pay: no x402 or MPP
+  terms, unreadable x402 terms, or an MPP challenge no configured method can pay (for example
+  another network).
 - `PaymentError` `unconfirmed`: the credential was handed over and the outcome is not known (the
-  seller answered without a `Payment-Receipt`, or the request failed in transit). The card may have
-  been debited; reconcile before retrying.
+  seller answered without a `Payment-Receipt`, or the request failed in transit). It also covers a
+  seller refusal after broadcast whose outcome is open (`transaction not confirmed: <hash>` /
+  `transaction was not accepted: …`); then the error's `transaction` and the receipt's `txHash`
+  carry the hash for reconciliation. The card may have been debited; reconcile before retrying.
 - `sequence_conflict`: an agent-paid credential carries the agent account's next sequence number
   and it moved. Nothing was applied, so `pay()` retries **once** from a fresh credential.
-  Agent-paid payments for one agent key are serialized inside `pay()`; if you drive the lower-level
+  Agent-paid MPP payments are serialized per agent key within one process, inside `pay()`; if you drive the lower-level
   charge method yourself, run them one at a time.
 
 ## Guard rails and receipts

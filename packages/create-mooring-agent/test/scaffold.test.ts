@@ -105,6 +105,18 @@ describe("scaffold", () => {
     expect(existsSync(path.join(busy, "package.json"))).toBe(false);
   });
 
+  it("the CLI rejects a network other than stellar:testnet", async () => {
+    const tsx = path.join(ROOT, "node_modules/tsx/dist/cli.mjs");
+    const dir = path.join(tempDir("kit-net-"), "my-agent");
+    const err = await run(process.execPath, [tsx, path.join(PKG, "src/index.ts"), dir, "--network", "stellar:pubnet"]).then(
+      () => null,
+      (e: { code?: number; stderr?: string }) => e,
+    );
+    expect(err?.code).toBe(1);
+    expect(err?.stderr).toContain("only stellar:testnet is supported in this release; pubnet follows the audit");
+    expect(existsSync(dir)).toBe(false);
+  }, 60_000);
+
   it("the scaffolded project typechecks against the workspace client", async () => {
     const dir = path.join(tempDir("kit-tsc-"), "my-agent");
     await scaffoldInto(dir);

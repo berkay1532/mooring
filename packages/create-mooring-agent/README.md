@@ -14,7 +14,7 @@ npx create-mooring-agent my-agent [--service https://api.mooring.live/quote] [--
 ```
 
 The default service is Mooring's hosted example seller (`https://api.mooring.live/quote`, 0.001 USDC
-over x402). `--network` is `stellar:testnet` (default) or `stellar:pubnet`. The target directory must
+over x402). `--network` accepts `stellar:testnet` only in this release. The target directory must
 be empty or missing.
 
 It writes `package.json`, `.env.example`, `.gitignore`, `README.md`, `tsconfig.json`, `src/agent.ts`
@@ -51,13 +51,15 @@ followed by the response body. Every refusal exits with code 1:
 The card's limits are enforced on-chain no matter what the agent does. Before signing, the agent
 also checks local caps in decimal USDC. They come from `MOORING_DAILY_CAP`, `MOORING_TOTAL_CAP` and
 `MOORING_MAX_PER_TX` in `.env`, or from a `mooring.guard.json` next to `package.json`
-(`{ "dailyCap": "0.05", "maxPerTx": "0.01" }`). If both are set, the file wins key by key.
+(`{ "dailyCap": "0.05", "maxPerTx": "0.01" }`). If both are set, the file wins key by key. The template ships with a 1 USDC daily cap (`MOORING_DAILY_CAP=1` in `.env.example`) that you can change.
 
 The guard state, the stop switch and the receipt ledger live in the state directory
 (`MOORING_HOME`, default `~/.mooring`). The [`mooring` CLI](https://www.npmjs.com/package/@mooring-live/cli)
 shares this directory: `mooring stop` / `mooring resume` halt and resume every agent that uses it.
 Every payment attempt is appended to `receipts.jsonl` there as an agent-signed receipt, and
 `mooring receipts` exports and verifies them.
+
+Pay something else: pick a service in Browse services (app.mooring.live) and set `MOORING_SERVICE`.
 
 ## Learn more
 
