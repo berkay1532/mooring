@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { decideGuard, utcDay, type GuardCounters } from "../guard/decide.js";
+import { COMMITTED_KEEP, decideGuard, utcDay, type GuardCounters } from "../guard/decide.js";
 import type { GuardDenied } from "../denial.js";
 import type { Guard, GuardCaps, GuardSnapshot, GuardTerms, Reservation } from "../guard/types.js";
 import { receiptId } from "../receipts.js";
@@ -14,6 +14,8 @@ interface CardRecord {
   daily: string;
   total: string;
   reservations: Record<string, { amount: string; at: string }>;
+  /** Ids of the last `COMMITTED_KEEP` settled commits, oldest first. */
+  committed?: string[];
 }
 
 interface SpendFile {
@@ -199,13 +201,15 @@ export function fileGuard(opts: FileGuardOptions): Guard {
         const file = await readSpend();
         const rec = current(file, r.card);
         const held = rec.reservations[r.id];
-        // Unknown, expired or already committed: nothing to do.
-        if (held === undefined) return;
         delete rec.reservations[r.id];
-        if (outcome === "settled") {
-          const amount = BigInt(held.amount);
+        // A settled payment always counts, even after its reservation expired
+        // or when the id is unknown; a repeated settled commit counts once.
+        const committed = rec.committed ?? [];
+        if (outcome === "settled" && !committed.includes(r.id)) {
+          const amount = BigInt(held?.amount ?? r.amount);
           rec.daily = (BigInt(rec.daily) + amount).toString();
           rec.total = (BigInt(rec.total) + amount).toString();
+          rec.committed = [...committed, r.id].slice(-COMMITTED_KEEP);
         }
         await writeAtomic(spendPath, JSON.stringify(file));
       });

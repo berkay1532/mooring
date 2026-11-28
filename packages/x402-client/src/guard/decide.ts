@@ -11,6 +11,9 @@ export interface GuardCounters {
   reserved: bigint;
 }
 
+/** How many recent settled reservation ids a guard keeps per card to make `commit` idempotent. */
+export const COMMITTED_KEEP = 100;
+
 /** The UTC date (`YYYY-MM-DD`) of an instant. */
 export function utcDay(d: Date): string {
   return d.toISOString().slice(0, 10);

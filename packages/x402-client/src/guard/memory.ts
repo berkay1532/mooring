@@ -1,6 +1,6 @@
 import type { GuardDenied } from "../denial.js";
 import { receiptId } from "../receipts.js";
-import { decideGuard, utcDay } from "./decide.js";
+import { COMMITTED_KEEP, decideGuard, utcDay } from "./decide.js";
 import type { Guard, GuardCaps, GuardSnapshot, GuardTerms, Reservation } from "./types.js";
 
 interface CardState {
@@ -8,6 +8,8 @@ interface CardState {
   daily: bigint;
   total: bigint;
   reservations: Map<string, bigint>;
+  /** Ids of recent settled commits (insertion order, at most `COMMITTED_KEEP`), so a repeat does not count twice. */
+  committed: Set<string>;
   stopped?: { reason?: string };
 }
 
@@ -33,7 +35,7 @@ export class MemoryGuard implements Guard {
     const day = utcDay(this.now());
     let s = this.cards.get(card);
     if (!s) {
-      s = { day, daily: 0n, total: 0n, reservations: new Map() };
+      s = { day, daily: 0n, total: 0n, reservations: new Map(), committed: new Set() };
       this.cards.set(card, s);
     } else if (s.day !== day) {
       s.day = day;
@@ -69,14 +71,16 @@ export class MemoryGuard implements Guard {
 
   async commit(r: Reservation, outcome: "settled" | "denied" | "failed"): Promise<void> {
     const s = this.state(r.card);
-    const amount = s.reservations.get(r.id);
-    // Unknown or already committed: nothing to do.
-    if (amount === undefined) return;
+    const held = s.reservations.get(r.id);
     s.reservations.delete(r.id);
-    if (outcome === "settled") {
-      s.daily += amount;
-      s.total += amount;
-    }
+    // A settled payment always counts, even when its reservation is unknown;
+    // a repeated settled commit of the same id does not count twice.
+    if (outcome !== "settled" || s.committed.has(r.id)) return;
+    const amount = held ?? BigInt(r.amount);
+    s.daily += amount;
+    s.total += amount;
+    s.committed.add(r.id);
+    if (s.committed.size > COMMITTED_KEEP) s.committed.delete(s.committed.values().next().value!);
   }
 
   async stop(reason?: string, card?: string): Promise<void> {

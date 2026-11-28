@@ -129,6 +129,29 @@ describe("fileGuard", () => {
     expect(await f.check(terms("10000"))).toBeNull();
   });
 
+  it("a settled commit counts even after its reservation expired", async () => {
+    let now = new Date("2026-11-28T10:00:00Z");
+    const f = fileGuard({ stateDir: dir, caps: { dailyCap: "100000" }, now: () => now });
+    const r = await f.reserve(terms("7000"));
+    now = new Date("2026-11-28T10:11:00Z");
+    expect((await f.snapshot(CARD)).reserved).toBe("0");
+    await f.commit(r, "settled");
+    expect(await f.snapshot(CARD)).toMatchObject({ daily: "7000", total: "7000", reserved: "0" });
+    // A missing record with a failed or denied outcome stays a no-op.
+    await f.commit({ id: "f".repeat(32), card: CARD, amount: "5000" }, "failed");
+    expect((await f.snapshot(CARD)).total).toBe("7000");
+  });
+
+  it("a second settled commit of the same reservation does not double count", async () => {
+    const a = fileGuard({ stateDir: dir });
+    const b = fileGuard({ stateDir: dir });
+    const r = await a.reserve(terms("3000"));
+    await a.commit(r, "settled");
+    await b.commit(r, "settled");
+    await a.commit(r, "settled");
+    expect(await b.snapshot(CARD)).toMatchObject({ daily: "3000", total: "3000", reserved: "0" });
+  });
+
   it("an earlier UTC day resets daily and keeps total", async () => {
     let now = new Date("2026-11-28T23:59:00Z");
     const f = fileGuard({ stateDir: dir, caps: { dailyCap: "10000", totalCap: "100000" }, now: () => now });

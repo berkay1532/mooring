@@ -127,6 +127,28 @@ describe("MemoryGuard", () => {
     expect((await g.check(terms("5001")))!.reason).toBe("daily_cap");
   });
 
+  it("a settled commit counts after 10 minutes and for an unknown reservation", async () => {
+    const now = clock("2026-11-28T10:00:00Z", "2026-11-28T10:11:00Z");
+    const g = new MemoryGuard({ dailyCap: "100000" }, now);
+    const r = await g.reserve(terms("7000"));
+    advance();
+    await g.commit(r, "settled");
+    expect(await g.snapshot(CARD)).toMatchObject({ daily: "7000", total: "7000", reserved: "0" });
+    await g.commit({ id: "e".repeat(32), card: CARD, amount: "1000" }, "settled");
+    expect((await g.snapshot(CARD)).total).toBe("8000");
+    // failed / denied for a missing record stay no-ops.
+    await g.commit({ id: "d".repeat(32), card: CARD, amount: "5000" }, "denied");
+    expect((await g.snapshot(CARD)).total).toBe("8000");
+  });
+
+  it("a second settled commit of the same reservation does not double count", async () => {
+    const g = new MemoryGuard();
+    const r = await g.reserve(terms("3000"));
+    await g.commit(r, "settled");
+    await g.commit(r, "settled");
+    expect(await g.snapshot(CARD)).toMatchObject({ daily: "3000", total: "3000", reserved: "0" });
+  });
+
   it("state is per card", async () => {
     const g = new MemoryGuard({ dailyCap: "10000" });
     await g.commit(await g.reserve(terms("10000")), "settled");
