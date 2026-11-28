@@ -8,7 +8,7 @@ exercised end to end against a real service:
 - `GET /quote/mpp` is paid over **MPP charge**: the seller itself verifies and broadcasts the
   payer's transaction.
 
-It exists for two reasons. It is the seller that `npx create-mooring-agent` will point a fresh agent
+It exists for two reasons. It is the seller that `npx create-mooring-agent` points a fresh agent
 at, and it is the target of the week-3 evidence (settled card payments over both protocols,
 including a denial).
 

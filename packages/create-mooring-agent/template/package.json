@@ -1,0 +1,25 @@
+{
+  "name": "__NAME__",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An agent that pays per request from a Mooring spending card on Stellar.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "pay": "tsx src/agent.ts",
+    "status": "tsx src/status.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mooring-live/x402-client": "^0.4.0",
+    "@stellar/stellar-sdk": "17.4.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

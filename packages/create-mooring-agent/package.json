@@ -1,0 +1,58 @@
+{
+  "name": "create-mooring-agent",
+  "version": "0.1.0",
+  "description": "Scaffold an agent that pays x402 and MPP services from a Mooring spending card on Stellar, within local caps, with a signed receipt ledger.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/berkay1532/mooring.git",
+    "directory": "packages/create-mooring-agent"
+  },
+  "homepage": "https://mooring.live",
+  "bugs": {
+    "url": "https://github.com/berkay1532/mooring/issues"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "x402",
+    "mpp",
+    "usdc",
+    "ai-agents",
+    "agentic-payments",
+    "create"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "create-mooring-agent": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "template",
+    "README.md"
+  ],
+  "scripts": {
+    "prepublishOnly": "npm run build",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run"
+  },
+  "//": "No runtime dependencies: the scaffolder is plain node:fs / node:path. The devDependencies run the tests, which typecheck the template against the workspace client and run it against the in-process seller (apps/seller).",
+  "devDependencies": {
+    "@hono/node-server": "^2.1",
+    "@mooring-live/x402-client": "0.4.0",
+    "@stellar/stellar-sdk": "17.4.0",
+    "@types/node": "^22.0.0",
+    "@x402/core": "2.32.0",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}
