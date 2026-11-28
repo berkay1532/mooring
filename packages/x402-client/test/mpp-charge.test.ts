@@ -229,7 +229,7 @@ describe("cardChargeMethod", () => {
 
     const parsed = Credential.deserialize<{ type: string; transaction: string }>(cred);
     expect(parsed.payload.type).toBe("transaction");
-    expect(parsed.source).toBe(`did:pkh:stellar:stellar:testnet:${CARD}`);
+    expect(parsed.source).toBe(`did:pkh:stellar:testnet:${CARD}`);
     expect(parsed.challenge.id).toBe(challenge.id);
 
     const tx = envelopeOf(cred);
@@ -264,7 +264,7 @@ describe("cardChargeMethod", () => {
     expect(getAccount).toHaveBeenCalledWith(agent.publicKey());
     const parsed = Credential.deserialize<{ type: string }>(cred);
     expect(parsed.payload.type).toBe("transaction");
-    expect(parsed.source).toBe(`did:pkh:stellar:stellar:testnet:${CARD}`);
+    expect(parsed.source).toBe(`did:pkh:stellar:testnet:${CARD}`);
 
     const tx = envelopeOf(cred);
     expect(tx.operations).toHaveLength(1);

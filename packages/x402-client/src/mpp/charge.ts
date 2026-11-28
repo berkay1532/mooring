@@ -190,7 +190,7 @@ export function cardChargeMethod(opts: CardChargeOptions, deps: CardChargeDeps =
       return Credential.serialize({
         challenge,
         payload: { type: "transaction", transaction: built.toXDR() },
-        source: `did:pkh:stellar:${opts.network}:${opts.card}`,
+        source: `did:pkh:${opts.network}:${opts.card}`,
       });
     },
   });
