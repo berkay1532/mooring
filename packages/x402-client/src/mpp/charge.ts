@@ -3,7 +3,7 @@ import { getNetworkPassphrase, getRpcUrl } from "@x402/stellar";
 import { Credential, Method } from "mppx";
 import { readCardInfo as readCardInfoRpc, readMerchants as readMerchantsRpc } from "../card.js";
 import { CardPolicyDenied, DEFAULT_APP_URL, PaymentError } from "../denial.js";
-import { denialFromCard } from "../denial-from-sim.js";
+import { denialFromCard, type SimDenialMerchant } from "../denial-from-sim.js";
 import { precheck } from "../precheck.js";
 import { authExpirationLedgers, type CardSchemeOptions } from "../scheme.js";
 import { signCardAuthEntries } from "../signer.js";
@@ -30,6 +30,52 @@ export interface CardChargeDeps {
   readCardInfo?: typeof readCardInfoRpc;
   readMerchants?: typeof readMerchantsRpc;
   latestLedger?: () => Promise<number>;
+}
+
+/**
+ * Per agent key, the tail of the unsponsored credentials in flight. When the
+ * agent account is the transaction source, building fetches its sequence
+ * number, so two concurrent builds would produce the same sequence and one
+ * would fail with `txBAD_SEQ`; they are run one after the other instead.
+ */
+const agentLocks = new Map<string, Promise<void>>();
+
+/** Runs `fn` once every earlier `fn` for `key` has settled; released on success and throw. */
+async function withAgentLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = agentLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const done = new Promise<void>((r) => (release = r));
+  const tail = previous.then(() => done);
+  agentLocks.set(key, tail);
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (agentLocks.get(key) === tail) agentLocks.delete(key);
+  }
+}
+
+const SEQUENCE_CONFLICT = /tx_?bad_seq/i;
+
+/** True when `text` carries the network's bad-sequence result (`txBAD_SEQ` / `tx_bad_seq`). */
+export function isSequenceConflict(text: string): boolean {
+  return SEQUENCE_CONFLICT.test(text);
+}
+
+/** A `sequence_conflict` PaymentError, with a short reason when one is given. */
+export function sequenceConflict(reason?: string): PaymentError {
+  const short = reason?.split("\n")[0]?.trim().slice(0, 200);
+  return new PaymentError({ kind: "rejected", detail: short ? `sequence_conflict: ${short}` : "sequence_conflict" });
+}
+
+/** True for the `sequence_conflict` PaymentError. */
+export function isSequenceConflictError(err: unknown): err is PaymentError {
+  return (
+    err instanceof PaymentError &&
+    err.kind === "rejected" &&
+    (err.detail === "sequence_conflict" || (err.detail?.startsWith("sequence_conflict:") ?? false))
+  );
 }
 
 /** Whole seconds from now until an ISO 8601 `expires`, or 0 when absent, past or unparseable. */
@@ -149,49 +195,73 @@ export function cardChargeMethod(opts: CardChargeOptions, deps: CardChargeDeps =
       }
 
       const sponsored = methodDetails?.feePayer === true;
-      const tx = await buildTransfer({
-        asset: currency,
-        from: opts.card,
-        to: recipient,
-        amount: BigInt(amount),
-        rpcUrl,
-        passphrase,
-        // Sponsored: keep the SDK's all-zeros placeholder source for the
-        // sponsor to replace. Unsponsored: the agent account is the source.
-        ...(sponsored ? {} : { publicKey: opts.agent.publicKey() }),
-      });
-
-      const pending = tx.needsNonInvokerSigningBy();
-      if (pending.length !== 1 || pending[0] !== opts.card) {
-        throw new Error(`Expected to sign with [${opts.card}], but got [${pending.join(", ")}]`);
-      }
-
-      const seconds = secondsUntil((challenge as ChargeChallenge).expires) || DEFAULT_CHALLENGE_SECONDS;
-      const expiration = (await latestLedger()) + authExpirationLedgers(seconds);
-      await signCardAuthEntries(tx, opts.card, opts.agent, expiration);
-
-      // Signed entries make this simulation enforcing: the card's
-      // `__check_auth` runs, so a payment its policy refuses fails here,
-      // before anything is handed to the seller.
-      try {
-        await tx.simulate({ useUpgradedAuth: false });
-        assertSimulationOk(tx.simulation);
-      } catch (err) {
-        const denial = denialFromCard(err, opts.card, merchant, appUrl);
-        if (!denial) throw err;
-        deny(denial);
-      }
-
-      const built = tx.built!;
-      // The agent signs the envelope only when it is the fee-paying source.
-      if (!sponsored) built.sign(opts.agent);
-      opts.onProgress?.({ type: "signed" });
-
-      return Credential.serialize({
-        challenge,
-        payload: { type: "transaction", transaction: built.toXDR() },
-        source: `did:pkh:${opts.network}:${opts.card}`,
-      });
+      // Unsponsored, the agent account's sequence number is consumed: one
+      // build-sign-simulate-sign at a time per agent key. The sponsored
+      // envelope's source is the placeholder, so it needs no lock.
+      return sponsored
+        ? sign(challenge as ChargeChallenge, request, merchant, true)
+        : withAgentLock(opts.agent.publicKey(), () =>
+            sign(challenge as ChargeChallenge, request, merchant, false),
+          );
     },
   });
+
+  /** Steps 4–6: build the card transfer, sign its auth entry, simulate, sign the envelope. */
+  async function sign(
+    challenge: ChargeChallenge,
+    request: ChargeRequest,
+    merchant: SimDenialMerchant,
+    sponsored: boolean,
+  ): Promise<string> {
+    const { amount, currency, recipient } = request;
+    const tx = await buildTransfer({
+      asset: currency,
+      from: opts.card,
+      to: recipient,
+      amount: BigInt(amount),
+      rpcUrl,
+      passphrase,
+      // Sponsored: keep the SDK's all-zeros placeholder source for the
+      // sponsor to replace. Unsponsored: the agent account is the source.
+      ...(sponsored ? {} : { publicKey: opts.agent.publicKey() }),
+    });
+
+    const pending = tx.needsNonInvokerSigningBy();
+    if (pending.length !== 1 || pending[0] !== opts.card) {
+      throw new Error(`Expected to sign with [${opts.card}], but got [${pending.join(", ")}]`);
+    }
+
+    const seconds = secondsUntil(challenge.expires) || DEFAULT_CHALLENGE_SECONDS;
+    const expiration = (await latestLedger()) + authExpirationLedgers(seconds);
+    await signCardAuthEntries(tx, opts.card, opts.agent, expiration);
+
+    // Signed entries make this simulation enforcing: the card's
+    // `__check_auth` runs, so a payment its policy refuses fails here,
+    // before anything is handed to the seller.
+    try {
+      await tx.simulate({ useUpgradedAuth: false });
+      assertSimulationOk(tx.simulation);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err);
+      if (isSequenceConflict(text)) {
+        const conflict = sequenceConflict(text.replace(/^Stellar simulation failed: /, ""));
+        opts.onPaymentError?.(conflict);
+        throw conflict;
+      }
+      const denial = denialFromCard(err, opts.card, merchant, appUrl);
+      if (!denial) throw err;
+      deny(denial);
+    }
+
+    const built = tx.built!;
+    // The agent signs the envelope only when it is the fee-paying source.
+    if (!sponsored) built.sign(opts.agent);
+    opts.onProgress?.({ type: "signed" });
+
+    return Credential.serialize({
+      challenge,
+      payload: { type: "transaction", transaction: built.toXDR() },
+      source: `did:pkh:${opts.network}:${opts.card}`,
+    });
+  }
 }

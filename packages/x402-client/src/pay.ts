@@ -6,7 +6,7 @@ import { CardPolicyDenied, GuardDenied, PaymentError, isAbsoluteHttpUrl, stripQu
 import { deploymentFor } from "./deployments.js";
 import { formatUsdc } from "./guard/config.js";
 import type { Guard, GuardTerms, Reservation } from "./guard/types.js";
-import { cardChargeMethod } from "./mpp/charge.js";
+import { cardChargeMethod, isSequenceConflict, isSequenceConflictError, sequenceConflict } from "./mpp/charge.js";
 import { detectProtocol, selectChargeChallenge } from "./mpp/detect.js";
 import type { ChargeRequest } from "./mpp/schema.js";
 import { receiptId, signReceipt, type Receipt } from "./receipts.js";
@@ -235,6 +235,12 @@ async function peekTerms(
   }
 }
 
+/**
+ * Pays an MPP charge. A `sequence_conflict` (the agent account's sequence
+ * moved under an unsponsored payment: `txBAD_SEQ` from the simulation or the
+ * seller) means the transaction was not applied, so the payment is retried
+ * once from a fresh credential under the same reservation.
+ */
 async function payMpp(
   opts: PayOptions,
   transport: typeof globalThis.fetch,
@@ -256,7 +262,11 @@ async function payMpp(
         precheck: opts.precheck,
         usdc: opts.usdc ?? deploymentFor(opts.network).usdc,
         onDenial: opts.onDenial,
-        onPaymentError: opts.onPaymentError,
+        // A sequence conflict may be retried; it is reported once, below,
+        // only when it is the outcome.
+        onPaymentError: (e) => {
+          if (!isSequenceConflictError(e)) opts.onPaymentError?.(e);
+        },
       }),
     ],
     polyfill: false,
@@ -266,61 +276,89 @@ async function payMpp(
   // `preparePayment` selects the challenge from the 402 already in hand, so
   // the seller is not asked for terms a second time.
   const headers = new Headers(request.headers);
-  let payment;
-  try {
-    payment = await mppx.preparePayment(first, { request: { headers } });
-  } catch (err) {
-    // No configured method can pay this challenge (another network, say):
-    // nothing was signed or spent.
-    return fail(
-      new PaymentError({
-        kind: "rejected",
-        detail: `mpp_unpayable: ${err instanceof Error ? err.message : String(err)}`,
-      }),
-    );
-  }
-  const charge = payment.challenge.request as ChargeRequest;
-  try {
-    await reserve({
-      card: opts.card,
-      payTo: charge.recipient,
-      amount: charge.amount,
-      asset: charge.currency,
-      network: charge.methodDetails?.network ?? opts.network,
-      ...(requestUrl ? { url: requestUrl } : {}),
-    });
-  } catch (err) {
-    if (err instanceof PaymentError) return fail(err);
-    throw err;
-  }
-  // The charge method reports its own denials and errors to the callbacks.
-  const credential = await payment.createCredential();
-  const paidInit = payment.setCredential({ headers }, credential);
-  const response = await transport(new Request(request.clone(), paidInit));
 
-  let receipt;
-  try {
-    if (response.status === 402) throw new Error("the seller asked for payment again");
-    receipt = MppReceipt.fromResponse(response);
-  } catch (err) {
-    // The credential was handed over and may have been broadcast; without a
-    // receipt the settlement state is unknown.
-    return fail(
-      new PaymentError({
-        kind: "unconfirmed",
-        detail: `${response.status} without a Payment-Receipt; settlement state unknown (${err instanceof Error ? err.message : String(err)})`,
-      }),
-    );
-  }
+  /** One paid attempt: sign the credential, send it, read the receipt. Throws `sequence_conflict` unreported. */
+  const settle = async (
+    payment: Awaited<ReturnType<typeof mppx.preparePayment>>,
+    charge: ChargeRequest,
+  ): Promise<X402Paid> => {
+    // The charge method reports its own denials and errors to the callbacks.
+    const credential = await payment.createCredential();
+    const paidInit = payment.setCredential({ headers }, credential);
+    const response = await transport(new Request(request.clone(), paidInit));
 
-  return {
-    response,
-    settlement: {
-      txHash: receipt.reference,
-      amount: charge.amount,
-      payTo: charge.recipient,
-      asset: charge.currency,
-      network: charge.methodDetails?.network ?? opts.network,
-    },
+    if (!response.ok) {
+      // Read from a clone, so the caller's response keeps its body.
+      const body = await response.clone().text().catch(() => "");
+      if (isSequenceConflict(`${body}\n${response.headers.get("WWW-Authenticate") ?? ""}`)) {
+        // Not applied: the network refused the sequence, nothing was spent.
+        throw sequenceConflict(`seller answered ${response.status}`);
+      }
+    }
+
+    let receipt;
+    try {
+      if (response.status === 402) throw new Error("the seller asked for payment again");
+      receipt = MppReceipt.fromResponse(response);
+    } catch (err) {
+      // The credential was handed over and may have been broadcast; without a
+      // receipt the settlement state is unknown.
+      return fail(
+        new PaymentError({
+          kind: "unconfirmed",
+          detail: `${response.status} without a Payment-Receipt; settlement state unknown (${err instanceof Error ? err.message : String(err)})`,
+        }),
+      );
+    }
+
+    return {
+      response,
+      settlement: {
+        txHash: receipt.reference,
+        amount: charge.amount,
+        payTo: charge.recipient,
+        asset: charge.currency,
+        network: charge.methodDetails?.network ?? opts.network,
+      },
+    };
   };
+
+  for (let attempt = 1; ; attempt++) {
+    let payment;
+    try {
+      payment = await mppx.preparePayment(first, { request: { headers } });
+    } catch (err) {
+      // No configured method can pay this challenge (another network, say):
+      // nothing was signed or spent.
+      return fail(
+        new PaymentError({
+          kind: "rejected",
+          detail: `mpp_unpayable: ${err instanceof Error ? err.message : String(err)}`,
+        }),
+      );
+    }
+    const charge = payment.challenge.request as ChargeRequest;
+    if (attempt === 1) {
+      try {
+        await reserve({
+          card: opts.card,
+          payTo: charge.recipient,
+          amount: charge.amount,
+          asset: charge.currency,
+          network: charge.methodDetails?.network ?? opts.network,
+          ...(requestUrl ? { url: requestUrl } : {}),
+        });
+      } catch (err) {
+        if (err instanceof PaymentError) return fail(err);
+        throw err;
+      }
+    }
+    try {
+      return await settle(payment, charge);
+    } catch (err) {
+      if (!isSequenceConflictError(err)) throw err;
+      if (attempt === 1) continue;
+      return fail(err);
+    }
+  }
 }

@@ -512,6 +512,87 @@ describe("pay", () => {
       expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", total: "0", reserved: "0" });
     });
 
+    /** A guard whose reserve/commit are spies over a MemoryGuard. */
+    function spiedGuard() {
+      const guard = new MemoryGuard({ dailyCap: "10000" });
+      const reserve = vi.spyOn(guard, "reserve");
+      const commit = vi.spyOn(guard, "commit");
+      return { guard, reserve, commit };
+    }
+    const badSeq = (text: string) => () =>
+      new Response(JSON.stringify({ error: `transaction rejected: ${text}` }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+
+    it("retries once on sequence_conflict keeping the reservation, then fails", async () => {
+      const { getAccount } = stubMppRpc();
+      const { guard, reserve, commit } = spiedGuard();
+      const receipts: MooringReceipt[] = [];
+      const onPaymentError = vi.fn();
+      const fetch = scripted(() => mppChallengeResponse(), badSeq("txBAD_SEQ"), badSeq("tx_bad_seq"));
+
+      const err = await pay("http://api.test/weather", undefined, {
+        ...opts(fetch),
+        guard,
+        onPaymentError,
+        onReceipt: (r) => receipts.push(r),
+      }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(PaymentError);
+      expect(err).toMatchObject({ kind: "rejected", detail: expect.stringMatching(/^sequence_conflict/) });
+      // The 402 is reused: one challenge, two paid attempts, two credentials built.
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(getAccount).toHaveBeenCalledTimes(2);
+      expect(reserve).toHaveBeenCalledTimes(1);
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(commit).toHaveBeenCalledWith(expect.anything(), "failed");
+      expect(onPaymentError).toHaveBeenCalledTimes(1);
+      expect(onPaymentError).toHaveBeenCalledWith(err);
+      expect(receipts.map((r) => [r.status, r.reason])).toEqual([["failed", err.detail]]);
+      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", reserved: "0" });
+    });
+
+    it("retries once on sequence_conflict and settles when the retry succeeds", async () => {
+      const { getAccount } = stubMppRpc();
+      const { guard, reserve, commit } = spiedGuard();
+      const receipts: MooringReceipt[] = [];
+      const onPaymentError = vi.fn();
+      const fetch = scripted(() => mppChallengeResponse(), badSeq("TXBAD_SEQ"), mppPaid);
+
+      const result = await pay("http://api.test/weather", undefined, {
+        ...opts(fetch),
+        guard,
+        onPaymentError,
+        onReceipt: (r) => receipts.push(r),
+      });
+
+      expect(result.response.status).toBe(200);
+      expect(result.settlement?.txHash).toBe(MPP_TX);
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(getAccount).toHaveBeenCalledTimes(2);
+      expect(reserve).toHaveBeenCalledTimes(1);
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+      expect(onPaymentError).not.toHaveBeenCalled();
+      expect(receipts.map((r) => [r.status, r.txHash])).toEqual([["settled", MPP_TX]]);
+    });
+
+    it("a sequence_conflict in the WWW-Authenticate of the paid response is retried too", async () => {
+      stubMppRpc();
+      const { guard, reserve } = spiedGuard();
+      const fetch = scripted(
+        () => mppChallengeResponse(),
+        () => new Response(null, { status: 401, headers: { "WWW-Authenticate": 'Payment error="tx_bad_seq"' } }),
+        mppPaid,
+      );
+
+      const result = await pay("http://api.test/weather", undefined, { ...opts(fetch), guard });
+
+      expect(result.settlement?.txHash).toBe(MPP_TX);
+      expect(reserve).toHaveBeenCalledTimes(1);
+    });
+
     it("a free response produces no receipt", async () => {
       const onReceipt = vi.fn();
       const fetch = scripted(() => new Response("free", { status: 200 }));

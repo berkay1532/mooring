@@ -312,4 +312,91 @@ describe("cardChargeMethod", () => {
     expect((err as Error).message).toMatch(/Stellar simulation failed/);
     expect(onDenial).not.toHaveBeenCalled();
   });
+
+  it("serializes two unsponsored MPP credentials for one agent key", async () => {
+    const { buildTransfer: realBuild } = stubCardTransferRpc();
+    const events: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let builds = 0;
+    const buildTransfer = vi.fn(async (params: Parameters<typeof realBuild>[0]) => {
+      const n = ++builds;
+      events.push(`build:${n}`);
+      if (n === 1) await gate;
+      return realBuild(params);
+    });
+    // Two method instances sharing one agent key: the lock is per key, not per instance.
+    const m1 = cardChargeMethod(
+      { ...base, usdc: USDC, precheck: false, onProgress: (e) => e.type === "signed" && events.push("signed:1") },
+      { ...readers(), buildTransfer },
+    );
+    const m2 = cardChargeMethod(
+      { ...base, usdc: USDC, precheck: false, onProgress: (e) => e.type === "signed" && events.push("signed:2") },
+      { ...readers(), buildTransfer },
+    );
+
+    const p1 = m1.createCredential({ challenge: challengeWith() });
+    const p2 = m2.createCredential({ challenge: challengeWith() });
+    await new Promise((r) => setTimeout(r, 20));
+    // The first build is parked on its gate; the second has not started.
+    expect(events).toEqual(["build:1"]);
+
+    release();
+    const [c1, c2] = await Promise.all([p1, p2]);
+    expect(events).toEqual(["build:1", "signed:1", "build:2", "signed:2"]);
+    expect(envelopeOf(c1).source).toBe(agent.publicKey());
+    expect(envelopeOf(c2).source).toBe(agent.publicKey());
+  });
+
+  it("releases the agent lock when an unsponsored payment throws", async () => {
+    const { buildTransfer: realBuild } = stubCardTransferRpc();
+    let builds = 0;
+    const buildTransfer = vi.fn(async (params: Parameters<typeof realBuild>[0]) => {
+      if (++builds === 1) throw new Error("rpc down");
+      return realBuild(params);
+    });
+    const m = cardChargeMethod({ ...base, usdc: USDC, precheck: false }, { ...readers(), buildTransfer });
+
+    const p1 = m.createCredential({ challenge: challengeWith() });
+    const p2 = m.createCredential({ challenge: challengeWith() });
+    await expect(p1).rejects.toThrow("rpc down");
+    await expect(p2).resolves.toEqual(expect.any(String));
+    expect(buildTransfer).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not serialize sponsored credentials", async () => {
+    const { buildTransfer: realBuild } = stubCardTransferRpc();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let builds = 0;
+    const buildTransfer = vi.fn(async (params: Parameters<typeof realBuild>[0]) => {
+      if (++builds === 1) await gate;
+      return realBuild(params);
+    });
+    const m = cardChargeMethod({ ...base, usdc: USDC, precheck: false }, { ...readers(), buildTransfer });
+
+    const p1 = m.createCredential({ challenge: challengeWith({ feePayer: true }) });
+    const p2 = m.createCredential({ challenge: challengeWith({ feePayer: true }) });
+    await expect(p2).resolves.toEqual(expect.any(String));
+    expect(buildTransfer).toHaveBeenCalledTimes(2);
+    release();
+    await p1;
+  });
+
+  for (const spelling of ["txBAD_SEQ", "tx_bad_seq"]) {
+    it(`an enforcing-simulation failure with ${spelling} is a sequence_conflict`, async () => {
+      const { buildTransfer } = stubCardTransferRpc({ enforcingError: `transaction failed: ${spelling}` });
+      const onPaymentError = vi.fn();
+      const onDenial = vi.fn();
+      const m = cardChargeMethod(
+        { ...base, usdc: USDC, precheck: false, onPaymentError, onDenial },
+        { ...readers(), buildTransfer },
+      );
+      const err = await m.createCredential({ challenge: challengeWith() }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(PaymentError);
+      expect(err).toMatchObject({ kind: "rejected", detail: expect.stringMatching(/^sequence_conflict(: |$)/) });
+      expect(onPaymentError).toHaveBeenCalledWith(err);
+      expect(onDenial).not.toHaveBeenCalled();
+    });
+  }
 });
