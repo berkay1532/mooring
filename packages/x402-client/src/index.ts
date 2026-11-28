@@ -28,3 +28,6 @@ export { KNOWN_DEPLOYMENTS, deploymentFor } from "./deployments.js";
 export type { Deployment } from "./deployments.js";
 export { createCard, createCardArgs, encodePolicy } from "./create.js";
 export type { CreateCardDeps, CreateCardParams, CreateCardResult, CreateCardRpc } from "./create.js";
+export { chargeMethod } from "./mpp/schema.js";
+export type { ChargeChallenge, ChargeRequest } from "./mpp/schema.js";
+export { detectProtocol, selectChargeChallenge } from "./mpp/detect.js";
