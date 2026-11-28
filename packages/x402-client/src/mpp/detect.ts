@@ -1,9 +1,14 @@
 import { Challenge } from "mppx";
 import type { ChargeChallenge } from "./schema.js";
 
-function stellarCharges(res: Response): ChargeChallenge[] {
+/**
+ * The Stellar charge challenges in a `WWW-Authenticate` value. Returns `[]`
+ * for a missing, empty or malformed value; never throws.
+ */
+export function chargeChallengesFromHeader(header: string | null): ChargeChallenge[] {
+  if (!header) return [];
   try {
-    return Challenge.fromResponseList(res).filter(
+    return Challenge.deserializeList(header).filter(
       (c) => c.method === "stellar" && c.intent === "charge",
     ) as unknown as ChargeChallenge[];
   } catch {
@@ -14,7 +19,7 @@ function stellarCharges(res: Response): ChargeChallenge[] {
 /** The first Stellar charge challenge a 402 offers, or null. Headers only. */
 export function selectChargeChallenge(res: Response): ChargeChallenge | null {
   if (res.status !== 402) return null;
-  return stellarCharges(res)[0] ?? null;
+  return chargeChallengesFromHeader(res.headers.get("WWW-Authenticate"))[0] ?? null;
 }
 
 /**

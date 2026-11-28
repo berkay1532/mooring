@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectProtocol, selectChargeChallenge } from "../src/mpp/detect.js";
+import { chargeChallengesFromHeader, detectProtocol, selectChargeChallenge } from "../src/mpp/detect.js";
 import { PAY_TO, USDC_TESTNET, mppChallengeResponse, tempoChallengeResponse } from "./fixtures/mpp-challenge.js";
 
 describe("detectProtocol", () => {
@@ -35,5 +35,22 @@ describe("selectChargeChallenge", () => {
   it("is null for other responses", () => {
     expect(selectChargeChallenge(tempoChallengeResponse())).toBeNull();
     expect(selectChargeChallenge(new Response("ok", { status: 200 }))).toBeNull();
+  });
+});
+
+describe("chargeChallengesFromHeader", () => {
+  it("parses the stellar charge challenges of a WWW-Authenticate value", () => {
+    const header = mppChallengeResponse().headers.get("WWW-Authenticate");
+    const list = chargeChallengesFromHeader(header);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ method: "stellar", intent: "charge" });
+    expect(list[0].request.recipient).toBe(PAY_TO);
+  });
+  it("drops other methods and is [] for null, empty or garbage input", () => {
+    expect(chargeChallengesFromHeader(tempoChallengeResponse().headers.get("WWW-Authenticate"))).toEqual([]);
+    expect(chargeChallengesFromHeader(null)).toEqual([]);
+    expect(chargeChallengesFromHeader("")).toEqual([]);
+    expect(chargeChallengesFromHeader("Payment garbage")).toEqual([]);
+    expect(chargeChallengesFromHeader("Bearer x")).toEqual([]);
   });
 });
