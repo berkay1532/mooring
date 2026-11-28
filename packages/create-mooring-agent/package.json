@@ -34,7 +34,8 @@
   },
   "files": [
     "dist",
-    "template"
+    "template",
+    "README.md"
   ],
   "scripts": {
     "prepublishOnly": "npm run build",
