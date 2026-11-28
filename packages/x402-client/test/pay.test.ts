@@ -205,6 +205,53 @@ describe("pay", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a JSON 402 that is not x402 terms as not_payable", async () => {
+    const onPaymentError = vi.fn();
+    const fetch = scripted(
+      () =>
+        new Response(JSON.stringify({ error: "payment required" }), {
+          status: 402,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const err = await pay("http://api.test/json", undefined, { ...opts(fetch), onPaymentError }).catch(
+      (e) => e,
+    );
+
+    expect(err).toBeInstanceOf(PaymentError);
+    expect(err.kind).toBe("rejected");
+    expect(err.detail).toMatch(/^not_payable: /);
+    expect(onPaymentError).toHaveBeenCalledTimes(1);
+    expect(onPaymentError).toHaveBeenCalledWith(err);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects x402 terms with no offer for the card's network as not_payable", async () => {
+    const onPaymentError = vi.fn();
+    const terms = {
+      ...x402Terms,
+      accepts: [{ ...x402Terms.accepts[0]!, network: "eip155:8453" }],
+    };
+    const fetch = scripted(
+      () =>
+        new Response(JSON.stringify(terms), {
+          status: 402,
+          headers: { "PAYMENT-REQUIRED": b64(terms), "content-type": "application/json" },
+        }),
+    );
+
+    const err = await pay("http://api.test/base", undefined, { ...opts(fetch), onPaymentError }).catch(
+      (e) => e,
+    );
+
+    expect(err).toBeInstanceOf(PaymentError);
+    expect(err.kind).toBe("rejected");
+    expect(err.detail).toMatch(/^not_payable: /);
+    expect(onPaymentError).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a 402 that is neither protocol", async () => {
     const fetch = scripted(() => new Response("pay me", { status: 402 }));
 

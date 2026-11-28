@@ -298,6 +298,12 @@ export async function payX402(
   const box = new FailureBox();
   const client = createMooringClient(opts, box, requestUrl);
   let paid: PaymentRequirements | undefined;
+  // x402 runs these hooks only once it has selected an `accepts` entry it can
+  // pay, so a payload failure before this fired means no entry was usable.
+  let selected = false;
+  client.onBeforePaymentCreation(async () => {
+    selected = true;
+  });
   client.onAfterPaymentCreation(async ({ selectedRequirements }) => {
     paid = selectedRequirements;
   });
@@ -362,6 +368,18 @@ export async function payX402(
     // A pre-check abort reaches us as a generic Error from @x402/fetch.
     if (err instanceof CardPolicyDenied || err instanceof PaymentError) throw err;
     if (box.last) throw box.last;
+    // Untyped failures from before anything was signed: the 402's terms did
+    // not parse as x402, or none of its `accepts` entries is payable by this
+    // card (network/scheme). Nothing was spent.
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.startsWith("Failed to parse payment requirements")) {
+      box.set(new PaymentError({ kind: "rejected", detail: `not_payable: unreadable x402 terms (${message})` }), opts);
+      throw box.last!;
+    }
+    if (!selected && message.startsWith("Failed to create payment payload")) {
+      box.set(new PaymentError({ kind: "rejected", detail: `not_payable: no payable x402 offer (${message})` }), opts);
+      throw box.last!;
+    }
     throw err;
   }
 }

@@ -31,8 +31,11 @@ export interface PayResult {
  * both cases, so a paid request costs exactly two round trips.
  *
  * Rejects with `CardPolicyDenied` when the card's policy refuses and
- * `PaymentError` for everything else — including a 402 that carries neither
- * protocol's terms — never with a bare 402.
+ * `PaymentError` for every payment failure — a 402 that carries neither
+ * protocol's terms, unreadable x402 terms, or no offer the card can pay is
+ * `rejected` with a `not_payable` detail — never with a bare 402. Errors that
+ * are not payment outcomes (the transport itself failing, an RPC the card
+ * cannot reach while signing) propagate unchanged.
  */
 export function pay(url: string | URL, init: RequestInit | undefined, opts: PayOptions): Promise<PayResult> {
   return payRequest(url, init, opts);
