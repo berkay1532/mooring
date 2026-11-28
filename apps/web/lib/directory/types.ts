@@ -4,9 +4,15 @@
  * *listed, not vetted*: the UI re-reads the live 402 before an owner allows one.
  */
 
-/** Where an entry came from; also the dedupe priority (first wins). */
-export type DirectorySource = "rail402" | "stellarsight" | "bazaar" | "mpprouter";
-export const SOURCE_PRIORITY: readonly DirectorySource[] = ["rail402", "stellarsight", "bazaar", "mpprouter"];
+/**
+ * Where an entry came from; also the dedupe priority (first wins). `mooring`
+ * is Mooring's own hosted seller, so it outranks every third-party catalogue.
+ */
+export type DirectorySource = "mooring" | "rail402" | "stellarsight" | "bazaar" | "mpprouter";
+export const SOURCE_PRIORITY: readonly DirectorySource[] = ["mooring", "rail402", "stellarsight", "bazaar", "mpprouter"];
+
+/** The payment protocol a service speaks: an x402 `402`, or an MPP charge challenge. */
+export type DirectoryProtocol = "x402" | "mpp";
 
 export type DirectoryNetwork = "stellar:testnet" | "stellar:pubnet";
 
@@ -29,6 +35,7 @@ export interface DirectoryEntry {
   amount: string;
   scheme: "exact";
   kind: "http" | "mcp";
+  protocol: DirectoryProtocol;
   method?: "GET" | "POST";
   tags: string[];
   /** One address fronts many services (a router/reseller): allowing it allows all of them. */

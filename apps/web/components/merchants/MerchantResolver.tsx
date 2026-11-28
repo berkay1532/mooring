@@ -27,6 +27,8 @@ export interface ResolvedMerchant {
   description?: string;
   amount: string;
   network: string;
+  /** `exact` (x402) or `mpp` (MPP charge). */
+  scheme?: string;
 }
 
 export interface MerchantResolverProps {
@@ -74,6 +76,7 @@ function toMerchant(r: ResolveOk): ResolvedMerchant {
     description: r.service?.description,
     amount: r.amount,
     network: r.network,
+    scheme: r.scheme,
   };
 }
 
@@ -185,7 +188,7 @@ export function MerchantResolver({
                   variant="ghost"
                   className={SMALL_BUTTON_CLASS}
                   disabled={disabled}
-                  onClick={() => setPendingAddr({ payTo: picked.payTo, name: picked.name, host: picked.host, url: picked.url, amount: picked.amount, network: picked.network })}
+                  onClick={() => setPendingAddr({ payTo: picked.payTo, name: picked.name, host: picked.host, url: picked.url, amount: picked.amount, network: picked.network, scheme: picked.protocol === "mpp" ? "mpp" : undefined })}
                 >
                   Add that address instead
                 </Button>

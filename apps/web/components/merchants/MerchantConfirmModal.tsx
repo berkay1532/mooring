@@ -20,6 +20,8 @@ export interface ConfirmTarget {
   url?: string;
   amount?: string;
   network?: string;
+  /** The resolved payment scheme; `mpp` for an MPP charge. */
+  scheme?: string;
 }
 
 export interface MerchantConfirmModalProps {
@@ -113,6 +115,7 @@ function OpenModal({
           </dd>
         </div>
       </dl>
+      {merchant.scheme === "mpp" ? <p className="mt-4 text-xs text-text-hi">Pays through MPP charge.</p> : null}
       {byHand ? (
         <p className="mt-4 text-xs text-text-hi">
           This address was entered by hand; Mooring has not checked that it accepts x402 payments.

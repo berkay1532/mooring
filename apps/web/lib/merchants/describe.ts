@@ -15,6 +15,14 @@ export interface OfferedTerms {
   scheme?: string;
 }
 
+/**
+ * Schemes a card can pay: x402 `exact`, and `mpp` for an MPP Stellar charge
+ * (the resolver's label for a `WWW-Authenticate: Payment` challenge).
+ */
+export function isPayableScheme(scheme: string | undefined): boolean {
+  return scheme === "exact" || scheme === "mpp";
+}
+
 /** Human label for a CAIP-2 network id; unknown ids are returned verbatim. */
 export function networkLabel(network: string): string {
   if (network === "stellar:testnet") return "Stellar testnet";
@@ -37,7 +45,7 @@ export function describeTerms(
       `${networkLabel(f.network)} · ${f.asset === cardAsset ? "USDC" : `token ${shortAddress(f.asset)}`} → ${shortAddress(f.payTo)}`,
   );
   const onNetwork = found.filter((f) => f.network === cardNetwork);
-  const payable = onNetwork.some((f) => f.asset === cardAsset && f.scheme === "exact");
+  const payable = onNetwork.some((f) => f.asset === cardAsset && isPayableScheme(f.scheme));
   const message =
     onNetwork.length > 0 && !payable
       ? `This service asks for a different token or scheme on ${networkLabel(cardNetwork)}; this card holds USDC.`

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest"
+import { Challenge, chargeMethod } from "@mooring-live/x402-client"
 import { resolveMerchant, type ResolveDeps } from "@/lib/merchants/resolve"
 
 const NET = "stellar:testnet"
@@ -43,6 +44,26 @@ function setup(script: Array<Response | Error>, over: Partial<ResolveDeps> = {})
   }
   return { deps, calls }
 }
+/** A real `WWW-Authenticate: Payment …` value for a Stellar charge, built with mppx. */
+function mppHeader(over: { recipient?: string; currency?: string; network?: string } = {}): string {
+  const challenge = Challenge.fromMethod(chargeMethod, {
+    secretKey: "t",
+    realm: "api.mooring.live",
+    request: {
+      amount: "10000",
+      currency: over.currency ?? USDC,
+      recipient: over.recipient ?? PAY,
+      description: "A quote",
+      methodDetails: { network: over.network ?? NET, credentialTypes: ["transaction"] },
+    },
+  })
+  return Challenge.serialize(challenge)
+}
+const mpp402 = (h: string, extra: Record<string, string> = {}) =>
+  new Response(JSON.stringify({ type: "https://paymentauth.org/problems/payment-required" }), {
+    status: 402,
+    headers: { "WWW-Authenticate": h, "content-type": "application/problem+json", ...extra },
+  })
 const redirect = (to: string, status = 302) => new Response(null, { status, headers: { location: to } })
 
 describe("resolveMerchant", () => {
@@ -57,6 +78,44 @@ describe("resolveMerchant", () => {
     expect(calls[0].init.dispatcher).toBeUndefined()
   })
 
+  it("an MPP 402 resolves ok with scheme mpp", async () => {
+    const { deps } = setup([mpp402(mppHeader())])
+    const r = await resolveMerchant("https://api.mooring.live/quote/mpp", deps)
+    expect(r).toEqual({
+      ok: true,
+      url: "https://api.mooring.live/quote/mpp",
+      payTo: PAY,
+      network: NET,
+      asset: USDC,
+      amount: "10000",
+      scheme: "mpp",
+      service: { description: "A quote" },
+    })
+  })
+
+  it("prefers x402 terms when a 402 carries both, and falls back to MPP when x402 is unusable", async () => {
+    const both = setup([mpp402(mppHeader(), { "PAYMENT-REQUIRED": header([entry()]) })])
+    expect(await resolveMerchant("https://api.example.com/x", both.deps)).toMatchObject({ ok: true, scheme: "exact" })
+    const broken = setup([mpp402(mppHeader(), { "PAYMENT-REQUIRED": "not-base64-json" })])
+    expect(await resolveMerchant("https://api.example.com/x", broken.deps)).toMatchObject({ ok: true, scheme: "mpp" })
+  })
+
+  it("reports an MPP challenge on another network as no_match", async () => {
+    const { deps } = setup([mpp402(mppHeader({ network: "stellar:pubnet" }))])
+    const r = await resolveMerchant("https://api.example.com/x", deps)
+    expect(r).toMatchObject({ ok: false, code: "no_match" })
+    expect(!r.ok && r.found?.[0]).toMatchObject({ network: "stellar:pubnet", scheme: "mpp" })
+  })
+
+  it("reports a 402 with neither x402 nor a Stellar MPP charge as not_x402", async () => {
+    const { deps } = setup([mpp402("Payment garbage")])
+    expect(await resolveMerchant("https://api.example.com/x", deps)).toEqual({
+      ok: false,
+      code: "not_x402",
+      message: "That URL did not answer with usable x402 or MPP payment terms.",
+    })
+  })
+
   it("retries once with POST after a non-402", async () => {
     const { deps, calls } = setup([new Response("", { status: 404 }), r402(header([entry()]))])
     const r = await resolveMerchant("https://api.example.com/x", deps)
@@ -69,7 +128,7 @@ describe("resolveMerchant", () => {
     const { deps } = setup([new Response("", { status: 200 }), new Response("", { status: 200 })])
     const r = await resolveMerchant("https://api.example.com/x", deps)
     expect(r).toMatchObject({ ok: false, code: "not_x402" })
-    expect(!r.ok && r.message).toContain("HTTP 200")
+    expect(!r.ok && r.message).toBe("That URL did not answer with x402 or MPP payment terms (HTTP 200).")
   })
 
   it("blocks a redirect to a private address", async () => {
@@ -182,7 +241,7 @@ describe("resolveMerchant", () => {
   it("rejects a selected entry whose payTo is not a StrKey and drops bad found entries", async () => {
     const bad = setup([r402(header([{ ...entry(), payTo: "not-an-address" }]))])
     const r = await resolveMerchant("https://api.example.com/x", bad.deps)
-    expect(r).toMatchObject({ ok: false, code: "not_x402", message: "That URL did not answer with usable x402 payment terms." })
+    expect(r).toMatchObject({ ok: false, code: "not_x402", message: "That URL did not answer with usable x402 or MPP payment terms." })
     const mixed = setup([r402(header([entry("stellar:pubnet"), { ...entry("stellar:pubnet"), payTo: "bogus" }]))])
     const n = await resolveMerchant("https://api.example.com/x", mixed.deps)
     expect(n).toMatchObject({ ok: false, code: "no_match" })

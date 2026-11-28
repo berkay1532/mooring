@@ -1,13 +1,18 @@
 /**
- * Pure normalisation and selection of x402 `402` payment terms. No React, no
+ * Pure normalisation and selection of `402` payment terms. No React, no
  * network: the server-side merchant resolver feeds it the `PAYMENT-REQUIRED`
- * header (x402 v2, base64 JSON) and/or the response body (x402 v1, JSON) and
- * gets back the entries a card could pay.
+ * header (x402 v2, base64 JSON) and/or the response body (x402 v1, JSON), or
+ * the `WWW-Authenticate` header (MPP charge), and gets back the entries a card
+ * could pay.
  */
+import { chargeChallengesFromHeader } from "@mooring-live/x402-client";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
+
+import { isPayableScheme } from "./describe";
 
 /** One payable option from a 402 response, reduced to what a card needs. */
 export interface MerchantTerms {
+  /** x402 scheme (`exact`, …), or `mpp` for an MPP Stellar charge challenge. */
   scheme: string;
   network: string;
   asset: string;
@@ -136,13 +141,41 @@ export function parsePaymentRequired(header: string | null, body: string | null)
 }
 
 /**
- * Pick the `exact` entry for the card's network and asset. Several matches
+ * Parse a `WWW-Authenticate` value for MPP Stellar charge challenges, as
+ * `scheme: "mpp"` terms. Challenges without a network are dropped (the card
+ * could not tell which chain to pay on). Returns `null` when the value holds
+ * no usable challenge; never throws.
+ */
+export function parseMppChallenge(header: string | null): ParsedTerms | null {
+  try {
+    const challenges = chargeChallengesFromHeader(header);
+    const accepts: MerchantTerms[] = [];
+    let description: string | undefined;
+    for (const c of challenges) {
+      const r = c.request;
+      const network = str(r.methodDetails?.network);
+      const asset = str(r.currency);
+      const payTo = str(r.recipient);
+      const amount = typeof r.amount === "string" && /^[0-9]+$/.test(r.amount) ? r.amount : undefined;
+      if (!network || !asset || !payTo || !amount) continue;
+      accepts.push({ scheme: "mpp", network, asset, payTo, amount });
+      description ??= clean(firstString(c.description, r.description), MAX_DESCRIPTION);
+    }
+    if (accepts.length === 0) return null;
+    return { accepts, service: description ? { description } : {} };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pick the payable entry (`exact`, or an MPP charge) for the card's network and asset. Several matches
  * paying the same address count as one (the first is returned); matches paying
  * different addresses are ambiguous and returned as `many`.
  */
 export function selectTerms(parsed: ParsedTerms, network: string, asset: string): Selection {
   const found = parsed.accepts.filter(
-    (t) => t.scheme === "exact" && t.network === network && t.asset === asset,
+    (t) => isPayableScheme(t.scheme) && t.network === network && t.asset === asset,
   );
   if (found.length === 0) return { kind: "none" };
   if (new Set(found.map((t) => t.payTo)).size === 1) return { kind: "one", terms: found[0] };

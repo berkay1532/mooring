@@ -2,6 +2,7 @@
 import { mergeEntries } from "./merge";
 import { fetchBazaar } from "./sources/bazaar";
 import type { SourceFetchDeps } from "./sources/common";
+import { fetchMooringSeller } from "./sources/mooring";
 import { fetchMppRouter } from "./sources/mpprouter";
 import { fetchRail402 } from "./sources/rail402";
 import { fetchStellarSight } from "./sources/stellarsight";
@@ -17,6 +18,7 @@ type Loader = (deps: SourceFetchDeps) => Promise<DirectoryEntry[]>;
 
 export async function loadSnapshot(deps: SnapshotDeps): Promise<DirectorySnapshot> {
   const loaders: Array<[DirectorySource, Loader]> = [
+    ["mooring", fetchMooringSeller],
     ["rail402", fetchRail402],
     ["stellarsight", fetchStellarSight],
     ["mpprouter", fetchMppRouter],

@@ -51,6 +51,7 @@ export function fromX402Item(source: DirectorySource, raw: unknown, extras: X402
       amount,
       scheme: "exact",
       kind,
+      protocol: "x402",
       method: extras.method ?? method(obj(info?.input)?.method),
       tags: tags(item.tags),
       proxy: false,

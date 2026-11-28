@@ -1,0 +1,10 @@
+{
+  "name": "Mooring example seller",
+  "network": "stellar:testnet",
+  "payTo": "GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG",
+  "resources": [
+    { "path": "/quote", "protocol": "x402", "amount": "10000", "asset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA" },
+    { "path": "/quote/mpp", "protocol": "mpp", "amount": "10000", "asset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA" }
+  ],
+  "docs": "https://github.com/berkay1532/mooring/blob/main/docs/seller.md"
+}
