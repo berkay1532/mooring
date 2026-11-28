@@ -32,30 +32,6 @@ export interface CardChargeDeps {
   latestLedger?: () => Promise<number>;
 }
 
-/**
- * Per agent key, the tail of the unsponsored credentials in flight. When the
- * agent account is the transaction source, building fetches its sequence
- * number, so two concurrent builds would produce the same sequence and one
- * would fail with `txBAD_SEQ`; they are run one after the other instead.
- */
-const agentLocks = new Map<string, Promise<void>>();
-
-/** Runs `fn` once every earlier `fn` for `key` has settled; released on success and throw. */
-async function withAgentLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const previous = agentLocks.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const done = new Promise<void>((r) => (release = r));
-  const tail = previous.then(() => done);
-  agentLocks.set(key, tail);
-  await previous;
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (agentLocks.get(key) === tail) agentLocks.delete(key);
-  }
-}
-
 const SEQUENCE_CONFLICT = /tx_?bad_seq/i;
 
 /** True when `text` carries the network's bad-sequence result (`txBAD_SEQ` / `tx_bad_seq`). */
@@ -115,6 +91,12 @@ function parseRequest(challenge: ChargeChallenge): ChargeRequest {
  * for the sponsor; otherwise the agent account is the source and signs the
  * envelope (it pays the network fee, the card pays the merchant). Push
  * credentials (`signedHash`/`hash`) are not produced.
+ *
+ * Unsponsored credentials carry the agent account's next sequence number,
+ * which is consumed only when the seller broadcasts. This method does not
+ * serialize: a direct user must run agent-paid payments for one agent key
+ * one at a time, from building the credential until the seller answers
+ * (`pay()` does this), or the second fails with `sequence_conflict`.
  */
 export function cardChargeMethod(opts: CardChargeOptions, deps: CardChargeDeps = {}) {
   const rpcUrl = getRpcUrl(opts.network, opts.rpcUrl ? { url: opts.rpcUrl } : undefined);
@@ -195,14 +177,7 @@ export function cardChargeMethod(opts: CardChargeOptions, deps: CardChargeDeps =
       }
 
       const sponsored = methodDetails?.feePayer === true;
-      // Unsponsored, the agent account's sequence number is consumed: one
-      // build-sign-simulate-sign at a time per agent key. The sponsored
-      // envelope's source is the placeholder, so it needs no lock.
-      return sponsored
-        ? sign(challenge as ChargeChallenge, request, merchant, true)
-        : withAgentLock(opts.agent.publicKey(), () =>
-            sign(challenge as ChargeChallenge, request, merchant, false),
-          );
+      return sign(challenge as ChargeChallenge, request, merchant, sponsored);
     },
   });
 

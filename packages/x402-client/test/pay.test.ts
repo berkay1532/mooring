@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Keypair, rpc, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
+import { Account, Keypair, rpc, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import { Challenge, Credential, Receipt } from "mppx";
 import { chargeMethod } from "../src/mpp/schema.js";
 import { readCardInfo, readMerchants } from "../src/card.js";
@@ -591,6 +591,136 @@ describe("pay", () => {
 
       expect(result.settlement?.txHash).toBe(MPP_TX);
       expect(reserve).toHaveBeenCalledTimes(1);
+    });
+
+    describe("per agent key serialization", () => {
+      /** A 402 with a Stellar charge challenge, optionally fee-sponsored. */
+      const challenge402 = (feePayer?: boolean) => () =>
+        new Response(null, {
+          status: 402,
+          headers: {
+            "WWW-Authenticate": Challenge.serialize(
+              Challenge.fromMethod(chargeMethod, {
+                secretKey: "test",
+                realm: "api.mooring.live",
+                request: {
+                  amount: "10000",
+                  currency: USDC_TESTNET,
+                  recipient: PAY_TO,
+                  methodDetails: {
+                    network: "stellar:testnet",
+                    credentialTypes: ["transaction"],
+                    ...(feePayer ? { feePayer } : {}),
+                  },
+                },
+              }),
+            ),
+          },
+        });
+
+      /**
+       * A seller for one payer `tag`: answers the unpaid leg with `challenge`
+       * and the paid leg with `paid` once `gate` resolves. Every step is logged.
+       */
+      function seller(tag: string, events: string[], challenge: () => Response, gate: Promise<void>, paid: () => Response = mppPaid) {
+        return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (!headersOf(input, init).get("Authorization")) return challenge();
+          events.push(`paid-sent:${tag}`);
+          await gate;
+          events.push(`paid-answered:${tag}`);
+          return paid();
+        });
+      }
+
+      /** Logs every credential build (each one reads the source account). */
+      function logBuilds(events: string[]) {
+        const { getAccount, simulate } = stubMppRpc();
+        getAccount.mockImplementation(async (address: string) => {
+          events.push(`build:${address === agent.publicKey() ? "A" : address.slice(0, 4)}`);
+          return new Account(address, "5");
+        });
+        return { getAccount, simulate };
+      }
+
+      const tick = () => new Promise((r) => setTimeout(r, 20));
+
+      it("holds the agent lock from the credential's build until the seller answers", async () => {
+        const events: string[] = [];
+        logBuilds(events);
+        let open!: () => void;
+        const gate = new Promise<void>((r) => (open = r));
+        const order: string[] = [];
+
+        const p1 = pay("http://api.test/one", undefined, opts(seller("1", events, challenge402(), gate)))
+          .then((r) => (order.push("1"), r));
+        const p2 = pay("http://api.test/two", undefined, opts(seller("2", events, challenge402(), Promise.resolve())))
+          .then((r) => (order.push("2"), r));
+        await tick();
+        // The first payment is waiting on its seller; the second has not built.
+        expect(events).toEqual(["build:A", "paid-sent:1"]);
+
+        open();
+        const [r1, r2] = await Promise.all([p1, p2]);
+        expect(events).toEqual(["build:A", "paid-sent:1", "paid-answered:1", "build:A", "paid-sent:2", "paid-answered:2"]);
+        expect(order).toEqual(["1", "2"]);
+        expect(r1.settlement?.txHash).toBe(MPP_TX);
+        expect(r2.settlement?.txHash).toBe(MPP_TX);
+      });
+
+      it("releases the agent lock when the first payment fails", async () => {
+        const events: string[] = [];
+        logBuilds(events);
+        const failed = () => new Response("boom", { status: 500 });
+
+        const p1 = pay("http://api.test/one", undefined, opts(seller("1", events, challenge402(), Promise.resolve(), failed)));
+        const p2 = pay("http://api.test/two", undefined, opts(seller("2", events, challenge402(), Promise.resolve())));
+
+        await expect(p1).rejects.toMatchObject({ name: "PaymentError", kind: "unconfirmed" });
+        await expect(p2).resolves.toMatchObject({ protocol: "mpp" });
+      });
+
+      it("does not serialize two different agent keys", async () => {
+        const events: string[] = [];
+        logBuilds(events);
+        let open!: () => void;
+        const gate = new Promise<void>((r) => (open = r));
+        const other = Keypair.random();
+
+        const p1 = pay("http://api.test/one", undefined, opts(seller("1", events, challenge402(), gate)));
+        await tick();
+        const p2 = pay("http://api.test/two", undefined, {
+          ...opts(seller("2", events, challenge402(), Promise.resolve())),
+          agent: other,
+        });
+        await expect(p2).resolves.toMatchObject({ protocol: "mpp" });
+        // The other key built and settled while the first key's seller was still pending.
+        expect(events).toEqual([
+          "build:A",
+          "paid-sent:1",
+          `build:${other.publicKey().slice(0, 4)}`,
+          "paid-sent:2",
+          "paid-answered:2",
+        ]);
+        open();
+        await p1;
+      });
+
+      it("does not serialize sponsored payments for one agent key", async () => {
+        const events: string[] = [];
+        const { simulate } = logBuilds(events);
+        let open!: () => void;
+        const gate = new Promise<void>((r) => (open = r));
+
+        const p1 = pay("http://api.test/one", undefined, opts(seller("1", events, challenge402(true), gate)));
+        await tick();
+        const p2 = pay("http://api.test/two", undefined, opts(seller("2", events, challenge402(true), Promise.resolve())));
+        await expect(p2).resolves.toMatchObject({ protocol: "mpp" });
+        expect(events).toEqual(["paid-sent:1", "paid-sent:2", "paid-answered:2"]);
+        // Both credentials were built and simulated (build + enforcing each).
+        expect(simulate).toHaveBeenCalledTimes(4);
+        open();
+        await p1;
+      });
     });
 
     it("a free response produces no receipt", async () => {

@@ -6,6 +6,7 @@ import { CardPolicyDenied, GuardDenied, PaymentError, isAbsoluteHttpUrl, stripQu
 import { deploymentFor } from "./deployments.js";
 import { formatUsdc } from "./guard/config.js";
 import type { Guard, GuardTerms, Reservation } from "./guard/types.js";
+import { withAgentLock } from "./mpp/agent-lock.js";
 import { cardChargeMethod, isSequenceConflict, isSequenceConflictError, sequenceConflict } from "./mpp/charge.js";
 import { detectProtocol, selectChargeChallenge } from "./mpp/detect.js";
 import type { ChargeRequest } from "./mpp/schema.js";
@@ -323,10 +324,9 @@ async function payMpp(
     };
   };
 
-  for (let attempt = 1; ; attempt++) {
-    let payment;
+  const prepare = async () => {
     try {
-      payment = await mppx.preparePayment(first, { request: { headers } });
+      return await mppx.preparePayment(first, { request: { headers } });
     } catch (err) {
       // No configured method can pay this challenge (another network, say):
       // nothing was signed or spent.
@@ -337,28 +337,42 @@ async function payMpp(
         }),
       );
     }
-    const charge = payment.challenge.request as ChargeRequest;
-    if (attempt === 1) {
+  };
+
+  // Selecting the challenge reads no chain state; the sequence is read when
+  // the credential is created, inside the lock below.
+  let payment = await prepare();
+  const charge = payment.challenge.request as ChargeRequest;
+  try {
+    await reserve({
+      card: opts.card,
+      payTo: charge.recipient,
+      amount: charge.amount,
+      asset: charge.currency,
+      network: charge.methodDetails?.network ?? opts.network,
+      ...(requestUrl ? { url: requestUrl } : {}),
+    });
+  } catch (err) {
+    if (err instanceof PaymentError) return fail(err);
+    throw err;
+  }
+
+  const run = async (): Promise<X402Paid> => {
+    for (let attempt = 1; ; attempt++) {
+      if (attempt > 1) payment = await prepare();
       try {
-        await reserve({
-          card: opts.card,
-          payTo: charge.recipient,
-          amount: charge.amount,
-          asset: charge.currency,
-          network: charge.methodDetails?.network ?? opts.network,
-          ...(requestUrl ? { url: requestUrl } : {}),
-        });
+        return await settle(payment, charge);
       } catch (err) {
-        if (err instanceof PaymentError) return fail(err);
-        throw err;
+        if (!isSequenceConflictError(err)) throw err;
+        if (attempt === 1) continue;
+        return fail(err);
       }
     }
-    try {
-      return await settle(payment, charge);
-    } catch (err) {
-      if (!isSequenceConflictError(err)) throw err;
-      if (attempt === 1) continue;
-      return fail(err);
-    }
-  }
+  };
+
+  // Unsponsored, the agent account is the source and its sequence is consumed
+  // only when the seller broadcasts: one payment per agent key, held from the
+  // credential's build until the seller's answer (retry included). A
+  // sponsored envelope's source is the placeholder, so it takes no lock.
+  return charge.methodDetails?.feePayer === true ? run() : withAgentLock(opts.agent.publicKey(), run);
 }
