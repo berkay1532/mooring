@@ -723,6 +723,235 @@ describe("pay", () => {
       });
     });
 
+    describe("a paid leg that fails in transit", () => {
+      for (const protocol of ["x402", "mpp"] as const) {
+        it(`is unconfirmed, counted as spent and receipted as failed (${protocol})`, async () => {
+          stubMppRpc();
+          const { guard, commit } = spiedGuard();
+          const receipts: MooringReceipt[] = [];
+          const onPaymentError = vi.fn();
+          const fetch = scripted(protocol === "x402" ? x402Challenge : () => mppChallengeResponse(), () => {
+            throw new TypeError("fetch failed");
+          });
+
+          const err = await pay("http://api.test/weather", undefined, {
+            ...opts(fetch),
+            guard,
+            onPaymentError,
+            onReceipt: (r) => receipts.push(r),
+          }).catch((e) => e);
+
+          expect(err).toBeInstanceOf(PaymentError);
+          expect(err).toMatchObject({ kind: "unconfirmed", detail: "paid request failed in transit: fetch failed" });
+          expect(fetch).toHaveBeenCalledTimes(2);
+          expect(commit).toHaveBeenCalledTimes(1);
+          expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+          expect(onPaymentError).toHaveBeenCalledTimes(1);
+          expect(onPaymentError).toHaveBeenCalledWith(err);
+          expect(receipts).toHaveLength(1);
+          expect(receipts[0]).toMatchObject({ protocol, status: "failed" });
+          expect(receipts[0]!.reason).toMatch(/^unconfirmed: paid request failed in transit/);
+          expect(await guard.snapshot(CARD)).toMatchObject({ daily: "10000", reserved: "0" });
+        });
+      }
+
+      it("a transport error on the first, unpaid leg stays a plain failure", async () => {
+        const onPaymentError = vi.fn();
+        const fetch = scripted(() => {
+          throw new TypeError("fetch failed");
+        });
+        const err = await pay("http://api.test/weather", undefined, { ...opts(fetch), onPaymentError }).catch(
+          (e) => e,
+        );
+        expect(err).toBeInstanceOf(TypeError);
+        expect(err).not.toBeInstanceOf(PaymentError);
+        expect(onPaymentError).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("a guard whose commit fails", () => {
+      for (const protocol of ["x402", "mpp"] as const) {
+        it(`does not change a settled payment's outcome (${protocol})`, async () => {
+          stubMppRpc();
+          const { guard, commit } = spiedGuard();
+          commit.mockRejectedValue(new Error("guard lock timed out"));
+          const receipts: MooringReceipt[] = [];
+          const fetch = scripted(
+            protocol === "x402" ? x402Challenge : () => mppChallengeResponse(),
+            protocol === "x402" ? x402Paid : mppPaid,
+          );
+
+          const result = await pay("http://api.test/weather", undefined, {
+            ...opts(fetch),
+            guard,
+            onReceipt: (r) => receipts.push(r),
+          });
+
+          expect(result.protocol).toBe(protocol);
+          expect(result.response.status).toBe(200);
+          expect(result.settlement?.txHash).toBe(protocol === "x402" ? X402_TX : MPP_TX);
+          expect(commit).toHaveBeenCalledTimes(1);
+          expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+          expect(receipts.map((r) => r.status)).toEqual(["settled"]);
+          expect(result.receipt).toEqual(receipts[0]);
+        });
+      }
+
+      it("an unconfirmed payment still rethrows its own error and emits its receipt", async () => {
+        stubMppRpc();
+        const { guard, commit } = spiedGuard();
+        commit.mockRejectedValue(new Error("guard lock timed out"));
+        const receipts: MooringReceipt[] = [];
+        const fetch = scripted(
+          () => mppChallengeResponse(),
+          () => mppChallengeResponse(),
+        );
+
+        const err = await pay("http://api.test/weather", undefined, {
+          ...opts(fetch),
+          guard,
+          onReceipt: (r) => receipts.push(r),
+        }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(PaymentError);
+        expect(err.kind).toBe("unconfirmed");
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+        expect(receipts).toHaveLength(1);
+        expect(receipts[0]).toMatchObject({ status: "failed", reason: `unconfirmed: ${err.detail}` });
+      });
+
+      it("a card denial still rethrows the denial and emits a denied receipt", async () => {
+        vi.mocked(readMerchants).mockResolvedValueOnce([]);
+        const { guard, commit } = spiedGuard();
+        commit.mockRejectedValue(new Error("guard lock timed out"));
+        const receipts: MooringReceipt[] = [];
+
+        const err = await pay("http://api.test/weather", undefined, {
+          ...opts(scripted(x402Challenge)),
+          guard,
+          onReceipt: (r) => receipts.push(r),
+        }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(CardPolicyDenied);
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "denied");
+        expect(receipts.map((r) => [r.status, r.reason])).toEqual([["denied", "not_allowlisted"]]);
+      });
+    });
+
+    it("carries the MPP seller's refusal text into the unconfirmed detail", async () => {
+      stubMppRpc();
+      const fetch = scripted(
+        () => mppChallengeResponse(),
+        () => {
+          const r = mppChallengeResponse();
+          return new Response(JSON.stringify({ error: "contract authorizers cannot be verified off-chain" }), {
+            status: 402,
+            headers: r.headers,
+          });
+        },
+      );
+
+      const err = await pay("http://api.test/weather", undefined, opts(fetch)).catch((e) => e);
+
+      expect(err).toBeInstanceOf(PaymentError);
+      expect(err.kind).toBe("unconfirmed");
+      expect(err.detail).toMatch(/^402 without a Payment-Receipt; settlement state unknown — seller said: /);
+      expect(err.detail).toContain("contract authorizers cannot be verified off-chain");
+    });
+
+    it("carries the WWW-Authenticate error_description when the refusal has no body", async () => {
+      stubMppRpc();
+      const fetch = scripted(
+        () => mppChallengeResponse(),
+        () =>
+          new Response(null, {
+            status: 401,
+            headers: { "WWW-Authenticate": 'Payment error="invalid_credential", error_description="auth entry expired"' },
+          }),
+      );
+
+      const err = await pay("http://api.test/weather", undefined, opts(fetch)).catch((e) => e);
+
+      expect(err).toMatchObject({ kind: "unconfirmed" });
+      expect(err.detail).toBe(
+        "401 without a Payment-Receipt; settlement state unknown — seller said: auth entry expired",
+      );
+    });
+
+    it("truncates the seller's refusal text to 200 characters", async () => {
+      stubMppRpc();
+      const long = "x".repeat(500);
+      const fetch = scripted(
+        () => mppChallengeResponse(),
+        () => new Response(`${long}\nsecond line`, { status: 400 }),
+      );
+
+      const err = await pay("http://api.test/weather", undefined, opts(fetch)).catch((e) => e);
+
+      expect(err.detail).toBe(`400 without a Payment-Receipt; settlement state unknown — seller said: ${"x".repeat(200)}`);
+    });
+
+    describe("a POST body", () => {
+      for (const protocol of ["x402", "mpp"] as const) {
+        it(`is sent with the method on both legs (${protocol})`, async () => {
+          stubMppRpc();
+          const seen: Array<{ method: string; body: string }> = [];
+          const replies = [
+            protocol === "x402" ? x402Challenge : () => mppChallengeResponse(),
+            protocol === "x402" ? x402Paid : mppPaid,
+          ];
+          const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+            const req = new Request(input, init);
+            seen.push({ method: req.method, body: await req.text() });
+            return replies.shift()!();
+          });
+
+          const result = await pay(
+            "http://api.test/quote",
+            { method: "POST", body: JSON.stringify({ q: 1 }), headers: { "content-type": "application/json" } },
+            opts(fetch as typeof globalThis.fetch),
+          );
+
+          expect(result.protocol).toBe(protocol);
+          expect(seen).toEqual([
+            { method: "POST", body: '{"q":1}' },
+            { method: "POST", body: '{"q":1}' },
+          ]);
+        });
+      }
+    });
+
+    it("an MPP charge for another network is not_payable", async () => {
+      const { simulate } = stubMppRpc();
+      const onPaymentError = vi.fn();
+      const challenge = Challenge.fromMethod(chargeMethod, {
+        secretKey: "test",
+        realm: "api.mooring.live",
+        request: {
+          amount: "10000",
+          currency: USDC_TESTNET,
+          recipient: PAY_TO,
+          methodDetails: { network: "stellar:pubnet", credentialTypes: ["transaction"] },
+        },
+      });
+      const fetch = scripted(
+        () => new Response(null, { status: 402, headers: { "WWW-Authenticate": Challenge.serialize(challenge) } }),
+      );
+
+      const err = await pay("http://api.test/weather", undefined, { ...opts(fetch), onPaymentError }).catch(
+        (e) => e,
+      );
+
+      expect(err).toBeInstanceOf(PaymentError);
+      expect(err.kind).toBe("rejected");
+      expect(err.detail).toMatch(/^not_payable: mpp /);
+      expect(onPaymentError).toHaveBeenCalledWith(err);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(simulate).not.toHaveBeenCalled();
+    });
+
     it("a free response produces no receipt", async () => {
       const onReceipt = vi.fn();
       const fetch = scripted(() => new Response("free", { status: 200 }));

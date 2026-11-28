@@ -1,7 +1,7 @@
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { Receipt as MppReceipt } from "mppx";
 import { Mppx } from "mppx/client/core";
-import { payX402, type MooringClientOptions, type X402Paid } from "./client.js";
+import { paidInTransit, payX402, type MooringClientOptions, type X402Paid } from "./client.js";
 import { CardPolicyDenied, GuardDenied, PaymentError, isAbsoluteHttpUrl, stripQuery } from "./denial.js";
 import { deploymentFor } from "./deployments.js";
 import { formatUsdc } from "./guard/config.js";
@@ -56,9 +56,11 @@ export interface PayResult {
  * the card's policy refuses and
  * `PaymentError` for every payment failure — a 402 that carries neither
  * protocol's terms, unreadable x402 terms, or no offer the card can pay is
- * `rejected` with a `not_payable` detail — never with a bare 402. Errors that
- * are not payment outcomes (the transport itself failing, an RPC the card
- * cannot reach while signing) propagate unchanged.
+ * `rejected` with a `not_payable` detail — never with a bare 402. The paid
+ * request failing in transit is `unconfirmed` (the payment may have been
+ * settled). Errors that are not payment outcomes (the transport failing on
+ * the first, unpaid request, an RPC the card cannot reach while signing)
+ * propagate unchanged.
  */
 export function pay(url: string | URL, init: RequestInit | undefined, opts: PayOptions): Promise<PayResult> {
   return payRequest(url, init, opts);
@@ -127,6 +129,23 @@ export async function payRequest(
     return signed;
   };
 
+  /**
+   * Commits the reservation, at most once: it is cleared before the guard is
+   * called, so a commit that throws can never be committed again with another
+   * outcome. The guard's I/O failing does not change the payment's outcome —
+   * an uncommitted reservation record ages out.
+   */
+  const commit = async (outcome: "settled" | "denied" | "failed"): Promise<void> => {
+    const r = attempt.reservation;
+    attempt.reservation = undefined;
+    if (!r) return;
+    try {
+      await opts.guard!.commit(r, outcome);
+    } catch {
+      /* the guard's failure is not the payment's */
+    }
+  };
+
   try {
     if (opts.guard && (await opts.guard.isStopped(opts.card))) {
       // Stopped: refuse before any protocol work. The terms are read from the
@@ -165,7 +184,7 @@ export async function payRequest(
           )
         : await payMpp(opts, transport, request, first, requestUrl, fail, reserve);
 
-    if (attempt.reservation) await opts.guard!.commit(attempt.reservation, "settled");
+    await commit("settled");
     return {
       response,
       protocol,
@@ -178,7 +197,7 @@ export async function payRequest(
     // An unconfirmed settlement may have debited the card: count it as spent
     // (over-counting is the safe direction for a cap), report it as failed.
     const unconfirmed = err instanceof PaymentError && err.kind === "unconfirmed";
-    if (attempt.reservation) await opts.guard!.commit(attempt.reservation, unconfirmed ? "settled" : status);
+    await commit(unconfirmed ? "settled" : status);
     if (unconfirmed) {
       receipt("failed", {
         reason: `unconfirmed: ${err.detail ?? ""}`,
@@ -236,6 +255,24 @@ async function peekTerms(
   }
 }
 
+/** Longest seller refusal text carried into an error detail. */
+const REFUSAL_MAX = 200;
+
+/**
+ * What a seller said when it refused a paid request: the first non-empty
+ * line of the body, else the `error_description` (or `error`) parameter of
+ * its `WWW-Authenticate`, truncated. `undefined` when it said nothing.
+ */
+function refusalText(body: string, challenge: string): string | undefined {
+  const line = body
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  const param = (name: string) => new RegExp(`(?:^|[\\s,])${name}="([^"]*)"`).exec(challenge)?.[1]?.trim();
+  const text = line || param("error_description") || param("error");
+  return text ? text.slice(0, REFUSAL_MAX) : undefined;
+}
+
 /**
  * Pays an MPP charge. A `sequence_conflict` (the agent account's sequence
  * moved under an unsponsored payment: `txBAD_SEQ` from the simulation or the
@@ -286,15 +323,25 @@ async function payMpp(
     // The charge method reports its own denials and errors to the callbacks.
     const credential = await payment.createCredential();
     const paidInit = payment.setCredential({ headers }, credential);
-    const response = await transport(new Request(request.clone(), paidInit));
+    let response: Response;
+    try {
+      response = await transport(new Request(request.clone(), paidInit));
+    } catch (err) {
+      // The credential may have reached the seller before the connection
+      // failed, and the seller may have broadcast it.
+      return fail(paidInTransit(err));
+    }
 
+    let sellerSaid: string | undefined;
     if (!response.ok) {
       // Read from a clone, so the caller's response keeps its body.
       const body = await response.clone().text().catch(() => "");
-      if (isSequenceConflict(`${body}\n${response.headers.get("WWW-Authenticate") ?? ""}`)) {
+      const challenge = response.headers.get("WWW-Authenticate") ?? "";
+      if (isSequenceConflict(`${body}\n${challenge}`)) {
         // Not applied: the network refused the sequence, nothing was spent.
         throw sequenceConflict(`seller answered ${response.status}`);
       }
+      sellerSaid = refusalText(body, challenge);
     }
 
     let receipt;
@@ -304,10 +351,13 @@ async function payMpp(
     } catch (err) {
       // The credential was handed over and may have been broadcast; without a
       // receipt the settlement state is unknown.
+      const unknown = `${response.status} without a Payment-Receipt; settlement state unknown`;
       return fail(
         new PaymentError({
           kind: "unconfirmed",
-          detail: `${response.status} without a Payment-Receipt; settlement state unknown (${err instanceof Error ? err.message : String(err)})`,
+          detail: sellerSaid
+            ? `${unknown} — seller said: ${sellerSaid}`
+            : `${unknown} (${err instanceof Error ? err.message : String(err)})`,
         }),
       );
     }
@@ -333,7 +383,7 @@ async function payMpp(
       return fail(
         new PaymentError({
           kind: "rejected",
-          detail: `mpp_unpayable: ${err instanceof Error ? err.message : String(err)}`,
+          detail: `not_payable: mpp challenge no configured method can pay (${err instanceof Error ? err.message : String(err)})`,
         }),
       );
     }

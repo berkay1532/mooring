@@ -341,7 +341,15 @@ export async function payX402(
       replay = undefined;
       return res;
     }
-    return transport(input, init);
+    // Every call after the replayed 402 is the paid request, carrying the
+    // agent-signed PAYMENT-SIGNATURE: if its transport fails, the facilitator
+    // may already have settled it.
+    try {
+      return await transport(input, init);
+    } catch (err) {
+      box.set(paidInTransit(err), opts);
+      throw box.last;
+    }
   }) as typeof globalThis.fetch;
   const wrapped = wrapFetchWithPayment(replaying, client);
   try {
@@ -410,6 +418,18 @@ export async function payX402(
     }
     throw err;
   }
+}
+
+/**
+ * Internal: the `unconfirmed` error for a paid request whose transport threw
+ * (aborted, timed out, reset). The signed payment was handed over, or partly
+ * sent, so it may have been settled.
+ */
+export function paidInTransit(err: unknown): PaymentError {
+  return new PaymentError({
+    kind: "unconfirmed",
+    detail: `paid request failed in transit: ${err instanceof Error ? err.message : String(err)}`,
+  });
 }
 
 /**
