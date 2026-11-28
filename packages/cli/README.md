@@ -16,6 +16,9 @@ mooring keygen --hex                        # a new agent keypair (--hex prints 
 OWNER_SECRET=S… mooring create --label ops-agent --signer G… --budget 5 --period 1d
 mooring status --card C… --json             # label, policy, period, remaining budget, allowlist
 AGENT_SECRET=S… mooring pay https://api.example.com/weather --card C…
+mooring guard --card C…                     # local spend counters and caps
+mooring stop --reason "investigating"       # no payment is signed until `mooring resume`
+mooring receipts export --csv               # the signed receipt ledger
 ```
 
 `mooring create` deploys a card through the Mooring factory, signed by the **owner** key in
@@ -27,11 +30,45 @@ https://app.mooring.live/cards for that owner on any device, with no import step
 machine-readable output (card address, salt index, tx hash). Fund the card by sending USDC to its
 address; the allowlist is managed in the app.
 
-`mooring pay` prints the HTTP status, the settlement transaction hash and the response body.
-A refusal by the card's policy prints `Denied (<reason>) at <stage>` and exits with code **2**,
-so a script can tell a refused payment from a broken one. `--no-precheck` skips the local policy
-mirror (the card still enforces on-chain); `--agent-secret-env <NAME>` reads the secret from a
-different variable; `--network` and `--rpc` select the network.
+`mooring pay <url> --card C…` pays an x402 **or** MPP charge seller (one `pay()`), inside the local
+guard's caps. On success it prints:
+
+```
+HTTP 200
+Protocol: x402
+Settlement: <tx hash> (stellar:testnet)
+Receipt: <id>
+<response body>
+```
+
+`--json` prints `{ protocol, settlement, receipt }` instead of the body. A refusal by the card's
+policy prints `Denied (<reason>) at <stage>` (with an `Allow it:` link for an unlisted merchant)
+and exits with code **2**, so a script can tell a refused payment from a broken one. A refusal by
+the local guard prints, before anything is signed:
+
+```
+refused before signing: <reason> (<attempted> USDC attempted, limit <limit>)
+```
+
+and also exits **2**. `--no-precheck` skips the local policy mirror (the card still enforces
+on-chain); `--agent-secret-env <NAME>` reads the secret from a different variable; `--network` and
+`--rpc` select the network.
+
+Local caps, in decimal USDC: `--daily-cap`, `--total-cap`, `--max-per-tx`. Precedence: flags, then
+`mooring.guard.json` in the working directory (`{ "dailyCap": "5", "totalCap": "50", "maxPerTx": "0.5" }`),
+then `MOORING_DAILY_CAP`, `MOORING_TOTAL_CAP`, `MOORING_MAX_PER_TX`. `--no-guard` pays without the
+guard (no caps, no stop switch); receipts are still recorded.
+
+Guard and receipts commands (state lives in `~/.mooring`; `MOORING_HOME` overrides it):
+
+- `mooring stop [--reason <text>] [--card C…]` stops every payment, or one card's, by writing the
+  `stop` file. `mooring resume [--card C…]` lifts it.
+- `mooring guard --card C… [--json]` prints today's and total spend, open reservations, caps and
+  the stop state.
+- `mooring receipts export --csv|--json [--since <iso>] [--card C…]` writes the ledger
+  (`~/.mooring/receipts.jsonl`) to stdout.
+- `mooring receipts verify [<file>]` checks every receipt's agent signature (default: the ledger);
+  it prints `verified <n> receipts`, or `bad signature: <id>` and exits 1.
 
 Cards are managed by their owner in the web app at https://app.mooring.live (`mooring create` makes one from a script).
 Integration guide, error semantics and facilitator constraints:

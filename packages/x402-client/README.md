@@ -120,6 +120,72 @@ https://app.mooring.live/allow?card=<C…>&url=<service url without query>
 `allowMerchantUrl(appUrl, card, serviceUrl)` builds the same link. Point it at another deployment
 of the app with the `appUrl` option (default `https://app.mooring.live`).
 
+## Paying MPP charge sellers
+
+`pay()` is one entry point for both protocols. It requests the URL and, on a `402`, pays with
+whichever one the seller speaks: x402 (`PAYMENT-REQUIRED`) or an MPP (Machine Payments Protocol)
+Stellar **charge** (`WWW-Authenticate: Payment`). The seller's `402` is reused, so a paid request
+costs two round trips.
+
+```ts
+import { pay } from "@mooring-live/x402-client";
+
+const { response, protocol, settlement, receipt } = await pay(url, undefined, {
+  card: "CAJPWJBF…AHCJ",
+  agent: Keypair.fromSecret(process.env.AGENT_SECRET!),
+  network: "stellar:testnet",
+});
+console.log(protocol, settlement?.txHash, await response.text());
+```
+
+`PayResult` carries `response`, `protocol` (`"x402" | "mpp" | "none"`; `none` when the seller did
+not ask for payment), `settlement` (`{ txHash, amount, payTo, asset, network }` or `null`) and
+`receipt` (the agent-signed receipt, or `null` when nothing was paid). Refusals are the same typed
+errors as above, plus `GuardDenied` (next section).
+
+MPP is supported in **pull mode only**: the client signs, the seller broadcasts the transaction.
+The agent account pays the network fee unless the seller sponsors it. The credential's `source`
+is `did:pkh:stellar:testnet:<card>`, so the card is the payer. Stock `@stellar/mpp` servers
+currently accept only `G…` payers; the hosted Mooring seller accepts cards, and an upstream fix is
+being prepared.
+
+## Guard rails and receipts
+
+An agent-side guard decides **before the agent key signs anything**. It is separate from the
+card's on-chain policy: the card stays the authority, the guard is a second, local limit.
+
+```ts
+import { pay, GuardDenied, parseGuardConfig } from "@mooring-live/x402-client";
+import { defaultStateDir, fileGuard } from "@mooring-live/x402-client/node";
+
+const caps = parseGuardConfig({ dailyCap: "5", maxPerTx: "0.50" }); // decimal USDC -> base units
+const guard = fileGuard({ stateDir: defaultStateDir(), caps }); // or new MemoryGuard(caps) in memory
+try {
+  await pay(url, undefined, { card, agent, network: "stellar:testnet", guard });
+} catch (err) {
+  if (err instanceof GuardDenied) console.error(err.reason, err.attempted, err.limit);
+}
+```
+
+- **Caps** are decimal USDC strings: `dailyCap` (per card, per UTC day), `totalCap` (per card, all
+  time) and `maxPerTx`.
+- **Config precedence:** options, then `mooring.guard.json` in the working directory, then the
+  environment (`MOORING_DAILY_CAP`, `MOORING_TOTAL_CAP`, `MOORING_MAX_PER_TX`).
+- **Stop switch:** `guard.stop(reason?, card?)` and `guard.resume(card?)`. With `fileGuard` the
+  switch is the `stop` file in the state directory, so another process can flip it.
+- **Decision order:** stopped, then `max_per_tx`, then daily, then total. Open reservations count
+  against the caps, so concurrent payments cannot jointly overshoot.
+- **A refusal is `GuardDenied`**, thrown before anything is signed. It reaches neither `onDenial`
+  (the card's refusals) nor `onPaymentError`.
+- **Receipts** are signed by the agent key (`signReceipt` / `verifyReceipt`) for every attempt with
+  known terms: settled, denied or failed. Pass `onReceipt` to `pay()` to collect them.
+  `appendReceipt` writes them to the ledger `~/.mooring/receipts.jsonl`; set `MOORING_HOME` to
+  move the state directory.
+- A payment whose outcome is `unconfirmed` **counts as spent** in the guard until you reconcile it.
+
+The main entry is browser-safe. The `@mooring-live/x402-client/node` subpath (`fileGuard`, the
+ledger, config loading) uses the filesystem and is **Node-only**.
+
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -147,6 +213,11 @@ of the app with the `appUrl` option (default `https://app.mooring.live`).
 | `reconcileSettlement(rpcUrl, network, hash)` | asks the ledger what became of a settlement transaction |
 | `precheck(info, merchants, terms, now)` | the local policy mirror, on its own |
 | `readCardInfo(rpcUrl, passphrase, card)`, `readMerchants(…)` | read-only card views (`info()`, `merchants()`); `CardInfo.label` is the owner-chosen display name |
+| `pay(url, init, opts)`, `PayOptions`, `PayResult` | one call for x402 and MPP charge sellers; adds `guard`, `usdc`, `onReceipt` to the client options |
+| `detectProtocol`, `selectChargeChallenge`, `chargeMethod` | read a `402` and pick the protocol / MPP charge challenge it offers |
+| `GuardDenied`, `MemoryGuard`, `parseGuardConfig`, `guardCapsFromEnv`, `formatUsdc` | the local guard: refusal error, in-memory implementation, config parsing, env caps, base units to decimal USDC |
+| `signReceipt`, `verifyReceipt`, `canonicalReceipt`, `receiptId` | agent-signed payment receipts |
+| `@mooring-live/x402-client/node`: `fileGuard`, `defaultStateDir`, `loadGuardConfig`, `appendReceipt`, `readReceipts`, `exportReceipts` | Node-only: file-backed guard and stop file, state directory, `mooring.guard.json` loading, the JSONL receipt ledger |
 | `CardExactStellarScheme` | the x402 `exact` scheme client whose payer is the card |
 | `signCardAuthEntries(tx, card, agent, expirationLedger)` | signs a card auth entry with the agent key |
 
