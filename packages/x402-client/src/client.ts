@@ -7,6 +7,7 @@ import {
   CARD_ERROR_CODES,
   CardPolicyDenied,
   DEFAULT_APP_URL,
+  GuardDenied,
   PaymentError,
   cardDenialFromEvents,
   classifyContractError,
@@ -42,7 +43,7 @@ export interface Settlement {
 }
 
 /** Everything `createMooringFetch` can reject with. */
-type PaymentFailure = CardPolicyDenied | PaymentError;
+type PaymentFailure = CardPolicyDenied | PaymentError | GuardDenied;
 
 /**
  * Internal: the last failure recorded by the hooks, so the fetch wrapper can
@@ -52,12 +53,26 @@ type PaymentFailure = CardPolicyDenied | PaymentError;
  */
 class FailureBox {
   last?: PaymentFailure;
+  /** An untyped error raised by a `beforeSign` hook, rethrown as is. */
+  unexpected?: { error: unknown };
+  /**
+   * Records `failure` and reports it: `onDenial` for a `CardPolicyDenied`,
+   * `onPaymentError` for a `PaymentError`. A `GuardDenied` (a local guard,
+   * not the card) reaches neither callback; it is only thrown.
+   */
   set(failure: PaymentFailure, opts: MooringClientOptions): void {
     this.last = failure;
     if (failure instanceof CardPolicyDenied) opts.onDenial?.(failure);
-    else opts.onPaymentError?.(failure);
+    else if (failure instanceof PaymentError) opts.onPaymentError?.(failure);
   }
 }
+
+/**
+ * Internal: runs before the pre-check and before anything is signed, with the
+ * `accepts` entry x402 selected. Throwing `GuardDenied` or `PaymentError`
+ * aborts the payment with that error.
+ */
+export type BeforeSign = (req: PaymentRequirements) => Promise<void>;
 
 /**
  * Builds an x402 client that pays from a Mooring card.
@@ -82,6 +97,7 @@ export function createMooringClient(
   opts: MooringClientOptions,
   box: FailureBox = new FailureBox(),
   requestUrl?: string,
+  beforeSign?: BeforeSign,
 ): x402Client {
   const rpcUrl = getRpcUrl(opts.network, opts.rpcUrl ? { url: opts.rpcUrl } : undefined);
   const passphrase = getNetworkPassphrase(opts.network);
@@ -222,6 +238,15 @@ export function createMooringClient(
   });
 
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {
+    if (beforeSign) {
+      try {
+        await beforeSign(selectedRequirements);
+      } catch (err) {
+        if (err instanceof GuardDenied || err instanceof PaymentError) box.set(err, opts);
+        else box.unexpected = { error: err };
+        return { abort: true, reason: err instanceof Error ? err.message : String(err) };
+      }
+    }
     if (opts.precheck === false) return;
     let reason: DenialReason | null;
     try {
@@ -282,7 +307,8 @@ export interface X402Paid {
 
 /**
  * Internal: pays one x402 request from the card, given the seller's first 402.
- * `requestUrl` is the allow-link URL for a denial.
+ * `requestUrl` is the allow-link URL for a denial. `beforeSign` (the guard's
+ * reservation) runs with the selected terms before the pre-check.
  *
  * `first` is the 402 the caller already received for `request`; it is replayed
  * as the answer to `@x402/fetch`'s opening request, so the seller is asked for
@@ -294,9 +320,10 @@ export async function payX402(
   request: Request,
   first: Response,
   requestUrl: string | undefined,
+  beforeSign?: BeforeSign,
 ): Promise<X402Paid> {
   const box = new FailureBox();
-  const client = createMooringClient(opts, box, requestUrl);
+  const client = createMooringClient(opts, box, requestUrl, beforeSign);
   let paid: PaymentRequirements | undefined;
   // x402 runs these hooks only once it has selected an `accepts` entry it can
   // pay, so a payload failure before this fired means no entry was usable.
@@ -366,7 +393,8 @@ export async function payX402(
     };
   } catch (err) {
     // A pre-check abort reaches us as a generic Error from @x402/fetch.
-    if (err instanceof CardPolicyDenied || err instanceof PaymentError) throw err;
+    if (err instanceof CardPolicyDenied || err instanceof PaymentError || err instanceof GuardDenied) throw err;
+    if (box.unexpected) throw box.unexpected.error;
     if (box.last) throw box.last;
     // Untyped failures from before anything was signed: the 402's terms did
     // not parse as x402, or none of its `accepts` entries is payable by this

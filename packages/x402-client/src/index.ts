@@ -33,3 +33,8 @@ export type { CreateCardDeps, CreateCardParams, CreateCardResult, CreateCardRpc 
 export { chargeMethod } from "./mpp/schema.js";
 export type { ChargeChallenge, ChargeRequest } from "./mpp/schema.js";
 export { detectProtocol, selectChargeChallenge } from "./mpp/detect.js";
+export { MemoryGuard } from "./guard/memory.js";
+export { guardCapsFromEnv, parseGuardConfig } from "./guard/config.js";
+export type { Guard, GuardCaps, GuardConfig, GuardSnapshot, GuardTerms, Reservation } from "./guard/types.js";
+export { canonicalReceipt, receiptId, signReceipt, verifyReceipt } from "./receipts.js";
+export type { Receipt } from "./receipts.js";

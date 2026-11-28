@@ -1,17 +1,33 @@
-import { Receipt } from "mppx";
+import { decodePaymentRequiredHeader } from "@x402/core/http";
+import { Receipt as MppReceipt } from "mppx";
 import { Mppx } from "mppx/client/core";
-import { payX402, type MooringClientOptions } from "./client.js";
-import { PaymentError, isAbsoluteHttpUrl, stripQuery } from "./denial.js";
+import { payX402, type MooringClientOptions, type X402Paid } from "./client.js";
+import { CardPolicyDenied, GuardDenied, PaymentError, isAbsoluteHttpUrl, stripQuery } from "./denial.js";
 import { deploymentFor } from "./deployments.js";
+import { formatUsdc } from "./guard/config.js";
+import type { Guard, GuardTerms, Reservation } from "./guard/types.js";
 import { cardChargeMethod } from "./mpp/charge.js";
-import { detectProtocol } from "./mpp/detect.js";
+import { detectProtocol, selectChargeChallenge } from "./mpp/detect.js";
 import type { ChargeRequest } from "./mpp/schema.js";
+import { receiptId, signReceipt, type Receipt } from "./receipts.js";
 
 export interface PayOptions extends MooringClientOptions {
   /** The transport (default `globalThis.fetch`). */
   fetch?: typeof globalThis.fetch;
   /** The USDC SAC address MPP charges must be in (default: the network's Mooring deployment). */
   usdc?: string;
+  /**
+   * Local caps and stop switch, decided before the agent key signs anything.
+   * A refusal rejects with `GuardDenied`, which reaches neither `onDenial`
+   * (the card's refusals only) nor `onPaymentError`.
+   */
+  guard?: Guard;
+  /**
+   * Called with the agent-signed receipt of every payment attempt that got as
+   * far as known terms — settled, denied (by the guard or the card) or failed.
+   * A throwing callback does not change the payment's outcome.
+   */
+  onReceipt?: (r: Receipt) => void;
 }
 
 export interface PayResult {
@@ -20,8 +36,8 @@ export interface PayResult {
   protocol: "x402" | "mpp" | "none";
   /** What was paid, or `null` when nothing was (or the seller did not report it). */
   settlement: { txHash: string; amount: string; payTo: string; asset: string; network: string } | null;
-  /** Reserved for the signed receipt ledger. */
-  receipt: null;
+  /** The agent-signed receipt of the payment; `null` when nothing was paid. */
+  receipt: Receipt | null;
 }
 
 /**
@@ -30,7 +46,13 @@ export interface PayResult {
  * Stellar charge (`WWW-Authenticate: Payment`). The seller's 402 is reused in
  * both cases, so a paid request costs exactly two round trips.
  *
- * Rejects with `CardPolicyDenied` when the card's policy refuses and
+ * With a `guard`, the stop switch is read as soon as the 402 names its
+ * protocol and the caps are reserved against with the selected terms, both
+ * before the agent key signs anything; the reservation is committed with the
+ * outcome. Every attempt with known terms is reported to `onReceipt`.
+ *
+ * Rejects with `GuardDenied` when the guard refuses, `CardPolicyDenied` when
+ * the card's policy refuses and
  * `PaymentError` for every payment failure — a 402 that carries neither
  * protocol's terms, unreadable x402 terms, or no offer the card can pay is
  * `rejected` with a `not_payable` detail — never with a bare 402. Errors that
@@ -63,18 +85,143 @@ export async function payRequest(
     throw error;
   };
 
-  switch (detectProtocol(first)) {
-    case "x402": {
-      const { response, settlement } = await payX402(opts, transport, request, first, requestUrl);
-      return { response, protocol: "x402", settlement, receipt: null };
+  const protocol = detectProtocol(first);
+  if (protocol === null) {
+    if (first.status === 402) {
+      return fail(new PaymentError({ kind: "rejected", detail: "not_payable: 402 without x402 or MPP terms" }));
     }
-    case "mpp":
-      return payMpp(opts, transport, request, first, requestUrl, fail);
-    default:
-      if (first.status === 402) {
-        return fail(new PaymentError({ kind: "rejected", detail: "not_payable: 402 without x402 or MPP terms" }));
+    return { response: first, protocol: "none", settlement: null, receipt: null };
+  }
+
+  const attempt: { terms?: GuardTerms; reservation?: Reservation } = {};
+  const receipt = (
+    status: Receipt["status"],
+    extra: { txHash?: string; reason?: string },
+  ): Receipt | null => {
+    const t = attempt.terms;
+    if (!t) return null;
+    const signed = signReceipt(
+      {
+        v: 1,
+        id: receiptId(),
+        ts: new Date().toISOString(),
+        protocol,
+        card: opts.card,
+        agent: opts.agent.publicKey(),
+        payTo: t.payTo,
+        amount: t.amount,
+        asset: t.asset,
+        network: t.network,
+        ...(t.url ? { url: t.url } : {}),
+        status,
+        ...extra,
+      },
+      opts.agent,
+    );
+    try {
+      opts.onReceipt?.(signed);
+    } catch {
+      /* the receipt sink's failure is not the payment's */
+    }
+    return signed;
+  };
+
+  try {
+    if (opts.guard && (await opts.guard.isStopped(opts.card))) {
+      // Stopped: refuse before any protocol work. The terms are read from the
+      // 402's headers (or JSON body) only, for the guard's verdict and the receipt.
+      attempt.terms = await peekTerms(protocol, first, opts, requestUrl);
+      const blank = { card: opts.card, payTo: "", amount: "0", asset: "", network: opts.network };
+      throw (
+        (await opts.guard.check(attempt.terms ?? blank)) ??
+        new GuardDenied("stopped", { card: opts.card, attempted: formatUsdc(attempt.terms?.amount ?? "0") })
+      );
+    }
+
+    /** Validates the terms and reserves them against the guard's caps. */
+    const reserve = async (t: GuardTerms): Promise<void> => {
+      if (typeof t.amount !== "string" || !/^\d+$/.test(t.amount)) {
+        throw new PaymentError({
+          kind: "rejected",
+          detail: `malformed_terms: amount must be a base-unit integer (got ${String(t.amount)})`,
+        });
       }
-      return { response: first, protocol: "none", settlement: null, receipt: null };
+      attempt.terms = t;
+      if (opts.guard) attempt.reservation = await opts.guard.reserve(t);
+    };
+
+    const { response, settlement } =
+      protocol === "x402"
+        ? await payX402(opts, transport, request, first, requestUrl, (req) =>
+            reserve({
+              card: opts.card,
+              payTo: req.payTo,
+              amount: req.amount,
+              asset: req.asset,
+              network: req.network,
+              ...(requestUrl ? { url: requestUrl } : {}),
+            }),
+          )
+        : await payMpp(opts, transport, request, first, requestUrl, fail, reserve);
+
+    if (attempt.reservation) await opts.guard!.commit(attempt.reservation, "settled");
+    return {
+      response,
+      protocol,
+      settlement,
+      receipt: receipt("settled", settlement?.txHash ? { txHash: settlement.txHash } : {}),
+    };
+  } catch (err) {
+    const denied = err instanceof GuardDenied || err instanceof CardPolicyDenied;
+    const status = denied ? "denied" : "failed";
+    if (attempt.reservation) await opts.guard!.commit(attempt.reservation, status);
+    const reason = denied
+      ? err.reason
+      : err instanceof PaymentError
+        ? err.detail
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    receipt(status, reason ? { reason } : {});
+    throw err;
+  }
+}
+
+/**
+ * The terms a 402 asks for, read without any protocol work: the first Stellar
+ * charge challenge (MPP), or the x402 `accepts` entry for the card's network
+ * from `PAYMENT-REQUIRED` or the JSON body. `undefined` when unreadable.
+ */
+async function peekTerms(
+  protocol: "x402" | "mpp",
+  first: Response,
+  opts: PayOptions,
+  requestUrl: string | undefined,
+): Promise<GuardTerms | undefined> {
+  const url = requestUrl ? { url: requestUrl } : {};
+  try {
+    if (protocol === "mpp") {
+      const charge = selectChargeChallenge(first)?.request as ChargeRequest | undefined;
+      if (!charge) return undefined;
+      return {
+        card: opts.card,
+        payTo: charge.recipient,
+        amount: charge.amount,
+        asset: charge.currency,
+        network: charge.methodDetails?.network ?? opts.network,
+        ...url,
+      };
+    }
+    const header = first.headers.get("PAYMENT-REQUIRED");
+    const terms = (header ? decodePaymentRequiredHeader(header) : await first.clone().json()) as {
+      accepts?: Array<{ network?: string; amount?: string; maxAmountRequired?: string; payTo?: string; asset?: string }>;
+    };
+    const offer = terms.accepts?.find((a) => a.network === opts.network);
+    const amount = offer?.amount ?? offer?.maxAmountRequired;
+    if (!offer || !amount || !offer.payTo || !offer.asset) return undefined;
+    return { card: opts.card, payTo: offer.payTo, amount, asset: offer.asset, network: offer.network!, ...url };
+  } catch {
+    return undefined;
   }
 }
 
@@ -85,7 +232,8 @@ async function payMpp(
   first: Response,
   requestUrl: string | undefined,
   fail: (error: PaymentError) => never,
-): Promise<PayResult> {
+  reserve: (t: GuardTerms) => Promise<void>,
+): Promise<X402Paid> {
   const mppx = Mppx.create({
     methods: [
       cardChargeMethod({
@@ -121,6 +269,20 @@ async function payMpp(
       }),
     );
   }
+  const charge = payment.challenge.request as ChargeRequest;
+  try {
+    await reserve({
+      card: opts.card,
+      payTo: charge.recipient,
+      amount: charge.amount,
+      asset: charge.currency,
+      network: charge.methodDetails?.network ?? opts.network,
+      ...(requestUrl ? { url: requestUrl } : {}),
+    });
+  } catch (err) {
+    if (err instanceof PaymentError) return fail(err);
+    throw err;
+  }
   // The charge method reports its own denials and errors to the callbacks.
   const credential = await payment.createCredential();
   const paidInit = payment.setCredential({ headers }, credential);
@@ -129,7 +291,7 @@ async function payMpp(
   let receipt;
   try {
     if (response.status === 402) throw new Error("the seller asked for payment again");
-    receipt = Receipt.fromResponse(response);
+    receipt = MppReceipt.fromResponse(response);
   } catch (err) {
     // The credential was handed over and may have been broadcast; without a
     // receipt the settlement state is unknown.
@@ -141,10 +303,8 @@ async function payMpp(
     );
   }
 
-  const charge = payment.challenge.request as ChargeRequest;
   return {
     response,
-    protocol: "mpp",
     settlement: {
       txHash: receipt.reference,
       amount: charge.amount,
@@ -152,6 +312,5 @@ async function payMpp(
       asset: charge.currency,
       network: charge.methodDetails?.network ?? opts.network,
     },
-    receipt: null,
   };
 }

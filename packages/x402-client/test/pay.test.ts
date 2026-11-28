@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair, rpc, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import { Credential, Receipt } from "mppx";
-import { PaymentError } from "../src/denial.js";
+import { readCardInfo, readMerchants } from "../src/card.js";
+import { CardPolicyDenied, GuardDenied, PaymentError } from "../src/denial.js";
+import { MemoryGuard } from "../src/guard/memory.js";
+import { verifyReceipt, type Receipt as MooringReceipt } from "../src/receipts.js";
 import { stubCardTransferRpc } from "./fixtures/assembled.js";
 import { PAY_TO, USDC_TESTNET, mppChallengeResponse } from "./fixtures/mpp-challenge.js";
 
@@ -83,6 +86,38 @@ const x402Terms = {
   ],
 };
 
+const x402Challenge = () =>
+  new Response(JSON.stringify(x402Terms), {
+    status: 402,
+    headers: { "PAYMENT-REQUIRED": b64(x402Terms), "content-type": "application/json" },
+  });
+const x402Paid = () =>
+  new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      "PAYMENT-RESPONSE": b64({ success: true, transaction: X402_TX, network: "stellar:testnet" }),
+      "content-type": "application/json",
+    },
+  });
+const mppReceipt = () =>
+  Receipt.serialize(
+    Receipt.from({ method: "stellar", reference: MPP_TX, status: "success", timestamp: new Date().toISOString() }),
+  );
+const mppPaid = () =>
+  new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { "Payment-Receipt": mppReceipt(), "content-type": "application/json" },
+  });
+function stubMppRpc() {
+  const stub = stubCardTransferRpc();
+  const latest = vi.spyOn(rpc.Server.prototype, "getLatestLedger").mockResolvedValue({
+    id: "x",
+    sequence: 1000,
+    protocolVersion: 23,
+  } as never);
+  return { ...stub, latest };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -119,7 +154,8 @@ describe("pay", () => {
       asset: USDC_TESTNET,
       network: "stellar:testnet",
     });
-    expect(result.receipt).toBeNull();
+    expect(result.receipt).toMatchObject({ protocol: "x402", status: "settled", txHash: X402_TX });
+    expect(verifyReceipt(result.receipt!)).toBe(true);
     // The seller's 402 is reused, so only the paid request follows it.
     expect(fetch).toHaveBeenCalledTimes(2);
     const [first, second] = fetch.mock.calls;
@@ -162,7 +198,7 @@ describe("pay", () => {
       asset: USDC_TESTNET,
       network: "stellar:testnet",
     });
-    expect(result.receipt).toBeNull();
+    expect(result.receipt).toMatchObject({ protocol: "mpp", status: "settled", txHash: MPP_TX });
     expect(fetch).toHaveBeenCalledTimes(2);
     const authorization = headersOf(...fetch.mock.calls[1]!).get("Authorization");
     expect(authorization).toMatch(/^Payment /);
@@ -262,5 +298,185 @@ describe("pay", () => {
     expect(err.detail).toMatch(/^not_payable/);
     expect(err.detail).toBe("not_payable: 402 without x402 or MPP terms");
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  describe("guard and receipts", () => {
+    for (const protocol of ["x402", "mpp"] as const) {
+      it(`refuses before signing when the guard says stop and emits a denied receipt (${protocol})`, async () => {
+        const { simulate, latest } = stubMppRpc();
+        const guard = new MemoryGuard();
+        await guard.stop("operator stop");
+        const receipts: MooringReceipt[] = [];
+        const onDenial = vi.fn();
+        const onPaymentError = vi.fn();
+        const fetch = scripted(protocol === "x402" ? x402Challenge : () => mppChallengeResponse());
+
+        const err = await pay("http://api.test/weather?q=1", undefined, {
+          ...opts(fetch),
+          guard,
+          onReceipt: (r) => receipts.push(r),
+          onDenial,
+          onPaymentError,
+        }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(GuardDenied);
+        expect(err.reason).toBe("stopped");
+        // Nothing past the first 402: no card read, no RPC, no signature.
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(readCardInfo).not.toHaveBeenCalled();
+        expect(simulate).not.toHaveBeenCalled();
+        expect(latest).not.toHaveBeenCalled();
+        expect(onDenial).not.toHaveBeenCalled();
+        expect(onPaymentError).not.toHaveBeenCalled();
+        expect(receipts).toHaveLength(1);
+        expect(receipts[0]).toMatchObject({
+          v: 1,
+          protocol,
+          card: CARD,
+          agent: agent.publicKey(),
+          payTo: PAY_TO,
+          amount: "10000",
+          asset: USDC_TESTNET,
+          network: "stellar:testnet",
+          url: "http://api.test/weather",
+          status: "denied",
+          reason: "stopped",
+        });
+        expect(receipts[0]!.txHash).toBeUndefined();
+        expect(verifyReceipt(receipts[0]!)).toBe(true);
+      });
+
+      it(`refuses over a local cap before the pre-check or signing (${protocol})`, async () => {
+        const { simulate, latest } = stubMppRpc();
+        const guard = new MemoryGuard({ maxPerTx: "5000" });
+        const receipts: MooringReceipt[] = [];
+        const fetch = scripted(protocol === "x402" ? x402Challenge : () => mppChallengeResponse());
+
+        const err = await pay("http://api.test/weather", undefined, {
+          ...opts(fetch),
+          guard,
+          onReceipt: (r) => receipts.push(r),
+        }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(GuardDenied);
+        expect(err.reason).toBe("max_per_tx");
+        expect(err.message).toContain("0.001 USDC attempted, limit 0.0005");
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(readCardInfo).not.toHaveBeenCalled();
+        expect(simulate).not.toHaveBeenCalled();
+        expect(latest).not.toHaveBeenCalled();
+        expect(receipts.map((r) => [r.status, r.reason])).toEqual([["denied", "max_per_tx"]]);
+        expect((await guard.snapshot(CARD)).reserved).toBe("0");
+      });
+    }
+
+    it("emits a settled receipt with the tx hash after an MPP payment", async () => {
+      stubMppRpc();
+      const guard = new MemoryGuard({ dailyCap: "1" + "0".repeat(7) });
+      const receipts: MooringReceipt[] = [];
+      const fetch = scripted(() => mppChallengeResponse(), mppPaid);
+
+      const result = await pay("http://api.test/weather", undefined, {
+        ...opts(fetch),
+        guard,
+        onReceipt: (r) => receipts.push(r),
+      });
+
+      expect(receipts).toHaveLength(1);
+      const r = receipts[0]!;
+      expect(r).toMatchObject({
+        v: 1,
+        protocol: "mpp",
+        card: CARD,
+        agent: agent.publicKey(),
+        payTo: PAY_TO,
+        amount: "10000",
+        asset: USDC_TESTNET,
+        network: "stellar:testnet",
+        url: "http://api.test/weather",
+        status: "settled",
+        txHash: MPP_TX,
+      });
+      expect(r.id).toMatch(/^[0-9a-f]{32}$/);
+      expect(Number.isNaN(Date.parse(r.ts))).toBe(false);
+      expect(r.reason).toBeUndefined();
+      expect(verifyReceipt(r)).toBe(true);
+      expect(result.receipt).toEqual(r);
+      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "10000", total: "10000", reserved: "0" });
+    });
+
+    it("emits a settled receipt and commits the reservation after an x402 payment", async () => {
+      const guard = new MemoryGuard({ dailyCap: "10000" });
+      const receipts: MooringReceipt[] = [];
+      const fetch = scripted(x402Challenge, x402Paid);
+
+      const result = await pay("http://api.test/weather", undefined, {
+        ...opts(fetch),
+        guard,
+        onReceipt: (r) => receipts.push(r),
+      });
+
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]).toMatchObject({ protocol: "x402", status: "settled", txHash: X402_TX, amount: "10000" });
+      expect(verifyReceipt(receipts[0]!)).toBe(true);
+      expect(result.receipt).toEqual(receipts[0]);
+      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "10000", reserved: "0" });
+      // The daily cap is now full.
+      const again = await pay("http://api.test/weather", undefined, {
+        ...opts(scripted(x402Challenge)),
+        guard,
+      }).catch((e) => e);
+      expect(again).toBeInstanceOf(GuardDenied);
+      expect(again.reason).toBe("daily_cap");
+    });
+
+    it("a card policy denial emits a denied receipt and releases the reservation", async () => {
+      vi.mocked(readMerchants).mockResolvedValueOnce([]);
+      const guard = new MemoryGuard({ dailyCap: "10000" });
+      const receipts: MooringReceipt[] = [];
+      const onDenial = vi.fn();
+      const fetch = scripted(x402Challenge);
+
+      const err = await pay("http://api.test/weather", undefined, {
+        ...opts(fetch),
+        guard,
+        onDenial,
+        onReceipt: (r) => receipts.push(r),
+      }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(CardPolicyDenied);
+      expect(onDenial).toHaveBeenCalledWith(err);
+      expect(receipts.map((r) => [r.status, r.reason])).toEqual([["denied", "not_allowlisted"]]);
+      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", reserved: "0" });
+    });
+
+    it("a payment error emits a failed receipt and releases the reservation", async () => {
+      stubMppRpc();
+      const guard = new MemoryGuard({ dailyCap: "10000" });
+      const receipts: MooringReceipt[] = [];
+      const fetch = scripted(
+        () => mppChallengeResponse(),
+        () => mppChallengeResponse(),
+      );
+
+      const err = await pay("http://api.test/weather", undefined, {
+        ...opts(fetch),
+        guard,
+        onReceipt: (r) => receipts.push(r),
+      }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(PaymentError);
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]).toMatchObject({ status: "failed", reason: err.detail });
+      expect(verifyReceipt(receipts[0]!)).toBe(true);
+      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", reserved: "0" });
+    });
+
+    it("a free response produces no receipt", async () => {
+      const onReceipt = vi.fn();
+      const fetch = scripted(() => new Response("free", { status: 200 }));
+      const result = await pay("http://api.test/free", undefined, { ...opts(fetch), onReceipt });
+      expect(result.receipt).toBeNull();
+      expect(onReceipt).not.toHaveBeenCalled();
+    });
   });
 });
