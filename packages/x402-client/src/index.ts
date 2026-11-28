@@ -32,7 +32,11 @@ export { createCard, createCardArgs, encodePolicy } from "./create.js";
 export type { CreateCardDeps, CreateCardParams, CreateCardResult, CreateCardRpc } from "./create.js";
 export { chargeMethod } from "./mpp/schema.js";
 export type { ChargeChallenge, ChargeRequest } from "./mpp/schema.js";
-export { detectProtocol, selectChargeChallenge } from "./mpp/detect.js";
+export { chargeChallengesFromHeader, detectProtocol, selectChargeChallenge } from "./mpp/detect.js";
+// Re-exported for consumers that cannot install mppx directly (peer-range conflicts, e.g. Next 15 apps).
+export { Challenge } from "mppx";
+export { cardChargeMethod } from "./mpp/charge.js";
+export type { CardChargeDeps, CardChargeOptions } from "./mpp/charge.js";
 export { MemoryGuard } from "./guard/memory.js";
 export { formatUsdc, guardCapsFromEnv, parseGuardConfig } from "./guard/config.js";
 export type { Guard, GuardCaps, GuardConfig, GuardSnapshot, GuardTerms, Reservation } from "./guard/types.js";

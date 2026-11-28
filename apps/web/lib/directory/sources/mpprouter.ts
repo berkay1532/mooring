@@ -37,6 +37,7 @@ export function normalizeMppRouter(json: unknown): DirectoryEntry[] {
       amount,
       scheme: "exact",
       kind: "http",
+      protocol: "mpp",
       method: method(s.method),
       tags: tags(s.categories),
       proxy: payTo === MPPROUTER_PAYTO,

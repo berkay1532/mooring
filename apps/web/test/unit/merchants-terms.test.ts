@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
 
-import { parsePaymentRequired, selectTerms } from "../../lib/merchants/terms";
+import { Challenge, chargeMethod } from "@mooring-live/x402-client";
+
+import { parseMppChallenge, parsePaymentRequired, selectTerms } from "../../lib/merchants/terms";
 
 const TESTNET = "stellar:testnet";
 const PUBNET = "stellar:pubnet";
@@ -141,5 +143,27 @@ describe("selectTerms", () => {
   it("ignores non-exact schemes", () => {
     const p = parsePaymentRequired(header({}, [entry({ scheme: "upto" })]), null)!;
     expect(selectTerms(p, TESTNET, TESTNET_SAC)).toEqual({ kind: "none" });
+  });
+});
+
+describe("parseMppChallenge", () => {
+  const challenge = (request: Record<string, unknown>) =>
+    Challenge.serialize(
+      Challenge.fromMethod(chargeMethod, {
+        secretKey: "t",
+        realm: "api.mooring.live",
+        request: { amount: "10000", currency: TESTNET_SAC, recipient: PAY_A, ...request } as never,
+      }),
+    );
+  it("maps a Stellar charge challenge to mpp terms", () => {
+    const parsed = parseMppChallenge(challenge({ methodDetails: { network: TESTNET } }));
+    expect(parsed?.accepts).toEqual([{ scheme: "mpp", network: TESTNET, asset: TESTNET_SAC, payTo: PAY_A, amount: "10000" }]);
+    expect(selectTerms(parsed!, TESTNET, TESTNET_SAC)).toMatchObject({ kind: "one", terms: { scheme: "mpp" } });
+  });
+  it("is null for a missing, malformed or network-less challenge", () => {
+    expect(parseMppChallenge(null)).toBeNull();
+    expect(parseMppChallenge("")).toBeNull();
+    expect(parseMppChallenge("Payment garbage")).toBeNull();
+    expect(parseMppChallenge(challenge({}))).toBeNull();
   });
 });

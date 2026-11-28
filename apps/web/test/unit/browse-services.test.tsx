@@ -17,6 +17,7 @@ const entry = (over: Partial<DirectoryEntry>): DirectoryEntry => ({
   amount: "10000",
   scheme: "exact",
   kind: "http",
+  protocol: "x402",
   tags: ["weather"],
   proxy: false,
   verified: false,
@@ -59,6 +60,15 @@ function setup(load = vi.fn(async () => response()), over: Partial<Parameters<ty
 afterEach(() => cleanup());
 
 describe("BrowseServices", () => {
+  it("marks MPP services with an MPP pill", async () => {
+    const MPP = entry({ url: "https://api.mooring.live/quote/mpp", host: "api.mooring.live", name: "Mooring example seller · MPP", protocol: "mpp", source: "mooring" });
+    setup(vi.fn(async () => response({ items: [MPP, WEATHER] })));
+    const list = await screen.findByRole("list", { name: "Services" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(within(rows[0]).getByText("MPP")).toBeInTheDocument();
+    expect(within(rows[1]).queryByText("MPP")).toBeNull();
+  });
+
   it("lists the network's services with price, badges and an Add button per row", async () => {
     setup();
     expect(screen.getByText("Loading the directory…")).toBeInTheDocument();

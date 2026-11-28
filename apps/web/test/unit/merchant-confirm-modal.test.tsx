@@ -46,6 +46,14 @@ describe("MerchantConfirmModal", () => {
     expect(screen.getByRole("button", { name: "Copy address" })).toBeInTheDocument();
   });
 
+  it("says when the service is paid through MPP charge", () => {
+    const { unmount } = setup({ merchant: { ...MERCHANT, scheme: "mpp" } });
+    expect(screen.getByRole("dialog")).toHaveTextContent("Pays through MPP charge");
+    unmount();
+    setup({ merchant: { ...MERCHANT, scheme: "exact" } });
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("MPP");
+  });
+
   it("shows the responsibility notice and the scope sentence", () => {
     setup();
     expect(screen.getByText(/It does not vouch for the service/)).toBeInTheDocument();

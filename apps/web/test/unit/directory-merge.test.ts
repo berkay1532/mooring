@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { byRelevance, matches, mergeEntries, payableOn, PROXY_HOSTS_THRESHOLD } from "@/lib/directory/merge";
 import type { DirectoryEntry } from "@/lib/directory/types";
-import { USDC_BY_NETWORK } from "@/lib/directory/types";
+import { SOURCE_PRIORITY, USDC_BY_NETWORK } from "@/lib/directory/types";
 
 const base = (over: Partial<DirectoryEntry>): DirectoryEntry => ({
   id: "x",
@@ -17,6 +17,7 @@ const base = (over: Partial<DirectoryEntry>): DirectoryEntry => ({
   amount: "1",
   scheme: "exact",
   kind: "http",
+  protocol: "x402",
   tags: [],
   proxy: false,
   verified: false,
@@ -30,6 +31,14 @@ describe("mergeEntries", () => {
     const out = mergeEntries([[a], [b]]);
     expect(out).toHaveLength(1);
     expect(out[0].name).toBe("from rail");
+  });
+  it("prefers the first-party mooring source over every other source", () => {
+    const rail = base({ source: "rail402", name: "from rail" });
+    const mine = base({ source: "mooring", name: "from mooring" });
+    const out = mergeEntries([[rail], [mine]]);
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe("from mooring");
+    expect(SOURCE_PRIORITY[0]).toBe("mooring");
   });
   it("keeps MCP tools apart by their tool suffix", () => {
     const a = base({ id: "rail402:n:GA:u#forecast", url: "https://a.example/mcp" });

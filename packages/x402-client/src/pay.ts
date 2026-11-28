@@ -2,7 +2,15 @@ import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { Receipt as MppReceipt } from "mppx";
 import { Mppx } from "mppx/client/core";
 import { paidInTransit, payX402, type MooringClientOptions, type X402Paid } from "./client.js";
-import { CardPolicyDenied, GuardDenied, PaymentError, isAbsoluteHttpUrl, stripQuery } from "./denial.js";
+import {
+  CardPolicyDenied,
+  DEFAULT_APP_URL,
+  GuardDenied,
+  PaymentError,
+  isAbsoluteHttpUrl,
+  stripQuery,
+} from "./denial.js";
+import { SELLER_REFUSAL_MARKER, classifySellerRefusal } from "./denial-from-sim.js";
 import { deploymentFor } from "./deployments.js";
 import { formatUsdc } from "./guard/config.js";
 import type { Guard, GuardTerms, Reservation } from "./guard/types.js";
@@ -274,6 +282,44 @@ function refusalText(body: string, challenge: string): string | undefined {
 }
 
 /**
+ * Seller refusals given after the transaction was handed to the network
+ * without learning its outcome (the Mooring seller's broadcast step): the
+ * payment may still settle.
+ */
+const OUTCOME_OPEN = /transaction (?:not confirmed|was not accepted):/;
+
+/** The transaction hash a `transaction not confirmed: <hash>` refusal names. */
+const TX_HASH_IN_REFUSAL = /transaction not confirmed: ([0-9a-fA-F]{64})\b/;
+
+/**
+ * A paid request's refusal, read in full for classification: an RFC 9457
+ * problem body (what mppx sends) contributes its `detail` and `details.why`
+ * decoded, any other body its raw text, and the `WWW-Authenticate` is
+ * appended. `line` is what is displayed: the first non-empty line of the
+ * problem `detail` (else `refusalText`), truncated.
+ */
+function sellerRefusal(body: string, challenge: string): { text: string; line: string | undefined } {
+  let problem: { detail?: unknown; details?: { why?: unknown } } | undefined;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === "object") problem = parsed as typeof problem;
+  } catch {
+    /* not JSON */
+  }
+  const detail = typeof problem?.detail === "string" ? problem.detail : undefined;
+  if (detail === undefined) return { text: `${body}\n${challenge}`, line: refusalText(body, challenge) };
+  const why = typeof problem?.details?.why === "string" ? problem.details.why : undefined;
+  const line = detail
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return {
+    text: [detail, why, challenge].filter((t) => t !== undefined).join("\n"),
+    line: line ? line.slice(0, REFUSAL_MAX) : refusalText(body, challenge),
+  };
+}
+
+/**
  * Pays an MPP charge. A `sequence_conflict` (the agent account's sequence
  * moved under an unsponsored payment: `txBAD_SEQ` from the simulation or the
  * seller) means the transaction was not applied, so the payment is retried
@@ -333,6 +379,7 @@ async function payMpp(
     }
 
     let sellerSaid: string | undefined;
+    let broadcastHash: string | undefined;
     if (!response.ok) {
       // Read from a clone, so the caller's response keeps its body.
       const body = await response.clone().text().catch(() => "");
@@ -341,7 +388,39 @@ async function payMpp(
         // Not applied: the network refused the sequence, nothing was spent.
         throw sequenceConflict(`seller answered ${response.status}`);
       }
-      sellerSaid = refusalText(body, challenge);
+      const refusal = sellerRefusal(body, challenge);
+      if (refusal.text.includes(SELLER_REFUSAL_MARKER)) {
+        // The seller refused the credential at verification.
+        const denial = classifySellerRefusal(refusal.text, {
+          card: opts.card,
+          merchant: {
+            payTo: charge.recipient,
+            amount: charge.amount,
+            network: charge.methodDetails?.network ?? opts.network,
+            ...(requestUrl ? { url: requestUrl } : {}),
+          },
+          appUrl: opts.appUrl ?? DEFAULT_APP_URL,
+          detail: refusal.line,
+        });
+        if (denial) {
+          // The card's own `__check_auth` said no in the seller's simulation:
+          // nothing was broadcast.
+          opts.onDenial?.(denial);
+          throw denial;
+        }
+        // Any other refusal before broadcast spent nothing. One the seller
+        // gives after broadcasting without learning the outcome may still
+        // settle, so it stays unconfirmed below.
+        if (!OUTCOME_OPEN.test(refusal.text)) {
+          return fail(new PaymentError({ kind: "rejected", detail: `seller_refused: ${refusal.line ?? ""}` }));
+        }
+        // Keep the decoded line whole (the raw JSON body would cut the hash)
+        // and the hash it names, so the receipt can point at the transaction.
+        sellerSaid = refusal.line;
+        broadcastHash = refusal.line?.match(TX_HASH_IN_REFUSAL)?.[1]?.toLowerCase();
+      } else {
+        sellerSaid = refusalText(body, challenge);
+      }
     }
 
     let receipt;
@@ -355,6 +434,7 @@ async function payMpp(
       return fail(
         new PaymentError({
           kind: "unconfirmed",
+          ...(broadcastHash ? { transaction: broadcastHash } : {}),
           detail: sellerSaid
             ? `${unknown} — seller said: ${sellerSaid}`
             : `${unknown} (${err instanceof Error ? err.message : String(err)})`,

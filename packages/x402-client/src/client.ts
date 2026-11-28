@@ -3,6 +3,7 @@ import { decodePaymentResponseHeader, wrapFetchWithPayment, x402Client } from "@
 import type { PaymentRequirements } from "@x402/fetch";
 import { getNetworkPassphrase, getRpcUrl } from "@x402/stellar";
 import { readCardInfo, readMerchants } from "./card.js";
+import { cardDenialFromText } from "./denial-from-sim.js";
 import {
   CARD_ERROR_CODES,
   CardPolicyDenied,
@@ -157,6 +158,9 @@ export function createMooringClient(
     text: string,
     req: PaymentRequirements,
   ): Promise<PaymentFailure> => {
+    // The card's own auth failure, when the refusal relays the host diagnostic.
+    const relayed = cardDenialFromText(text, stage, { ...denialContext(req), detail: text });
+    if (relayed) return relayed;
     const parsed = classifyContractError(text);
     if (parsed && parsed.code in CARD_ERROR_CODES) {
       return new CardPolicyDenied(parsed.reason, stage, {

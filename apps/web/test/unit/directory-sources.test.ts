@@ -2,11 +2,13 @@
 import { describe, expect, it } from "vitest";
 
 import bazaar from "../fixtures/directory/bazaar.json";
+import mooringSeller from "../fixtures/directory/mooring-seller.json";
 import mpprouter from "../fixtures/directory/mpprouter.json";
 import rail402 from "../fixtures/directory/rail402.json";
 import stellarsight from "../fixtures/directory/stellarsight.json";
 import { normalizeBazaar } from "@/lib/directory/sources/bazaar";
 import { decimalToBaseUnits, baseUnits, normalizeUrl } from "@/lib/directory/sources/common";
+import { fetchMooringSeller, MOORING_SELLER_URL, normalizeMooringSeller } from "@/lib/directory/sources/mooring";
 import { MPPROUTER_PAYTO, normalizeMppRouter } from "@/lib/directory/sources/mpprouter";
 import { normalizeRail402 } from "@/lib/directory/sources/rail402";
 import { normalizeStellarSight } from "@/lib/directory/sources/stellarsight";
@@ -91,6 +93,70 @@ describe("Bazaar normaliser", () => {
     const entries = normalizeBazaar(bazaar);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ source: "bazaar", network: "stellar:pubnet", amount: "10000", settlements: 13 });
+  });
+});
+
+describe("Mooring seller normaliser", () => {
+  const SELLER_PAY_TO = "GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG";
+  const entries = normalizeMooringSeller(mooringSeller, "https://api.mooring.live");
+  it("maps each resource of the / document to a first-party entry with its protocol", () => {
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toEqual({
+      id: `mooring:stellar:testnet:${SELLER_PAY_TO}:https://api.mooring.live/quote`,
+      source: "mooring",
+      url: "https://api.mooring.live/quote",
+      host: "api.mooring.live",
+      name: "Mooring example seller · x402",
+      payTo: SELLER_PAY_TO,
+      network: "stellar:testnet",
+      asset: USDC_BY_NETWORK["stellar:testnet"],
+      amount: "10000",
+      scheme: "exact",
+      kind: "http",
+      method: "GET",
+      protocol: "x402",
+      tags: ["example", "x402"],
+      proxy: false,
+      verified: true,
+    });
+    expect(entries[1]).toMatchObject({
+      url: "https://api.mooring.live/quote/mpp",
+      name: "Mooring example seller · MPP",
+      protocol: "mpp",
+      tags: ["example", "mpp"],
+      verified: true,
+    });
+  });
+  it("joins a base with a trailing slash and skips unusable resources", () => {
+    const doc = {
+      ...mooringSeller,
+      resources: [...mooringSeller.resources, { path: "/x", protocol: "lightning", amount: "1", asset: "C" }, { path: "/y", protocol: "x402", amount: "1.5", asset: "C" }],
+    };
+    const out = normalizeMooringSeller(doc, "https://api.mooring.live/");
+    expect(out.map((e) => e.url)).toEqual(["https://api.mooring.live/quote", "https://api.mooring.live/quote/mpp"]);
+    expect(normalizeMooringSeller(null, "https://api.mooring.live")).toEqual([]);
+    expect(normalizeMooringSeller({ ...mooringSeller, network: "eip155:1" }, "https://api.mooring.live")).toEqual([]);
+  });
+  it("fetches the / document of the configured seller", async () => {
+    const seen: string[] = [];
+    const fetch = (async (url: unknown) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify(mooringSeller), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const out = await fetchMooringSeller({ fetch, timeoutMs: 1000 });
+    expect(seen).toEqual([`${MOORING_SELLER_URL}/`]);
+    expect(out).toHaveLength(2);
+  });
+});
+
+describe("protocol", () => {
+  it("every x402 normaliser says x402 and MPP Router says mpp", () => {
+    for (const e of [...normalizeRail402(rail402), ...normalizeStellarSight(stellarsight), ...normalizeBazaar(bazaar)]) {
+      expect(e.protocol).toBe("x402");
+    }
+    const mpp = normalizeMppRouter(mpprouter);
+    expect(mpp.length).toBeGreaterThan(0);
+    for (const e of mpp) expect(e.protocol).toBe("mpp");
   });
 });
 

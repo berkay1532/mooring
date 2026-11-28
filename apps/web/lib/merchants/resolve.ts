@@ -7,7 +7,7 @@
 import { StrKey } from "@stellar/stellar-sdk"
 import { describeTerms } from "./describe"
 import { assertHostAllowed, validateUrl } from "./guard"
-import { parsePaymentRequired, selectTerms, type MerchantTerms, type ServiceMeta } from "./terms"
+import { parseMppChallenge, parsePaymentRequired, selectTerms, type MerchantTerms, type ServiceMeta } from "./terms"
 
 /** A resolved, payable merchant entry. */
 export type ResolveOk = {
@@ -184,23 +184,40 @@ export async function resolveMerchant(rawUrl: string, deps: ResolveDeps): Promis
     }
     return outcome
   }
-  return fail("not_x402", `That URL did not answer with x402 payment terms (HTTP ${status}).`)
+  return fail("not_x402", `That URL did not answer with x402 or MPP payment terms (HTTP ${status}).`)
 }
 
+/**
+ * Reads a 402: x402 terms first (`PAYMENT-REQUIRED` header, else the v1 JSON
+ * body), then an MPP Stellar charge challenge in `WWW-Authenticate` when the
+ * x402 side yields no entry. The first protocol with terms decides.
+ */
 async function interpret(res: Response, url: URL, deps: ResolveDeps): Promise<ResolveResult> {
-  const notX402 = fail("not_x402", "That URL did not answer with usable x402 payment terms.")
+  const notX402 = fail("not_x402", "That URL did not answer with usable x402 or MPP payment terms.")
   const header = res.headers.get("payment-required")
   let body: string | null = null
   if (header === null) {
     body = await readCapped(res)
-    if (body === null) return notX402
   } else {
     await res.body?.cancel().catch(() => {})
   }
-  const parsed = parsePaymentRequired(header, body)
+  // An over-cap body (null) is not read as x402, but an MPP header still counts.
+  const x402 = header === null && body === null ? null : parsePaymentRequired(header, body)
+  const mpp = () => parseMppChallenge(res.headers.get("www-authenticate"))
+  let parsed = x402 && x402.accepts.length > 0 ? x402 : mpp()
   if (!parsed || parsed.accepts.length === 0) return notX402
 
-  const sel = selectTerms(parsed, deps.network, deps.asset)
+  let sel = selectTerms(parsed, deps.network, deps.asset)
+  if (sel.kind === "none" && parsed === x402) {
+    // The x402 terms are for another network or asset; the same 402 may also
+    // carry an MPP charge the card can pay.
+    const fallback = mpp()
+    const fallbackSel = fallback ? selectTerms(fallback, deps.network, deps.asset) : null
+    if (fallback && fallbackSel && fallbackSel.kind !== "none") {
+      parsed = fallback
+      sel = fallbackSel
+    }
+  }
   if (sel.kind === "many") {
     return fail(
       "ambiguous",

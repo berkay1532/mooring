@@ -46,6 +46,8 @@ testnet; mainnet follows an audit. Never describe the web app or the client as a
     `docs/superpowers/specs/2026-11-25-indexer-v1-design.md`, runbook `docs/indexer.md`, Neon via Vercel
     Marketplace, Hobby plan → read-time ticks + daily cron) **live on app.mooring.live since 2026-11-26**
     with the full history since 2026-09-13 imported; evidence in `docs/testnet.md`.
+    W3 Part A done (PR #30, merged 2026-11-28: MPP charge from a card, guard parity, CLI 0.4.0); Part B
+    (hosted seller `apps/seller` on `api.mooring.live`, runbook `docs/seller.md`, directory MPP support) in progress.
   - **Out of scope:** audit, real mainnet deployment, merchant-side product, recurring billing,
     passkey signer, other chains.
 - Chapter: **Stellar Türkiye** (lead **İrem Koçi**). **testnet-only.** License **Apache-2.0**.

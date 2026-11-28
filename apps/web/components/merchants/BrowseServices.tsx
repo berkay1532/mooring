@@ -107,6 +107,11 @@ export function BrowseServices({ load, existing, disabled, onPick }: BrowseServi
                   <p className="truncate text-sm font-bold text-text-hi">
                     {e.name}
                     {e.kind === "mcp" ? <span className={`${TAG_CLASS} ml-2 bg-text-lo/15 text-text-lo`}>MCP</span> : null}
+                    {e.protocol === "mpp" ? (
+                      <span className={`${TAG_CLASS} ml-2 bg-text-lo/15 text-text-lo`} title="Paid through an MPP charge">
+                        MPP
+                      </span>
+                    ) : null}
                     {e.proxy ? (
                       <span className={`${TAG_CLASS} ml-2 bg-amber/15 text-amber`} title="One address fronts many services; allowing it allows all of them">
                         proxy

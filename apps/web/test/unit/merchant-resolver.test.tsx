@@ -443,6 +443,7 @@ describe("MerchantResolver with a directory", () => {
     amount: "10000",
     scheme: "exact" as const,
     kind: "http" as const,
+    protocol: "x402" as const,
     tags: [],
     proxy: false,
     verified: false,
