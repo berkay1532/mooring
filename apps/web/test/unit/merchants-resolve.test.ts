@@ -100,6 +100,22 @@ describe("resolveMerchant", () => {
     expect(await resolveMerchant("https://api.example.com/x", broken.deps)).toMatchObject({ ok: true, scheme: "mpp" })
   })
 
+  it("falls back to MPP when the x402 terms offer nothing for the card's network", async () => {
+    const evm = { ...entry("eip155:8453"), asset: "0xUSDC", payTo: "0x0000000000000000000000000000000000000001" }
+    const { deps } = setup([mpp402(mppHeader(), { "PAYMENT-REQUIRED": header([evm]) })])
+    const r = await resolveMerchant("https://api.example.com/x", deps)
+    expect(r).toMatchObject({ ok: true, scheme: "mpp", payTo: PAY, network: NET, asset: USDC, amount: "10000" })
+  })
+
+  it("still reports no_match from the x402 terms when the MPP challenge does not match either", async () => {
+    const { deps } = setup([
+      mpp402(mppHeader({ network: "stellar:pubnet" }), { "PAYMENT-REQUIRED": header([entry("eip155:8453")]) }),
+    ])
+    const r = await resolveMerchant("https://api.example.com/x", deps)
+    expect(r).toMatchObject({ ok: false, code: "no_match" })
+    expect(!r.ok && r.found?.[0]).toMatchObject({ network: "eip155:8453", scheme: "exact" })
+  })
+
   it("reports an MPP challenge on another network as no_match", async () => {
     const { deps } = setup([mpp402(mppHeader({ network: "stellar:pubnet" }))])
     const r = await resolveMerchant("https://api.example.com/x", deps)

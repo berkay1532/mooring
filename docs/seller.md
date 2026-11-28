@@ -8,14 +8,15 @@ exercised end to end against a real service:
 - `GET /quote/mpp` is paid over **MPP charge**: the seller itself verifies and broadcasts the
   payer's transaction.
 
-It exists for two reasons. It is the seller that `npx create-mooring-agent` points a fresh agent
+It exists for two reasons. It is the seller that `npx create-mooring-agent` will point a fresh agent
 at, and it is the target of the week-3 evidence (settled card payments over both protocols,
 including a denial).
 
 Why a custom MPP verifier: stock `@stellar/mpp` servers reject contract payers, and a Mooring card
 is a Soroban custom account (`C...`). This seller therefore carries a card-aware charge verifier
 (`apps/seller/src/mpp-card-charge.ts`). An upstream PR to the SDK is being prepared; see
-[`docs/upstream/stellar-mpp-sdk-contract-payers.md`](upstream/stellar-mpp-sdk-contract-payers.md).
+[`docs/upstream/stellar-mpp-sdk-contract-payers.md`](upstream/stellar-mpp-sdk-contract-payers.md)
+(added with PR C).
 
 ## Routes and payment terms
 
@@ -52,8 +53,14 @@ The card-aware verifier accepts a payment only when all of the following hold:
 6. **Enforcing simulation, then broadcast.** The envelope is simulated in enforce mode, so a
    card's `__check_auth` runs and its refusal (budget, allowlist, expiry, frozen) surfaces as the
    402 reason. Only then is it broadcast, and the seller waits for the transaction to reach
-   `SUCCESS` before the resource is returned. A failed or unconfirmed transaction is never paid for
-   with a response.
+   `SUCCESS` before the resource is returned: it polls the RPC once a second, up to 30 times, and
+   then answers 402 `transaction not confirmed: <hash>` (the payment may still settle; the client
+   reports it as unconfirmed with that hash). A failed or unconfirmed transaction is never paid for
+   with a response. If the network does not take the envelope at all, the seller releases the
+   challenge id and transaction hash it claimed, so the client may retry the same challenge:
+   `transaction rejected by the network: <code>` (an `ERROR` result such as `tx_bad_seq`; nothing
+   was applied) or `transaction was not accepted: <reason>` (the RPC was unreachable or answered
+   `TRY_AGAIN_LATER`).
 
 ## Configuration
 
@@ -64,7 +71,7 @@ The card-aware verifier accepts a payment only when all of the following hold:
 | `OZ_API_KEY` | API key for the OZ Channels facilitator (generate at https://channels.openzeppelin.com/testnet/gen) | opaque string | yes | none |
 | `FACILITATOR_URL` | x402 facilitator base URL | `https://...` | no on testnet, yes on pubnet | `https://channels.openzeppelin.com/x402/testnet` |
 | `MPP_SECRET_KEY` | HMAC key binding MPP challenges to their contents; at least 32 characters, random | 64 hex chars | yes | none |
-| `SOROBAN_RPC_URL` | Soroban RPC used by the MPP charge to simulate and broadcast | `https://...` | no | the `@x402/stellar` default for the network |
+| `SOROBAN_RPC_URL` | Soroban RPC used by the MPP charge to simulate and broadcast | `https://...` | no on testnet, yes on pubnet | the `@x402/stellar` default on testnet; none on pubnet |
 
 Never commit real values. `apps/seller/.env.example` lists the names with empty values.
 
@@ -81,10 +88,16 @@ present. Then `curl -i http://localhost:3002/health`.
 ## Deploy to Vercel (owner checklist)
 
 1. In Vercel, add a new project from the GitHub repository `berkay1532/mooring`.
-2. Set **Root Directory** to `apps/seller`.
+2. Set **Root Directory** to `apps/seller`, and enable **Include source files outside of the Root
+   Directory in the Build Step** (Project Settings, Build and Deployment). The install command runs
+   `cd ../.. && npm ci` against the whole workspace, which fails without the rest of the
+   repository.
 3. Set **Framework Preset** to "Other". The build and install commands come from
    `apps/seller/vercel.json` (they run from the repository root and build the client package
-   first); a rewrite sends every path to the single function `api/index.ts`.
+   first); a rewrite sends every path to the single function `api/index.ts`. With the "Other"
+   preset Vercel expects a static output directory (`public` by default) and fails the build when
+   it is missing; the seller has no static files, so `apps/seller/public/.gitkeep` keeps that
+   directory in the repository.
 4. Set the Node.js version to 20 or newer (Project Settings, General).
 5. Add the environment variables (Production, and Preview if wanted): `SELLER_PAY_TO`,
    `OZ_API_KEY`, `MPP_SECRET_KEY`, and optionally `STELLAR_NETWORK`, `FACILITATOR_URL`,
@@ -105,15 +118,19 @@ curl -i https://api.mooring.live/quote/mpp     # 402, with WWW-Authenticate: Pay
 
 ## Pay it from a card
 
-With the `mooring` CLI and a funded card whose allowlist includes the seller's `payTo`:
+With the `mooring` CLI, a funded card whose allowlist includes the seller's `payTo`, and the
+card's agent secret key in `AGENT_SECRET` (another variable can be named with
+`--agent-secret-env <name>`):
 
 ```bash
-mooring pay https://api.mooring.live/quote     --card C...   # x402
-mooring pay https://api.mooring.live/quote/mpp --card C...   # MPP charge
+mooring pay https://api.mooring.live/quote     --card C...          # x402
+mooring pay https://api.mooring.live/quote/mpp --card C... --json   # MPP charge
 ```
 
-Both return the quote and the transaction hash. If the card refuses (not allowlisted, over
-budget, expired, frozen), the CLI prints the typed denial.
+Both print the quote; add `--json` to get `{ protocol, settlement, receipt }` instead, where
+`settlement.txHash` is the transaction hash. MPP charge is unsponsored, so the agent account also
+needs a little XLM for the network fee. If the card refuses (not allowlisted, over budget,
+expired, frozen), the CLI prints the typed denial.
 
 ## Limitations
 

@@ -147,25 +147,23 @@ export function parsePaymentRequired(header: string | null, body: string | null)
  * no usable challenge; never throws.
  */
 export function parseMppChallenge(header: string | null): ParsedTerms | null {
-  try {
-    const challenges = chargeChallengesFromHeader(header);
-    const accepts: MerchantTerms[] = [];
-    let description: string | undefined;
-    for (const c of challenges) {
-      const r = c.request;
-      const network = str(r.methodDetails?.network);
-      const asset = str(r.currency);
-      const payTo = str(r.recipient);
-      const amount = typeof r.amount === "string" && /^[0-9]+$/.test(r.amount) ? r.amount : undefined;
-      if (!network || !asset || !payTo || !amount) continue;
-      accepts.push({ scheme: "mpp", network, asset, payTo, amount });
-      description ??= clean(firstString(c.description, r.description), MAX_DESCRIPTION);
-    }
-    if (accepts.length === 0) return null;
-    return { accepts, service: description ? { description } : {} };
-  } catch {
-    return null;
+  // `chargeChallengesFromHeader` never throws, and mppx has validated each
+  // challenge's `request` as an object.
+  const challenges = chargeChallengesFromHeader(header);
+  const accepts: MerchantTerms[] = [];
+  let description: string | undefined;
+  for (const c of challenges) {
+    const r = c.request;
+    const network = str(r.methodDetails?.network);
+    const asset = str(r.currency);
+    const payTo = str(r.recipient);
+    const amount = typeof r.amount === "string" && /^[0-9]+$/.test(r.amount) ? r.amount : undefined;
+    if (!network || !asset || !payTo || !amount) continue;
+    accepts.push({ scheme: "mpp", network, asset, payTo, amount });
+    description ??= clean(firstString(c.description, r.description), MAX_DESCRIPTION);
   }
+  if (accepts.length === 0) return null;
+  return { accepts, service: description ? { description } : {} };
 }
 
 /**

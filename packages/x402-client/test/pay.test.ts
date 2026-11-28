@@ -1025,11 +1025,52 @@ describe("pay", () => {
         const { guard, commit } = spiedGuard();
         const fetch = scripted(() => mppChallengeResponse(), refused(`transaction not confirmed: ${MPP_TX}`));
 
+        const receipts: MooringReceipt[] = [];
+        const err = await pay("http://api.test/weather", undefined, {
+          ...opts(fetch),
+          guard,
+          onReceipt: (r) => receipts.push(r),
+        }).catch((e) => e);
+
+        expect(err).toMatchObject({ kind: "unconfirmed", transaction: MPP_TX });
+        // The full 64-hex hash survives, decoded from the problem detail.
+        expect(err.detail).toContain(`transaction not confirmed: ${MPP_TX}`);
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+        expect(receipts).toHaveLength(1);
+        expect(receipts[0]).toMatchObject({ status: "failed", txHash: MPP_TX });
+        expect(receipts[0]!.reason).toContain(MPP_TX);
+      });
+
+      it("a refusal naming a transport failure before acceptance stays unconfirmed without a hash", async () => {
+        stubMppRpc();
+        const { guard, commit } = spiedGuard();
+        const fetch = scripted(() => mppChallengeResponse(), refused("transaction was not accepted: fetch failed"));
+
         const err = await pay("http://api.test/weather", undefined, { ...opts(fetch), guard }).catch((e) => e);
 
         expect(err).toMatchObject({ kind: "unconfirmed" });
-        expect(err.detail).toContain("transaction not confirmed: ");
+        expect(err.transaction).toBeUndefined();
+        expect(err.detail).toContain("transaction was not accepted: fetch failed");
         expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+      });
+
+      it("a refusal saying the network rejected the envelope is seller_refused and releases the reservation", async () => {
+        stubMppRpc();
+        const { guard, commit } = spiedGuard();
+        const fetch = scripted(
+          () => mppChallengeResponse(),
+          refused("transaction rejected by the network: tx_insufficient_fee"),
+        );
+
+        const err = await pay("http://api.test/weather", undefined, { ...opts(fetch), guard }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(PaymentError);
+        expect(err.kind).toBe("rejected");
+        expect(err.detail).toBe(
+          "seller_refused: Payment verification failed: transaction rejected by the network: tx_insufficient_fee.",
+        );
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "failed");
+        expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", total: "0", reserved: "0" });
       });
     });
 

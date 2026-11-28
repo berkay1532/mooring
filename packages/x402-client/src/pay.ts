@@ -288,6 +288,9 @@ function refusalText(body: string, challenge: string): string | undefined {
  */
 const OUTCOME_OPEN = /transaction (?:not confirmed|was not accepted):/;
 
+/** The transaction hash a `transaction not confirmed: <hash>` refusal names. */
+const TX_HASH_IN_REFUSAL = /transaction not confirmed: ([0-9a-fA-F]{64})\b/;
+
 /**
  * A paid request's refusal, read in full for classification: an RFC 9457
  * problem body (what mppx sends) contributes its `detail` and `details.why`
@@ -376,6 +379,7 @@ async function payMpp(
     }
 
     let sellerSaid: string | undefined;
+    let broadcastHash: string | undefined;
     if (!response.ok) {
       // Read from a clone, so the caller's response keeps its body.
       const body = await response.clone().text().catch(() => "");
@@ -410,8 +414,13 @@ async function payMpp(
         if (!OUTCOME_OPEN.test(refusal.text)) {
           return fail(new PaymentError({ kind: "rejected", detail: `seller_refused: ${refusal.line ?? ""}` }));
         }
+        // Keep the decoded line whole (the raw JSON body would cut the hash)
+        // and the hash it names, so the receipt can point at the transaction.
+        sellerSaid = refusal.line;
+        broadcastHash = refusal.line?.match(TX_HASH_IN_REFUSAL)?.[1]?.toLowerCase();
+      } else {
+        sellerSaid = refusalText(body, challenge);
       }
-      sellerSaid = refusalText(body, challenge);
     }
 
     let receipt;
@@ -425,6 +434,7 @@ async function payMpp(
       return fail(
         new PaymentError({
           kind: "unconfirmed",
+          ...(broadcastHash ? { transaction: broadcastHash } : {}),
           detail: sellerSaid
             ? `${unknown} — seller said: ${sellerSaid}`
             : `${unknown} (${err instanceof Error ? err.message : String(err)})`,

@@ -203,11 +203,21 @@ async function interpret(res: Response, url: URL, deps: ResolveDeps): Promise<Re
   }
   // An over-cap body (null) is not read as x402, but an MPP header still counts.
   const x402 = header === null && body === null ? null : parsePaymentRequired(header, body)
-  const parsed =
-    x402 && x402.accepts.length > 0 ? x402 : parseMppChallenge(res.headers.get("www-authenticate"))
+  const mpp = () => parseMppChallenge(res.headers.get("www-authenticate"))
+  let parsed = x402 && x402.accepts.length > 0 ? x402 : mpp()
   if (!parsed || parsed.accepts.length === 0) return notX402
 
-  const sel = selectTerms(parsed, deps.network, deps.asset)
+  let sel = selectTerms(parsed, deps.network, deps.asset)
+  if (sel.kind === "none" && parsed === x402) {
+    // The x402 terms are for another network or asset; the same 402 may also
+    // carry an MPP charge the card can pay.
+    const fallback = mpp()
+    const fallbackSel = fallback ? selectTerms(fallback, deps.network, deps.asset) : null
+    if (fallback && fallbackSel && fallbackSel.kind !== "none") {
+      parsed = fallback
+      sel = fallbackSel
+    }
+  }
   if (sel.kind === "many") {
     return fail(
       "ambiguous",
