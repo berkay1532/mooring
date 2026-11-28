@@ -56,7 +56,25 @@ PR #1, D2 in PR #2.
 - **Example seller** (`apps/seller`) — Mooring's hosted reference seller at `api.mooring.live`: one paid quote over x402 (`/quote`) and over MPP charge with a card-aware verifier (`/quote/mpp`); see [`docs/seller.md`](docs/seller.md).
 - **Indexer** (`apps/web/lib/indexer`, Neon Postgres) — built: every card an owner created from any
   client, a per-card activity feed with tx hashes, verified merchant names across devices; `docs/indexer.md`.
+- **Agent kit** (`packages/create-mooring-agent`) — `npx create-mooring-agent`: a small TypeScript agent that pays a service from a card through `pay()` (x402 or MPP charge), with local caps and a signed receipt ledger.
 - **Evidence package** — delivered: `docs/testnet.md` (D1–D3 hashes), `docs/web-app.md` (checklist + screenshots), CI on every PR.
+
+## Quickstart
+
+Scaffold an agent that pays Mooring's hosted example seller from a card:
+
+```sh
+npx create-mooring-agent my-agent
+```
+
+Then:
+
+1. Create and fund a card at https://app.mooring.live and generate an agent key there (or `mooring keygen`); register the key as the card's signer.
+2. Copy `.env.example` to `.env` and fill `MOORING_CARD` and `AGENT_SECRET`; fund the agent account with a little XLM on testnet (friendbot) for MPP fees.
+3. `npm install && npm run pay`
+
+`npm run pay` pays `https://api.mooring.live/quote` (0.001 USDC over x402) through `pay()`, inside
+local caps, and records a signed receipt. See [`packages/create-mooring-agent`](packages/create-mooring-agent/README.md).
 
 ## Pay an API from a card
 
@@ -134,7 +152,9 @@ real testnet transactions; they are never run in CI.
 - `docs/testnet.md` — deployment, payment walkthrough and testnet evidence
 - `docs/web-app.md` — the web app: screens, architecture, configuration, deployment,
   manual testnet checklist
-- `packages/x402-client/README.md` — the agent-side client package
+- `packages/x402-client/README.md` — the agent-side client package (x402, MPP charge, guard rails, receipts)
+- `docs/seller.md` — the hosted example seller (`apps/seller`, `api.mooring.live`)
+- `docs/upstream/stellar-mpp-sdk-contract-payers.md` — the upstream patch that lets `@stellar/mpp` servers accept card payers
 
 ## License
 

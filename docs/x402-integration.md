@@ -334,6 +334,129 @@ sides:
   since a minor SDK release could change how auth credentials are recorded. Drop the pin together
   with the flag and the guard.
 
+## Paying MPP charge sellers
+
+`pay()` (from `@mooring-live/x402-client`) is one entry point for both protocols. It requests the
+URL and, on a `402`, pays with whichever one the seller speaks. An MPP (Machine Payments Protocol)
+Stellar **charge** looks like this on the wire:
+
+1. The seller answers `402` with `WWW-Authenticate: Payment <challenge>`: the amount, the asset, the
+   `payTo` address and the network.
+2. The client retries with `Authorization: Payment <credential>`.
+3. The seller verifies, settles and answers `200` with a `Payment-Receipt` header.
+
+The client supports **pull mode only**: the credential type is `transaction`, a signed Soroban
+`transfer` that the **seller broadcasts**. The card is the payer; the agent key signs the card's
+authorization entry exactly as for x402. The credential's `source` is the DID
+`did:pkh:stellar:testnet:<card>`, so the seller sees the card as the payer.
+
+```ts
+import { pay } from "@mooring-live/x402-client";
+
+const { response, protocol, settlement, receipt } = await pay(url, undefined, {
+  card: "CAJPWJBF…AHCJ",
+  agent: Keypair.fromSecret(process.env.AGENT_SECRET!),
+  network: "stellar:testnet",
+});
+console.log(protocol, settlement?.txHash, await response.text());
+```
+
+`protocol` is `"x402"`, `"mpp"` or `"none"` (the seller did not ask for payment); `settlement` is
+`{ txHash, amount, payTo, asset, network }` or `null`; `receipt` is the agent-signed receipt (next
+section), or `null` when nothing was paid.
+
+**Who pays the network fee.** The card pays the merchant; the transaction's source pays the network
+fee. Unless the seller sponsors the transaction, that source is the **agent account**, so it must
+exist and hold a little XLM (testnet: fund it with friendbot,
+`https://friendbot.stellar.org?addr=<G…>`). An unfunded agent account is a `PaymentError`
+`rejected` with an `agent_unfunded: …` detail, raised before anything is handed to the seller (the
+CLI prints the friendbot link and exits 1).
+
+**Server-side limitation.** Stock `@stellar/mpp` charge servers currently accept only `G…` payers
+and refuse a contract account even in pull mode. Mooring's hosted seller (`api.mooring.live`,
+[`docs/seller.md`](seller.md)) carries a patch that accepts cards. The same change is prepared as an
+upstream pull request to `stellar/stellar-mpp-sdk`; see
+[`docs/upstream/stellar-mpp-sdk-contract-payers.md`](upstream/stellar-mpp-sdk-contract-payers.md).
+Until it lands, an MPP seller built on the stock server will refuse a card.
+
+**How refusals surface.** The same typed errors as x402:
+
+- `CardPolicyDenied` at stage `verify`: the card's `__check_auth` said no.
+- `PaymentError` `rejected` with `seller_refused: <line>`: the seller refused for another reason.
+  `not_payable: …` means the `402` carried neither x402 nor MPP terms.
+- `PaymentError` `unconfirmed`: the credential was handed over and the outcome is not known (the
+  seller answered without a `Payment-Receipt`, or the request failed in transit). The card may have
+  been debited; reconcile before retrying.
+- `sequence_conflict`: an agent-paid credential carries the agent account's next sequence number
+  and it moved. Nothing was applied, so `pay()` retries **once** from a fresh credential.
+  Agent-paid payments for one agent key are serialized inside `pay()`; if you drive the lower-level
+  charge method yourself, run them one at a time.
+
+## Guard rails and receipts
+
+The card's limits are enforced on-chain no matter what the agent does. `pay()` can also run an
+agent-side **guard** that decides *before the agent key signs anything*: a second, local limit, not
+a replacement for the card's policy.
+
+**Caps** are decimal USDC strings: `dailyCap` (per card, per UTC day), `totalCap` (per card, all
+time) and `maxPerTx`. In Node, `loadGuardConfig(cwd)` from `@mooring-live/x402-client/node` reads
+them, key by key, in this order of precedence:
+
+1. options you pass (the CLI's `--daily-cap`, `--total-cap`, `--max-per-tx`; in code, spread your
+   own values over the loaded config before `parseGuardConfig`),
+2. `mooring.guard.json` in the working directory
+   (`{ "dailyCap": "5", "totalCap": "50", "maxPerTx": "0.5" }`),
+3. `MOORING_DAILY_CAP`, `MOORING_TOTAL_CAP`, `MOORING_MAX_PER_TX`.
+
+```ts
+import { pay, GuardDenied, parseGuardConfig } from "@mooring-live/x402-client";
+import { defaultStateDir, fileGuard, loadGuardConfig } from "@mooring-live/x402-client/node";
+
+const caps = parseGuardConfig(loadGuardConfig(process.cwd()));
+const guard = fileGuard({ stateDir: defaultStateDir(), caps });
+try {
+  await pay(url, undefined, { card, agent, network: "stellar:testnet", guard });
+} catch (err) {
+  if (err instanceof GuardDenied) console.error(err.reason, err.attempted, err.limit);
+}
+```
+
+**Decision order:** stopped, then `max_per_tx`, then daily, then total. Open reservations count
+against the daily and total caps, so concurrent payments cannot jointly overshoot.
+
+**Stop switch.** `guard.stop(reason?, card?)` and `guard.resume(card?)`. With `fileGuard` the switch
+is the `stop` file in the state directory, global or per card, so another process (`mooring stop`,
+`mooring resume`) can flip it.
+
+**A refusal is `GuardDenied`**, thrown before anything is signed. The CLI prints
+`refused before signing: <reason> (<attempted> USDC attempted, limit <limit>)` and exits with code 2.
+It reaches neither `onDenial` (the card's refusals) nor `onPaymentError`.
+
+**Accounting.** A payment reserves its amount first. A settled payment is committed and always
+counts. A rejected payment releases the reservation. An `unconfirmed` payment **counts as spent**
+until you reconcile it, so an unknown outcome can only tighten the caps.
+
+### Receipts
+
+Every attempt with known terms (settled, denied or failed) produces a `Receipt`, signed by the agent
+key: `v`, `id`, `ts`, `protocol` (`x402` or `mpp`), `card`, `agent`, `payTo`, `amount` (USDC base
+units), `asset`, `network`, optionally `url`, `status` (`settled`, `denied` or `failed`), `txHash`,
+`reason`, and `sig`. The signature is the agent's ed25519 signature (hex) over the **canonical
+JSON**: keys sorted recursively, no whitespace, `sig` left out. `verifyReceipt(receipt)` checks it
+against the receipt's own `agent` key and never throws; `signReceipt`, `canonicalReceipt` and
+`receiptId` are exported too.
+
+Pass `onReceipt` to `pay()` to collect receipts. `appendReceipt(stateDir, r)` (Node) appends one to
+the ledger `<stateDir>/receipts.jsonl`; the state directory is `~/.mooring`, or `$MOORING_HOME` when
+set (`defaultStateDir()`), and also holds the guard counters and the `stop` file. The CLI records
+every attempt there:
+
+```sh
+mooring receipts export --csv     # id,ts,protocol,card,agent,payTo,amount,asset,network,url,status,txHash,reason,sig
+mooring receipts export --json --since 2026-11-01T00:00:00Z --card C…
+mooring receipts verify           # verified <n> receipts, or: bad signature: <id> (exit 1)
+```
+
 ## Known limits
 
 - **The pre-check is advisory, not authoritative.** It is a local mirror of the policy, evaluated

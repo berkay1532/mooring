@@ -350,6 +350,16 @@ refresh runs) plus `Cache-Control: public, s-maxage=3600, stale-while-revalidate
 CDN does the hourly cache; a failing source keeps the last good list and is reported in
 `sources[]`. The browser memoises the response for ten minutes.
 
+Two MPP-related additions. A first-party **`mooring`** source reads the hosted seller's `GET /`
+document (`api.mooring.live`, `MOORING_SELLER_URL` to override) and yields one entry per resource,
+so the directory always offers one x402 and one MPP service a card can pay; it outranks every
+third-party catalogue in the dedupe. Every entry carries a `protocol` field (`x402` or `mpp`), and
+an MPP row shows an **MPP** pill in the list. The resolver understands both protocols: it reads x402
+terms first and, when the response carries none, the MPP Stellar charge challenges in
+`WWW-Authenticate`; a service that offers neither is refused with "That URL did not answer with x402
+or MPP payment terms". For an MPP service the confirmation modal adds the line "Pays through MPP
+charge."
+
 Picking a row does **not** add anything: it fills the URL field and runs the same live 402
 lookup as a pasted URL, then the same preview and confirmation modal. If the live lookup fails,
 the resolver offers the directory's payee through the add-by-address path instead. The seed
