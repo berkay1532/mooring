@@ -4,6 +4,7 @@ import {
   CARD_ERRORS,
   CardPolicyDenied,
   DEFAULT_APP_URL,
+  GuardDenied,
   allowMerchantUrl,
   isAbsoluteHttpUrl,
   stripQuery,
@@ -153,5 +154,15 @@ describe("allowMerchantUrl and CardPolicyDenied.merchant", () => {
   it("falls back to the default app URL", () => {
     const err = new CardPolicyDenied("not_allowlisted", "precheck", { merchant: { payTo: "G", url: "https://a.b/c" }, card: "CBOO" });
     expect(err.message).toContain(` — allow it: ${DEFAULT_APP_URL}/allow?card=CBOO&url=`);
+  });
+});
+
+describe("GuardDenied", () => {
+  it("GuardDenied carries reason, card, amounts and a message that says 'before signing'", () => {
+    const e = new GuardDenied("daily_cap", { card: "CBI3", attempted: "0.5", limit: "1" });
+    expect(e.name).toBe("GuardDenied");
+    expect(e.reason).toBe("daily_cap");
+    expect(e.message).toBe("guard refused (daily_cap) before signing: 0.5 USDC attempted, limit 1");
+    expect(e).not.toBeInstanceOf(CardPolicyDenied);
   });
 });

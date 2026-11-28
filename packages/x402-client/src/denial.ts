@@ -187,3 +187,33 @@ export class PaymentError extends Error {
     this.detail = opts.detail;
   }
 }
+
+export type GuardReason = "stopped" | "daily_cap" | "total_cap" | "max_per_tx";
+
+/**
+ * A local guard (agent-side cap or stop switch) refused a payment before the
+ * agent key signed anything. Distinct from `CardPolicyDenied`, which means the
+ * card itself refused.
+ */
+export class GuardDenied extends Error {
+  readonly reason: GuardReason;
+  readonly card: string;
+  readonly limit?: string;
+  readonly attempted: string;
+  readonly detail?: string;
+
+  constructor(
+    reason: GuardReason,
+    opts: { card: string; attempted: string; limit?: string; detail?: string },
+  ) {
+    super(
+      `guard refused (${reason}) before signing: ${opts.attempted} USDC attempted${opts.limit ? `, limit ${opts.limit}` : ""}${opts.detail ? ` — ${opts.detail}` : ""}`,
+    );
+    this.name = "GuardDenied";
+    this.reason = reason;
+    this.card = opts.card;
+    this.limit = opts.limit;
+    this.attempted = opts.attempted;
+    this.detail = opts.detail;
+  }
+}

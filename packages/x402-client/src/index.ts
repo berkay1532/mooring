@@ -4,12 +4,13 @@ export {
   CARD_ERRORS,
   CardPolicyDenied,
   DEFAULT_APP_URL,
+  GuardDenied,
   PaymentError,
   allowMerchantUrl,
   cardDenialFromEvents,
   classifyContractError,
 } from "./denial.js";
-export type { DeniedMerchant, DenialReason, DenialStage } from "./denial.js";
+export type { DeniedMerchant, DenialReason, DenialStage, GuardReason } from "./denial.js";
 export { reconcileSettlement } from "./reconcile.js";
 export type { SettlementOutcome } from "./reconcile.js";
 export { precheck } from "./precheck.js";
