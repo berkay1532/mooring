@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair, rpc, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
-import { Credential, Receipt } from "mppx";
+import { Challenge, Credential, Receipt } from "mppx";
+import { chargeMethod } from "../src/mpp/schema.js";
 import { readCardInfo, readMerchants } from "../src/card.js";
 import { CardPolicyDenied, GuardDenied, PaymentError } from "../src/denial.js";
 import { MemoryGuard } from "../src/guard/memory.js";
@@ -449,7 +450,7 @@ describe("pay", () => {
       expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", reserved: "0" });
     });
 
-    it("a payment error emits a failed receipt and releases the reservation", async () => {
+    it("an unconfirmed payment counts as spent and emits a failed receipt", async () => {
       stubMppRpc();
       const guard = new MemoryGuard({ dailyCap: "10000" });
       const receipts: MooringReceipt[] = [];
@@ -465,10 +466,50 @@ describe("pay", () => {
       }).catch((e) => e);
 
       expect(err).toBeInstanceOf(PaymentError);
+      expect(err.kind).toBe("unconfirmed");
       expect(receipts).toHaveLength(1);
-      expect(receipts[0]).toMatchObject({ status: "failed", reason: err.detail });
+      expect(receipts[0]).toMatchObject({ status: "failed", reason: `unconfirmed: ${err.detail}` });
+      expect(receipts[0]!.reason).toMatch(/^unconfirmed:/);
       expect(verifyReceipt(receipts[0]!)).toBe(true);
-      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", reserved: "0" });
+      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "10000", total: "10000", reserved: "0" });
+    });
+
+    it("a rejected payment after the reservation releases it and emits a failed receipt", async () => {
+      const { simulate } = stubMppRpc();
+      const guard = new MemoryGuard({ dailyCap: "10000" });
+      const receipts: MooringReceipt[] = [];
+      const onPaymentError = vi.fn();
+      // A charge in an asset the card does not hold: refused inside createCredential, after reserving.
+      const OTHER_ASSET = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
+      const challenge = Challenge.fromMethod(chargeMethod, {
+        secretKey: "test",
+        realm: "api.mooring.live",
+        request: {
+          amount: "10000",
+          currency: OTHER_ASSET,
+          recipient: PAY_TO,
+          methodDetails: { network: "stellar:testnet", credentialTypes: ["transaction"] },
+        },
+      });
+      const fetch = scripted(
+        () => new Response(null, { status: 402, headers: { "WWW-Authenticate": Challenge.serialize(challenge) } }),
+      );
+
+      const err = await pay("http://api.test/weather", undefined, {
+        ...opts(fetch),
+        guard,
+        onPaymentError,
+        onReceipt: (r) => receipts.push(r),
+      }).catch((e) => e);
+
+      expect(err).toBeInstanceOf(PaymentError);
+      expect(err.kind).toBe("rejected");
+      expect(err.detail).toMatch(/^unsupported_asset/);
+      expect(simulate).not.toHaveBeenCalled();
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]).toMatchObject({ status: "failed", reason: err.detail, asset: OTHER_ASSET });
+      expect(receipts[0]!.txHash).toBeUndefined();
+      expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", total: "0", reserved: "0" });
     });
 
     it("a free response produces no receipt", async () => {

@@ -174,7 +174,17 @@ export async function payRequest(
   } catch (err) {
     const denied = err instanceof GuardDenied || err instanceof CardPolicyDenied;
     const status = denied ? "denied" : "failed";
-    if (attempt.reservation) await opts.guard!.commit(attempt.reservation, status);
+    // An unconfirmed settlement may have debited the card: count it as spent
+    // (over-counting is the safe direction for a cap), report it as failed.
+    const unconfirmed = err instanceof PaymentError && err.kind === "unconfirmed";
+    if (attempt.reservation) await opts.guard!.commit(attempt.reservation, unconfirmed ? "settled" : status);
+    if (unconfirmed) {
+      receipt("failed", {
+        reason: `unconfirmed: ${err.detail ?? ""}`,
+        ...(err.transaction ? { txHash: err.transaction } : {}),
+      });
+      throw err;
+    }
     const reason = denied
       ? err.reason
       : err instanceof PaymentError
