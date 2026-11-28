@@ -9,38 +9,67 @@ import { Command, Option } from "commander";
 import {
   CardPolicyDenied,
   DEFAULT_APP_URL,
+  GuardDenied,
+  PaymentError,
   allowMerchantUrl,
   createCard,
-  createMooringFetch,
   deploymentFor,
-  getSettlement,
   nextCardIndex,
+  parseGuardConfig,
+  pay,
   readCardInfo,
   readMerchants,
   type CardInfo,
-  type Settlement,
+  type Guard,
+  type GuardCaps,
+  type GuardConfig,
   type StellarNetwork,
 } from "@mooring-live/x402-client";
+import {
+  appendReceipt,
+  defaultStateDir,
+  exportReceipts,
+  fileGuard,
+  loadGuardConfig,
+  readReceipts,
+} from "@mooring-live/x402-client/node";
 import { buildPolicy } from "./create-args.js";
+import { registerGuardCommands } from "./guard-commands.js";
 
 /** Everything `buildProgram` needs from the outside world; tests inject fakes. */
 export interface CliDeps {
   readCardInfo: typeof readCardInfo;
   readMerchants: typeof readMerchants;
-  createMooringFetch: typeof createMooringFetch;
-  getSettlement: typeof getSettlement;
   createCard: typeof createCard;
   nextCardIndex: typeof nextCardIndex;
+  pay: typeof pay;
+  /** The guard over `stateDir` with these caps (base units). */
+  guardFor: (stateDir: string, caps: GuardCaps) => Guard;
+  appendReceipt: typeof appendReceipt;
+  exportReceipts: typeof exportReceipts;
+  readReceipts: typeof readReceipts;
+  loadGuardConfig: typeof loadGuardConfig;
+  /** Where the guard state, stop file and receipt ledger live. */
+  stateDir: () => string;
+  env: NodeJS.ProcessEnv;
+  cwd: () => string;
   stdout: (line: string) => void;
 }
 
 const realDeps: CliDeps = {
   readCardInfo,
   readMerchants,
-  createMooringFetch,
-  getSettlement,
   createCard,
   nextCardIndex,
+  pay,
+  guardFor: (stateDir, caps) => fileGuard({ stateDir, caps }),
+  appendReceipt,
+  exportReceipts,
+  readReceipts,
+  loadGuardConfig,
+  stateDir: () => defaultStateDir(process.env),
+  env: process.env,
+  cwd: () => process.cwd(),
   stdout: (line: string) => process.stdout.write(`${line}\n`),
 };
 
@@ -65,7 +94,7 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
   program
     .name("mooring")
     .description("CLI for Mooring spending cards (Soroban custom accounts on Stellar)")
-    .version("0.3.1");
+    .version("0.4.0");
 
   program
     .command("keygen")
@@ -113,8 +142,8 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
 
   program
     .command("pay")
-    .description("Pay an x402-protected URL from a Mooring card")
-    .argument("<url>", "the x402-protected URL to request")
+    .description("Pay an x402- or MPP-protected URL from a Mooring card, within the local guard's caps")
+    .argument("<url>", "the paid URL to request")
     .requiredOption("--card <address>", "card contract address (C...)")
     .option("--agent-secret-env <name>", "env var holding the agent's Stellar secret key", "AGENT_SECRET")
     .addOption(
@@ -122,6 +151,11 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
     )
     .option("--rpc <url>", "override the default RPC URL for the network")
     .option("--no-precheck", "skip the local policy pre-check before signing")
+    .option("--daily-cap <usdc>", "local cap on today's spend from this card, in USDC (overrides mooring.guard.json / MOORING_DAILY_CAP)")
+    .option("--total-cap <usdc>", "local cap on the card's total spend, in USDC (overrides mooring.guard.json / MOORING_TOTAL_CAP)")
+    .option("--max-per-tx <usdc>", "local cap on one payment, in USDC (overrides mooring.guard.json / MOORING_MAX_PER_TX)")
+    .option("--no-guard", "pay without the local guard (no caps, no stop switch); receipts are still recorded")
+    .option("--json", "print { protocol, settlement, receipt } as JSON instead of the response")
     .action(
       async (
         url: string,
@@ -131,10 +165,15 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
           network: StellarNetwork;
           rpc?: string;
           precheck: boolean;
+          dailyCap?: string;
+          totalCap?: string;
+          maxPerTx?: string;
+          guard: boolean;
+          json?: boolean;
         },
       ) => {
         const secretEnvName = opts.agentSecretEnv ?? "AGENT_SECRET";
-        const secret = process.env[secretEnvName];
+        const secret = deps.env[secretEnvName];
         if (!secret) {
           deps.stdout(`Missing agent secret: set ${secretEnvName} to the agent's Stellar secret key (S...).`);
           process.exitCode = 2;
@@ -148,30 +187,69 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
           process.exitCode = 1;
           return;
         }
-        const fetchWithPayment = deps.createMooringFetch({
-          card: opts.card,
-          agent,
-          network: opts.network,
-          rpcUrl: opts.rpc,
-          precheck: opts.precheck,
-        });
+
+        const stateDir = deps.stateDir();
+        let guard: Guard | undefined;
+        if (opts.guard) {
+          let caps: GuardCaps;
+          try {
+            const flags: GuardConfig = {};
+            if (opts.dailyCap !== undefined) flags.dailyCap = opts.dailyCap;
+            if (opts.totalCap !== undefined) flags.totalCap = opts.totalCap;
+            if (opts.maxPerTx !== undefined) flags.maxPerTx = opts.maxPerTx;
+            caps = parseGuardConfig({ ...deps.loadGuardConfig(deps.cwd(), deps.env), ...flags });
+          } catch (err) {
+            deps.stdout(err instanceof Error ? err.message : String(err));
+            process.exitCode = 1;
+            return;
+          }
+          guard = deps.guardFor(stateDir, caps);
+        }
 
         try {
-          const res = await fetchWithPayment(url);
-          deps.stdout(`HTTP ${res.status}`);
-          const settlement: Settlement | null = deps.getSettlement(res);
-          if (settlement) {
-            deps.stdout(`Settlement: ${settlement.transaction} (${settlement.network})`);
+          const result = await deps.pay(url, undefined, {
+            card: opts.card,
+            agent,
+            network: opts.network,
+            rpcUrl: opts.rpc,
+            precheck: opts.precheck,
+            guard,
+            onReceipt: (r) => deps.appendReceipt(stateDir, r),
+          });
+          if (opts.json) {
+            deps.stdout(toJson({ protocol: result.protocol, settlement: result.settlement, receipt: result.receipt }));
+            return;
           }
-          const body = await res.text();
-          deps.stdout(body);
+          deps.stdout(`HTTP ${result.response.status}`);
+          deps.stdout(`Protocol: ${result.protocol}`);
+          if (result.settlement) {
+            deps.stdout(`Settlement: ${result.settlement.txHash} (${result.settlement.network})`);
+          }
+          if (result.receipt) deps.stdout(`Receipt: ${result.receipt.id}`);
+          deps.stdout(await result.response.text());
         } catch (err) {
+          if (err instanceof GuardDenied) {
+            deps.stdout(
+              `refused before signing: ${err.reason} (${err.attempted} USDC attempted${err.limit !== undefined ? `, limit ${err.limit}` : ""})`,
+            );
+            process.exitCode = 2;
+            return;
+          }
           if (err instanceof CardPolicyDenied) {
             deps.stdout(`Denied (${err.reason}) at ${err.stage}`);
             if (err.merchant?.url) {
               deps.stdout(`Allow it: ${allowMerchantUrl(DEFAULT_APP_URL, opts.card, err.merchant.url)}`);
             }
             process.exitCode = 2;
+            return;
+          }
+          if (err instanceof PaymentError && err.detail?.startsWith("agent_unfunded")) {
+            // An agent-paid MPP charge needs the agent account to exist with XLM for the fee.
+            deps.stdout(err.detail);
+            deps.stdout(
+              `Fund the agent account with XLM (testnet: https://friendbot.stellar.org?addr=${agent.publicKey()})`,
+            );
+            process.exitCode = 1;
             return;
           }
           throw err;
@@ -280,6 +358,8 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
         deps.stdout(`Next: send USDC to the card address, then open ${DEFAULT_APP_URL}/cards with the owner's wallet — the card is discovered there without importing it.`);
       },
     );
+
+  registerGuardCommands(program, deps);
 
   return program;
 }

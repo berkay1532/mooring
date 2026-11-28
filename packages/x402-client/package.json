@@ -1,6 +1,6 @@
 {
   "name": "@mooring-live/x402-client",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Pay x402-protected APIs from a Mooring spending card on Stellar.",
   "license": "Apache-2.0",
   "repository": {
@@ -39,6 +39,10 @@
     "./errors": {
       "types": "./dist/denial.d.ts",
       "import": "./dist/denial.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js"
     }
   },
   "//exports": "./errors is the card error table on its own, so a consumer that only translates contract errors (the web app) does not pull the payment client, its scheme and the @x402/* packages into its bundle.",
@@ -59,7 +63,8 @@
     "@stellar/stellar-sdk": "17.4.0",
     "@x402/core": "2.32.0",
     "@x402/fetch": "2.32.0",
-    "@x402/stellar": "2.32.0"
+    "@x402/stellar": "2.32.0",
+    "mppx": "0.22.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -7,16 +7,16 @@ import {
   CARD_ERROR_CODES,
   CardPolicyDenied,
   DEFAULT_APP_URL,
+  GuardDenied,
   PaymentError,
   cardDenialFromEvents,
   classifyContractError,
   type DenialReason,
   type DenialStage,
-  isAbsoluteHttpUrl,
-  stripQuery,
 } from "./denial.js";
 import { precheck } from "./precheck.js";
 import { reconcileSettlement } from "./reconcile.js";
+import { payRequest } from "./pay.js";
 import { CardExactStellarScheme, type StellarNetwork } from "./scheme.js";
 
 export interface MooringClientOptions {
@@ -43,7 +43,7 @@ export interface Settlement {
 }
 
 /** Everything `createMooringFetch` can reject with. */
-type PaymentFailure = CardPolicyDenied | PaymentError;
+type PaymentFailure = CardPolicyDenied | PaymentError | GuardDenied;
 
 /**
  * Internal: the last failure recorded by the hooks, so the fetch wrapper can
@@ -53,12 +53,26 @@ type PaymentFailure = CardPolicyDenied | PaymentError;
  */
 class FailureBox {
   last?: PaymentFailure;
+  /** An untyped error raised by a `beforeSign` hook, rethrown as is. */
+  unexpected?: { error: unknown };
+  /**
+   * Records `failure` and reports it: `onDenial` for a `CardPolicyDenied`,
+   * `onPaymentError` for a `PaymentError`. A `GuardDenied` (a local guard,
+   * not the card) reaches neither callback; it is only thrown.
+   */
   set(failure: PaymentFailure, opts: MooringClientOptions): void {
     this.last = failure;
     if (failure instanceof CardPolicyDenied) opts.onDenial?.(failure);
-    else opts.onPaymentError?.(failure);
+    else if (failure instanceof PaymentError) opts.onPaymentError?.(failure);
   }
 }
+
+/**
+ * Internal: runs before the pre-check and before anything is signed, with the
+ * `accepts` entry x402 selected. Throwing `GuardDenied` or `PaymentError`
+ * aborts the payment with that error.
+ */
+export type BeforeSign = (req: PaymentRequirements) => Promise<void>;
 
 /**
  * Builds an x402 client that pays from a Mooring card.
@@ -83,6 +97,7 @@ export function createMooringClient(
   opts: MooringClientOptions,
   box: FailureBox = new FailureBox(),
   requestUrl?: string,
+  beforeSign?: BeforeSign,
 ): x402Client {
   const rpcUrl = getRpcUrl(opts.network, opts.rpcUrl ? { url: opts.rpcUrl } : undefined);
   const passphrase = getNetworkPassphrase(opts.network);
@@ -223,6 +238,15 @@ export function createMooringClient(
   });
 
   client.onBeforePaymentCreation(async ({ selectedRequirements }) => {
+    if (beforeSign) {
+      try {
+        await beforeSign(selectedRequirements);
+      } catch (err) {
+        if (err instanceof GuardDenied || err instanceof PaymentError) box.set(err, opts);
+        else box.unexpected = { error: err };
+        return { abort: true, reason: err instanceof Error ? err.message : String(err) };
+      }
+    }
     if (opts.precheck === false) return;
     let reason: DenialReason | null;
     try {
@@ -255,10 +279,14 @@ export function createMooringClient(
 }
 
 /**
- * A `fetch` that pays x402-protected requests from the card, and rejects with
- * `CardPolicyDenied` (the card's policy refused) or `PaymentError` (anything
- * else) — never a bare 402 — whenever the payment does not deliver the
- * resource. Failed payments are never retried.
+ * A `fetch` that pays payment-protected requests from the card — an x402
+ * seller or an MPP Stellar charge seller, whichever the 402 asks for — and
+ * rejects with `CardPolicyDenied` (the card's policy refused) or
+ * `PaymentError` (anything else) — never a bare 402 — whenever the payment
+ * does not deliver the resource. Failed payments are never retried.
+ *
+ * It is `pay()` returning only the response; use `pay()` to also learn the
+ * protocol and the settlement.
  *
  * Each call builds its own client and failure scope — `x402Client.fromConfig`
  * does no I/O — so concurrent requests through the same returned `fetch` cannot
@@ -267,56 +295,141 @@ export function createMooringClient(
 export function createMooringFetch(
   opts: MooringClientOptions & { fetch?: typeof globalThis.fetch },
 ): typeof globalThis.fetch {
-  const transport = opts.fetch ?? globalThis.fetch;
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const box = new FailureBox();
-    // Only an absolute http(s) URL can become an allow link; anything else
-    // (a relative path, another scheme) is left off the denial entirely.
-    const rawUrl = input instanceof Request ? input.url : String(input);
-    const requestUrl = isAbsoluteHttpUrl(rawUrl) ? stripQuery(rawUrl) : undefined;
-    const wrapped = wrapFetchWithPayment(transport, createMooringClient(opts, box, requestUrl));
-    try {
-      const res = await wrapped(input, init);
-      // Verify and settle failures come back as a non-2xx response, not a
-      // throw; the hooks have recorded why, so surface it typed.
-      if (box.last) throw box.last;
-      const settlement = getSettlement(res);
-      if (settlement && !settlement.success) {
-        // The hooks classify every settlement they see; reaching here means
-        // the header said "failed" without the hook firing, so the settlement
-        // state is exactly as unknown as the header is unexplained.
-        box.set(
-          new PaymentError({
-            kind: "unconfirmed",
-            transaction: settlement.transaction || undefined,
-            detail: settlement.errorReason ?? "settle failed",
-          }),
-          opts,
-        );
-        throw box.last!;
-      }
-      if (res.status === 402) {
-        // The payment was made and the resource still withheld, with nothing
-        // in the response to say what happened to it. `@x402/express` answers
-        // exactly this from its settlement path, *after* the facilitator may
-        // have submitted — so this is an unknown settlement, not a denial.
-        box.set(
-          new PaymentError({
-            kind: "unconfirmed",
-            detail: "402 without PAYMENT-REQUIRED or PAYMENT-RESPONSE; settlement state unknown",
-          }),
-          opts,
-        );
-        throw box.last!;
-      }
+  return (async (input: RequestInfo | URL, init?: RequestInit) =>
+    (await payRequest(input, init, opts)).response) as typeof globalThis.fetch;
+}
+
+/** What the x402 path settled: the settlement header plus the terms it paid. */
+export interface X402Paid {
+  response: Response;
+  settlement: { txHash: string; amount: string; payTo: string; asset: string; network: string } | null;
+}
+
+/**
+ * Internal: pays one x402 request from the card, given the seller's first 402.
+ * `requestUrl` is the allow-link URL for a denial. `beforeSign` (the guard's
+ * reservation) runs with the selected terms before the pre-check.
+ *
+ * `first` is the 402 the caller already received for `request`; it is replayed
+ * as the answer to `@x402/fetch`'s opening request, so the seller is asked for
+ * terms once and only the paid request follows.
+ */
+export async function payX402(
+  opts: MooringClientOptions,
+  transport: typeof globalThis.fetch,
+  request: Request,
+  first: Response,
+  requestUrl: string | undefined,
+  beforeSign?: BeforeSign,
+): Promise<X402Paid> {
+  const box = new FailureBox();
+  const client = createMooringClient(opts, box, requestUrl, beforeSign);
+  let paid: PaymentRequirements | undefined;
+  // x402 runs these hooks only once it has selected an `accepts` entry it can
+  // pay, so a payload failure before this fired means no entry was usable.
+  let selected = false;
+  client.onBeforePaymentCreation(async () => {
+    selected = true;
+  });
+  client.onAfterPaymentCreation(async ({ selectedRequirements }) => {
+    paid = selectedRequirements;
+  });
+  let replay: Response | undefined = first;
+  const replaying = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (replay) {
+      const res = replay;
+      replay = undefined;
       return res;
+    }
+    // Every call after the replayed 402 is the paid request, carrying the
+    // agent-signed PAYMENT-SIGNATURE: if its transport fails, the facilitator
+    // may already have settled it.
+    try {
+      return await transport(input, init);
     } catch (err) {
-      // A pre-check abort reaches us as a generic Error from @x402/fetch.
-      if (err instanceof CardPolicyDenied || err instanceof PaymentError) throw err;
-      if (box.last) throw box.last;
-      throw err;
+      box.set(paidInTransit(err), opts);
+      throw box.last;
     }
   }) as typeof globalThis.fetch;
+  const wrapped = wrapFetchWithPayment(replaying, client);
+  try {
+    const res = await wrapped(request);
+    // Verify and settle failures come back as a non-2xx response, not a
+    // throw; the hooks have recorded why, so surface it typed.
+    if (box.last) throw box.last;
+    const settlement = getSettlement(res);
+    if (settlement && !settlement.success) {
+      // The hooks classify every settlement they see; reaching here means
+      // the header said "failed" without the hook firing, so the settlement
+      // state is exactly as unknown as the header is unexplained.
+      box.set(
+        new PaymentError({
+          kind: "unconfirmed",
+          transaction: settlement.transaction || undefined,
+          detail: settlement.errorReason ?? "settle failed",
+        }),
+        opts,
+      );
+      throw box.last!;
+    }
+    if (res.status === 402) {
+      // The payment was made and the resource still withheld, with nothing
+      // in the response to say what happened to it. `@x402/express` answers
+      // exactly this from its settlement path, *after* the facilitator may
+      // have submitted — so this is an unknown settlement, not a denial.
+      box.set(
+        new PaymentError({
+          kind: "unconfirmed",
+          detail: "402 without PAYMENT-REQUIRED or PAYMENT-RESPONSE; settlement state unknown",
+        }),
+        opts,
+      );
+      throw box.last!;
+    }
+    return {
+      response: res,
+      settlement:
+        settlement && paid
+          ? {
+              txHash: settlement.transaction,
+              amount: paid.amount,
+              payTo: paid.payTo,
+              asset: paid.asset,
+              network: settlement.network || paid.network,
+            }
+          : null,
+    };
+  } catch (err) {
+    // A pre-check abort reaches us as a generic Error from @x402/fetch.
+    if (err instanceof CardPolicyDenied || err instanceof PaymentError || err instanceof GuardDenied) throw err;
+    if (box.unexpected) throw box.unexpected.error;
+    if (box.last) throw box.last;
+    // Untyped failures from before anything was signed: the 402's terms did
+    // not parse as x402, or none of its `accepts` entries is payable by this
+    // card (network/scheme). Nothing was spent.
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.startsWith("Failed to parse payment requirements")) {
+      box.set(new PaymentError({ kind: "rejected", detail: `not_payable: unreadable x402 terms (${message})` }), opts);
+      throw box.last!;
+    }
+    if (!selected && message.startsWith("Failed to create payment payload")) {
+      box.set(new PaymentError({ kind: "rejected", detail: `not_payable: no payable x402 offer (${message})` }), opts);
+      throw box.last!;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Internal: the `unconfirmed` error for a paid request whose transport threw
+ * (aborted, timed out, reset). The signed payment was handed over, or partly
+ * sent, so it may have been settled.
+ */
+export function paidInTransit(err: unknown): PaymentError {
+  return new PaymentError({
+    kind: "unconfirmed",
+    detail: `paid request failed in transit: ${err instanceof Error ? err.message : String(err)}`,
+  });
 }
 
 /**

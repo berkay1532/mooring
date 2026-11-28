@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { CardPolicyDenied } from "@mooring-live/x402-client";
+import {
+  CardPolicyDenied,
+  GuardDenied,
+  MemoryGuard,
+  PaymentError,
+  type GuardCaps,
+  type PayOptions,
+  type Receipt,
+} from "@mooring-live/x402-client";
 import { buildProgram } from "../src/index.js";
 
 const CARD = "CAJPWJBFBM6WMYZBRURA7VW3GKSLMHTHIIZIRFVFKUSAPWX4526YAHCJ";
@@ -46,15 +54,118 @@ describe("mooring status", () => {
 });
 
 describe("mooring pay", () => {
-  it("prints the settlement on success and exits 2 on denial", async () => {
+  const SECRET = "SDCXRZMPIMR74JONSVNG7MQJS7SLQX2KTNKO5EIZHZLUFQYQ3JTT26SC";
+  const RECEIPT = { v: 1, id: "r1", sig: "00" } as unknown as Receipt;
+
+  /** Fake deps for `pay`: everything but `pay` itself. */
+  function payDeps(out: string[], pay: unknown, extra: Record<string, unknown> = {}) {
+    return {
+      stdout: (s: string) => out.push(s),
+      pay,
+      env: { AGENT_SECRET: SECRET },
+      cwd: () => "/nowhere",
+      stateDir: () => "/state",
+      loadGuardConfig: vi.fn(() => ({})),
+      guardFor: vi.fn((_dir: string, caps: GuardCaps) => new MemoryGuard(caps)),
+      appendReceipt: vi.fn(),
+      ...extra,
+    } as never;
+  }
+
+  it("mooring pay prints the protocol and receipt id and appends a settled receipt", async () => {
     const out: string[] = [];
-    const fetchOk = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "PAYMENT-RESPONSE": Buffer.from(JSON.stringify({ success: true, transaction: "cafe", network: "stellar:testnet" })).toString("base64") } }));
-    // A syntactically valid (but freshly generated, unfunded) Stellar secret.
-    // The fake fetch above never signs anything with it.
-    process.env.AGENT_SECRET = "SDCXRZMPIMR74JONSVNG7MQJS7SLQX2KTNKO5EIZHZLUFQYQ3JTT26SC";
-    const program = buildProgram({ stdout: (s: string) => out.push(s), createMooringFetch: () => fetchOk, getSettlement: () => ({ success: true, transaction: "cafe", network: "stellar:testnet" }) } as never);
-    await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
-    expect(out.join("\n")).toContain("cafe");
+    process.exitCode = undefined;
+    const appendReceipt = vi.fn();
+    const pay = vi.fn(async (_url: string, _init: unknown, opts: PayOptions) => {
+      opts.onReceipt?.(RECEIPT);
+      return {
+        response: new Response("body", { status: 200, headers: { "content-type": "text/plain" } }),
+        protocol: "mpp",
+        settlement: { txHash: "cafe", amount: "10000", payTo: "GX", asset: "CUSDC", network: "stellar:testnet" },
+        receipt: RECEIPT,
+      };
+    });
+    const deps = payDeps(out, pay, { appendReceipt });
+    await buildProgram(deps).parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
+    expect(out).toEqual(["HTTP 200", "Protocol: mpp", "Settlement: cafe (stellar:testnet)", "Receipt: r1", "body"]);
+    expect(appendReceipt).toHaveBeenCalledWith("/state", RECEIPT);
+    const opts = pay.mock.calls[0]![2];
+    expect(opts.card).toBe(CARD);
+    expect(opts.network).toBe("stellar:testnet");
+    expect(opts.guard).toBeInstanceOf(MemoryGuard);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("mooring pay with --daily-cap 0.0005 is refused before signing with exit 2 and a denied receipt", async () => {
+    const out: string[] = [];
+    process.exitCode = undefined;
+    const appendReceipt = vi.fn();
+    const denied = { ...RECEIPT, status: "denied" } as Receipt;
+    const pay = vi.fn(async (_url: string, _init: unknown, opts: PayOptions) => {
+      opts.onReceipt?.(denied);
+      throw new GuardDenied("daily_cap", { card: CARD, attempted: "0.001", limit: "0.0005" });
+    });
+    const guardFor = vi.fn((_dir: string, caps: GuardCaps) => new MemoryGuard(caps));
+    const loadGuardConfig = vi.fn(() => ({ dailyCap: "9", maxPerTx: "1" }));
+    const deps = payDeps(out, pay, { appendReceipt, guardFor, loadGuardConfig });
+    await buildProgram(deps).parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD, "--daily-cap", "0.0005"]);
+    expect(out).toEqual(["refused before signing: daily_cap (0.001 USDC attempted, limit 0.0005)"]);
+    expect(process.exitCode).toBe(2);
+    expect(appendReceipt).toHaveBeenCalledWith("/state", denied);
+    // The flag wins over the file/env config key by key; the rest is kept.
+    expect(loadGuardConfig).toHaveBeenCalledWith("/nowhere", { AGENT_SECRET: SECRET });
+    expect(guardFor).toHaveBeenCalledWith("/state", { dailyCap: "5000", maxPerTx: "10000000" });
+    process.exitCode = undefined;
+  });
+
+  it("omits the limit for a stop refusal", async () => {
+    const out: string[] = [];
+    process.exitCode = undefined;
+    const pay = vi.fn(async () => {
+      throw new GuardDenied("stopped", { card: CARD, attempted: "0.001" });
+    });
+    await buildProgram(payDeps(out, pay)).parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
+    expect(out).toEqual(["refused before signing: stopped (0.001 USDC attempted)"]);
+    expect(process.exitCode).toBe(2);
+    process.exitCode = undefined;
+  });
+
+  it("--no-guard pays without a guard but still appends receipts; --json prints protocol, settlement and receipt", async () => {
+    const out: string[] = [];
+    const appendReceipt = vi.fn();
+    const guardFor = vi.fn();
+    const settlement = { txHash: "beef", amount: "10000", payTo: "GX", asset: "CUSDC", network: "stellar:testnet" };
+    const pay = vi.fn(async (_url: string, _init: unknown, opts: PayOptions) => {
+      opts.onReceipt?.(RECEIPT);
+      return { response: new Response("body"), protocol: "x402", settlement, receipt: RECEIPT };
+    });
+    await buildProgram(payDeps(out, pay, { appendReceipt, guardFor })).parseAsync([
+      "node", "mooring", "pay", "http://x/weather", "--card", CARD, "--no-guard", "--json",
+    ]);
+    expect(guardFor).not.toHaveBeenCalled();
+    expect(pay.mock.calls[0]![2].guard).toBeUndefined();
+    expect(appendReceipt).toHaveBeenCalledWith("/state", RECEIPT);
+    expect(JSON.parse(out.join(""))).toEqual({ protocol: "x402", settlement, receipt: RECEIPT });
+  });
+
+  it("exits 1 on a cap that is not a decimal USDC amount, before paying", async () => {
+    const out: string[] = [];
+    process.exitCode = undefined;
+    const pay = vi.fn();
+    await buildProgram(payDeps(out, pay)).parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD, "--max-per-tx", "abc"]);
+    expect(out.join("\n")).toContain('maxPerTx: "abc" is not a decimal USDC amount');
+    expect(process.exitCode).toBe(1);
+    expect(pay).not.toHaveBeenCalled();
+    process.exitCode = undefined;
+  });
+
+  it("exits 2 without an agent secret", async () => {
+    const out: string[] = [];
+    process.exitCode = undefined;
+    await buildProgram(payDeps(out, vi.fn(), { env: {} })).parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
+    expect(out[0]).toContain("Missing agent secret: set AGENT_SECRET");
+    expect(process.exitCode).toBe(2);
+    process.exitCode = undefined;
   });
 
   it.each([
@@ -62,15 +173,13 @@ describe("mooring pay", () => {
     [{ payTo: "GX" }, false],
   ])("prints the allow link on a denial when the merchant has a url (%j)", async (merchant, hasLink) => {
     const out: string[] = [];
-    process.env.AGENT_SECRET = "SDCXRZMPIMR74JONSVNG7MQJS7SLQX2KTNKO5EIZHZLUFQYQ3JTT26SC";
     process.exitCode = undefined;
     const denied = new CardPolicyDenied("not_allowlisted", "precheck", { merchant });
-    const program = buildProgram({
-      stdout: (s: string) => out.push(s),
-      createMooringFetch: () => async () => {
+    const program = buildProgram(
+      payDeps(out, async () => {
         throw denied;
-      },
-    } as never);
+      }),
+    );
     await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
     expect(out[0]).toBe("Denied (not_allowlisted) at precheck");
     if (hasLink) {
@@ -85,11 +194,45 @@ describe("mooring pay", () => {
     process.exitCode = undefined;
   });
 
+  it("prints the funding hint and exits 1 when the agent account is unfunded", async () => {
+    const out: string[] = [];
+    process.exitCode = undefined;
+    const { Keypair } = await import("@stellar/stellar-sdk");
+    const agentKey = Keypair.fromSecret(SECRET).publicKey();
+    const detail = `agent_unfunded: ${agentKey} has no XLM for the network fee (testnet: fund it with friendbot)`;
+    const program = buildProgram(
+      payDeps(out, async () => {
+        throw new PaymentError({ kind: "rejected", detail });
+      }),
+    );
+    await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
+    expect(out).toEqual([
+      detail,
+      `Fund the agent account with XLM (testnet: https://friendbot.stellar.org?addr=${agentKey})`,
+    ]);
+    expect(out.join("\n")).not.toContain(SECRET);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+  });
+
+  it("leaves any other PaymentError to the top-level handler", async () => {
+    const out: string[] = [];
+    const failure = new PaymentError({ kind: "rejected", detail: "not_payable: 402 without x402 or MPP terms" });
+    const program = buildProgram(
+      payDeps(out, async () => {
+        throw failure;
+      }),
+    );
+    await expect(
+      program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]),
+    ).rejects.toBe(failure);
+    expect(out).toEqual([]);
+  });
+
   it("prints a clean error and exits 1 on a malformed agent secret, without a stack trace", async () => {
     const out: string[] = [];
-    process.env.AGENT_SECRET = "not-a-valid-secret";
     const originalExitCode = process.exitCode;
-    const program = buildProgram({ stdout: (s: string) => out.push(s) } as never);
+    const program = buildProgram(payDeps(out, vi.fn(), { env: { AGENT_SECRET: "not-a-valid-secret" } }));
     await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
     expect(out.join("\n")).toBe("Invalid agent secret in $AGENT_SECRET");
     expect(process.exitCode).toBe(1);
