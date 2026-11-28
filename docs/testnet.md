@@ -519,3 +519,168 @@ re-resolved the live 402, found `payTo` equal to the allowlisted key on `stellar
 lists 74 events and 8 transfer legs back to 2026-09-13, with the full 32-merchant allowlist history
 folded into `GET …/merchants` (added/removed timestamps and tx hashes). The card screen renders the same
 feed with tx links ([screenshot](screenshots/22-activity-feed.jpg)).
+
+## Week 3 — MPP charge, guard rails, kit (2026-11-28, Instaward #2 D3(a)/D3(b)/D1(b) evidence)
+
+Real testnet payments from the week-1 CLI card (`cli card`,
+`CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY`, agent key
+`GASYAIZQLKZKVLD233MDOTKKBHCB2NGP46RL7TYP6DNPOYAERYWSKRRR`) to Mooring's own seller
+(`apps/seller`), with the workspace builds of `@mooring-live/x402-client` 0.4.0, `@mooring-live/cli`
+0.4.0 and `create-mooring-agent` 0.1.0.
+
+**Setup.** The seller ran **locally** (`node apps/seller/dist/src/dev.js` on `127.0.0.1:3002`) with
+the production configuration: the production MPP card-charge verifier, the real OZ Channels testnet
+facilitator for x402, `STELLAR_NETWORK=stellar:testnet`, a fresh random `MPP_SECRET_KEY`, and
+`SELLER_PAY_TO=GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG`. The hosted
+`api.mooring.live` is not deployed yet; the same run against the hosted URL follows once it is live.
+
+| Step | Tx | Ledger | Result |
+|---|---|---|---|
+| Friendbot funds the agent account (it pays the MPP fee itself) | [`ddfe18d9…bfa8`](https://stellar.expert/explorer/testnet/tx/ddfe18d9fbac22631923a15a7f05f8a924f9770f06105554db4a25f39f83bfa8) | 5 962 580 | `GASY…KRRR` created with 10 000 XLM |
+| Owner `add_merchant GAW3…LOIG` (stellar CLI, owner key) | [`98c3fea6…7b1d`](https://stellar.expert/explorer/testnet/tx/98c3fea6657ceb339dd8aea87a46d3274148241a1cfff0bfcacdcce659cf7b1d) | 5 962 581 | `MerchantAdded`; `mooring status --json` → `allow_count: 2` |
+
+Card before the run: balance 0.999 USDC, `period.spent` 0, remaining 1 USDC this period,
+`max_per_tx` 0.25 USDC. `~/.mooring` did not exist; the first payment created it
+(`receipts.jsonl`, `spend.json`).
+
+Seller probes (headers only):
+
+```
+GET /health     → HTTP/1.1 200 OK
+GET /quote      → HTTP/1.1 402 Payment Required   payment-required: eyJ4NDAyVmVyc2lvbiI6Miwi…   (x402 v2, exact, stellar:testnet)
+GET /quote/mpp  → HTTP/1.1 402 Payment Required   WWW-Authenticate: Payment id="…", realm="127.0.0.1", method="stellar", intent="charge", request="…"
+```
+
+### Settlements
+
+Each one is a single `invoke_host_function` (USDC SAC `transfer`) moving 0.001 USDC from the card to
+`GAW3…LOIG`, authorized by the card's `__check_auth` (budget, allowlist, expiry). All successful on
+Horizon.
+
+| # | Route | Protocol | Tx | Ledger | Fee payer | Fee (stroops) | Amount |
+|---|---|---|---|---|---|---|---|
+| 1 | `mooring pay …/quote/mpp --json` | MPP charge (pull) | [`164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4`](https://stellar.expert/explorer/testnet/tx/164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4) | 5 962 588 | agent `GASY…KRRR` (tx source) | 31 649 | 0.001 USDC |
+| 2 | `mooring pay …/quote/mpp` | MPP charge (pull) | [`da1a217e3dc25a2ad172903723206cb832a75e0577ce186d42ecedd79402162a`](https://stellar.expert/explorer/testnet/tx/da1a217e3dc25a2ad172903723206cb832a75e0577ce186d42ecedd79402162a) | 5 962 591 | agent `GASY…KRRR` (tx source) | 12 055 | 0.001 USDC |
+| 3 | `mooring pay …/quote` | x402 (OZ Channels) | [`e6738ff55d80eefc51d7c09a2cb477788f317de3c2d4a67296f5f3bee1eaeac7`](https://stellar.expert/explorer/testnet/tx/e6738ff55d80eefc51d7c09a2cb477788f317de3c2d4a67296f5f3bee1eaeac7) | 5 962 592 | facilitator fee-bump `GA6T…H7TL` (inner source channel `GANM…OMWN`) | 12 155 | 0.001 USDC |
+| 4 | kit `npm run pay` → `/quote` | x402 (OZ Channels) | [`46f5fdc724a66f386b95812bb31b57698f4a456d62588e7633c0de40cbab7df8`](https://stellar.expert/explorer/testnet/tx/46f5fdc724a66f386b95812bb31b57698f4a456d62588e7633c0de40cbab7df8) | 5 962 604 | facilitator fee-bump `GA6T…H7TL` (inner source channel `GCUK…O7QS`) | 12 155 | 0.001 USDC |
+
+The first MPP charge cost more (31 649 stroops) than the second (12 055). It was the card's first
+spend in the current budget period (started 2026-11-27 13:44 Z); the fee difference was not
+broken down further.
+
+`mooring pay http://127.0.0.1:3002/quote/mpp --card CBI3… --json` (payment 1):
+
+```json
+{
+  "protocol": "mpp",
+  "settlement": {
+    "txHash": "164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4",
+    "amount": "10000",
+    "payTo": "GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG",
+    "asset": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+    "network": "stellar:testnet"
+  },
+  "receipt": { "v": 1, "id": "681e479e6fe9d6ee64211224a61692ff", "protocol": "mpp", "status": "settled", "…": "…" }
+}
+```
+
+Payments 2 and 3 (text output):
+
+```
+$ mooring pay http://127.0.0.1:3002/quote/mpp --card CBI3…V7RY
+HTTP 200
+Protocol: mpp
+Settlement: da1a217e3dc25a2ad172903723206cb832a75e0577ce186d42ecedd79402162a (stellar:testnet)
+Receipt: 2bef45b8b606d8f7ff7ede49ea28fa23
+{"quote":"Hope is the thing with feathers that perches in the soul.","author":"Emily Dickinson","paidWith":"mpp","ts":"2026-11-28T03:30:00.395Z"}
+
+$ mooring pay http://127.0.0.1:3002/quote --card CBI3…V7RY
+HTTP 200
+Protocol: x402
+Settlement: e6738ff55d80eefc51d7c09a2cb477788f317de3c2d4a67296f5f3bee1eaeac7 (stellar:testnet)
+Receipt: 57a325257ab99f3ef5785e337a57ab1f
+{"quote":"Hope is the thing with feathers that perches in the soul.","author":"Emily Dickinson","paidWith":"x402","ts":"2026-11-28T03:30:02.615Z"}
+```
+
+### Guard rails — refusals, stop/resume
+
+```
+$ mooring pay http://127.0.0.1:3002/quote/mpp --card CBI3…V7RY --daily-cap 0.0005
+refused before signing: daily_cap (0.001 USDC attempted, limit 0.0005)
+exit 2
+$ mooring stop --reason "week-3 evidence"
+stopped (/Users/beko/.mooring/stop)
+$ mooring pay http://127.0.0.1:3002/quote/mpp --card CBI3…V7RY
+refused before signing: stopped (0.001 USDC attempted)
+exit 2
+$ mooring resume
+resumed
+$ mooring guard --card CBI3…V7RY
+Card:         CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY
+Day:          2026-11-28
+Spent today:  0.003 USDC
+Spent total:  0.003 USDC
+Reserved:     0 USDC
+Daily cap:    none
+Total cap:    none
+Max per tx:   none
+Stopped:      no
+```
+
+Neither refusal reached the network: no transaction, no signature over a payment. Both are written
+to the ledger as signed `denied` receipts (`reason` `daily_cap` — the fourth CSV row below — and
+`stopped`, receipt `27b5af907b8503a68f6fdd835d9ff897`, the fifth entry).
+
+### Receipt ledger
+
+`mooring receipts export --csv | head -5`:
+
+```
+id,ts,protocol,card,agent,payTo,amount,asset,network,url,status,txHash,reason,sig
+681e479e6fe9d6ee64211224a61692ff,2026-11-28T03:29:45.283Z,mpp,CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY,GASYAIZQLKZKVLD233MDOTKKBHCB2NGP46RL7TYP6DNPOYAERYWSKRRR,GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG,10000,CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA,stellar:testnet,http://127.0.0.1:3002/quote/mpp,settled,164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4,,115396a48cf9400337ce32223e5e1ccd377133dc01e04cc4ac5ddd719996ebe708329377efd2cf2bb20be7a2943b319d3729285e09c258fc4a66a9240b1e5204
+2bef45b8b606d8f7ff7ede49ea28fa23,2026-11-28T03:30:00.404Z,mpp,CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY,GASYAIZQLKZKVLD233MDOTKKBHCB2NGP46RL7TYP6DNPOYAERYWSKRRR,GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG,10000,CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA,stellar:testnet,http://127.0.0.1:3002/quote/mpp,settled,da1a217e3dc25a2ad172903723206cb832a75e0577ce186d42ecedd79402162a,,9aacea38b4ca3c862b8c5b96c37c9e57f9573b0c9aa37a0e4595831079ef849c570616ca0fd80b68dbe36ab2d4f4639fefa504a627eed931660dbbbdaf40410c
+57a325257ab99f3ef5785e337a57ab1f,2026-11-28T03:30:09.117Z,x402,CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY,GASYAIZQLKZKVLD233MDOTKKBHCB2NGP46RL7TYP6DNPOYAERYWSKRRR,GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG,10000,CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA,stellar:testnet,http://127.0.0.1:3002/quote,settled,e6738ff55d80eefc51d7c09a2cb477788f317de3c2d4a67296f5f3bee1eaeac7,,5e80d1c00b9d5d7ffdb7aa985a90666987dcfa5794cb9ab5d80d2df1324a97fc7ecbb8239eec456016075b41a62b78f5dc38bf7eb2d65f894a43ba6e7de7c00d
+22016689818096d5ee0781b94fc68c5a,2026-11-28T03:30:36.914Z,mpp,CBI3L3KLF63F2I72ZGHVC766JZCDPBCTLQVLP7X36G5MB3DVD62CV7RY,GASYAIZQLKZKVLD233MDOTKKBHCB2NGP46RL7TYP6DNPOYAERYWSKRRR,GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG,10000,CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA,stellar:testnet,http://127.0.0.1:3002/quote/mpp,denied,,daily_cap,a453c8aa23053c22cfb65f330dec3cc55e3d58afa6dc044710b93d2de0aea07ed6e44a2cd1496f56a4860afffa3c8c066886d92d446f5312fa616efb7a75c207
+```
+
+`mooring receipts verify` → `verified 5 receipts` (after the kit payment below: `verified 6
+receipts`). `sig` is the agent key's public Ed25519 signature over the receipt; it carries no secret.
+
+### Kit — `create-mooring-agent`
+
+```
+$ node packages/create-mooring-agent/dist/index.js <scratch>/mooring-kit-evidence --service http://127.0.0.1:3002/quote
+Created mooring-kit-evidence in <scratch>/mooring-kit-evidence
+It pays http://127.0.0.1:3002/quote on stellar:testnet from a Mooring card.
+
+Next steps (in <scratch>/mooring-kit-evidence):
+1. Create and fund a card at https://app.mooring.live and generate an agent key there (or `mooring keygen`); register the key as the card's signer.
+2. Copy `.env.example` to `.env` and fill `MOORING_CARD` and `AGENT_SECRET`; fund the agent account with a little XLM on testnet (friendbot) for MPP fees.
+3. `npm install && npm run pay`
+```
+
+`@mooring-live/x402-client` 0.4.0 is not on npm yet, so `npm install` was replaced by linking the
+workspace packages (`@mooring-live/x402-client`, `@stellar/stellar-sdk`, `dotenv`, `tsx`,
+`typescript`) into the kit's `node_modules`. `.env` was filled with the same card and agent key
+(`MOORING_SERVICE=http://127.0.0.1:3002/quote`, `MOORING_NETWORK=stellar:testnet`) and deleted after
+the run.
+
+```
+$ npm run pay
+> mooring-kit-evidence@0.1.0 pay
+> tsx src/agent.ts
+
+Paid 0.001 USDC to GAW3KSJBGKNWH4LMUQRXBCSAUL4YUAF4LEHMONMDXFBMA3I524NXLOIG via x402
+tx 46f5fdc724a66f386b95812bb31b57698f4a456d62588e7633c0de40cbab7df8 — https://stellar.expert/explorer/testnet/tx/46f5fdc724a66f386b95812bb31b57698f4a456d62588e7633c0de40cbab7df8
+Remaining this period: 0.996 USDC
+Receipt aa31fcbe07cf836eb45333dd759f3601 → /Users/beko/.mooring/receipts.jsonl
+{"quote":"Hope is the thing with feathers that perches in the soul.","author":"Emily Dickinson","paidWith":"x402","ts":"2026-11-28T03:31:02.205Z"}
+```
+
+The kit shares `~/.mooring` with the CLI: after it, `mooring guard` shows `Spent today: 0.004 USDC`.
+
+### Card after the run
+
+`mooring status --card CBI3…V7RY --json`: `period.spent` 40000 (0.004 USDC), `remaining` 9960000
+(0.996 USDC), `balance` 9950000 (0.995 USDC), `state` 0 (active), `allow_count` 2
+(`GBSV…ELYP`, `GAW3…LOIG`). Four settled payments, two refused before signing, 0.004 USDC spent.

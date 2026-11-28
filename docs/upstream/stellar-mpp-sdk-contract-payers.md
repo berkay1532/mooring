@@ -114,7 +114,7 @@ server suite).
 Not run: `pnpm audit` (no dependency changes), `/e2e-check` and `test:integration`, which need live
 testnet access and secrets.
 
-Testnet evidence: <tx hash of a custom-account payer settled through a server carrying this patch — added before opening the PR>
+Testnet evidence: a custom-account (card) payer settled in pull mode through Mooring's seller, which applies the same verifier rule — tx [`164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4`](https://stellar.expert/explorer/testnet/tx/164401337afbf1d85558fef5230a2729f95e74be26675369861e9457ba8bcae4) (seller run locally against testnet; the hosted `api.mooring.live` run follows). The patched upstream server itself was exercised by its unit tests only.
 
 A `CHANGELOG.md` entry is added under `[Unreleased] › Added`.
 ```
