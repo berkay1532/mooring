@@ -106,6 +106,11 @@ jobs:
       - name: assert the mock build does contain it
         run: grep -rl "__mooringMock" apps/web/.next/static/chunks
 
+      # The example seller (api.mooring.live): x402 + card-aware MPP charge.
+      # Fake facilitator and fake Soroban RPC -- nothing here touches testnet.
+      - run: npm test -w @mooring/seller
+      - run: npm run typecheck -w @mooring/seller
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

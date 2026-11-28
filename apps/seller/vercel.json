@@ -1,0 +1,6 @@
+{
+  "framework": null,
+  "installCommand": "cd ../.. && npm ci",
+  "buildCommand": "cd ../.. && npm run build -w @mooring-live/x402-client -w @mooring/seller",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+}
