@@ -1,6 +1,6 @@
-import { GuardDenied } from "../denial.js";
+import type { GuardDenied } from "../denial.js";
 import { receiptId } from "../receipts.js";
-import { formatUsdc } from "./config.js";
+import { decideGuard, utcDay } from "./decide.js";
 import type { Guard, GuardCaps, GuardSnapshot, GuardTerms, Reservation } from "./types.js";
 
 interface CardState {
@@ -30,7 +30,7 @@ export class MemoryGuard implements Guard {
   ) {}
 
   private state(card: string): CardState {
-    const day = this.now().toISOString().slice(0, 10);
+    const day = utcDay(this.now());
     let s = this.cards.get(card);
     if (!s) {
       s = { day, daily: 0n, total: 0n, reservations: new Map() };
@@ -50,50 +50,9 @@ export class MemoryGuard implements Guard {
 
   private decide(t: GuardTerms): { denied: GuardDenied | null; state: CardState; amount: bigint } {
     const s = this.state(t.card);
-    const amount = BigInt(t.amount);
-    const attempted = formatUsdc(amount);
-    const stop = this.globalStop ?? s.stopped;
-    if (stop) {
-      return {
-        denied: new GuardDenied("stopped", { card: t.card, attempted, detail: stop.reason }),
-        state: s,
-        amount,
-      };
-    }
-    const { maxPerTx, dailyCap, totalCap } = this.caps;
-    if (maxPerTx !== undefined && amount > BigInt(maxPerTx)) {
-      return {
-        denied: new GuardDenied("max_per_tx", { card: t.card, attempted, limit: formatUsdc(maxPerTx) }),
-        state: s,
-        amount,
-      };
-    }
-    const reserved = MemoryGuard.reserved(s);
-    if (dailyCap !== undefined && s.daily + reserved + amount > BigInt(dailyCap)) {
-      return {
-        denied: new GuardDenied("daily_cap", {
-          card: t.card,
-          attempted,
-          limit: formatUsdc(dailyCap),
-          detail: `${formatUsdc(s.daily)} USDC spent on ${s.day}, ${formatUsdc(reserved)} USDC in flight`,
-        }),
-        state: s,
-        amount,
-      };
-    }
-    if (totalCap !== undefined && s.total + reserved + amount > BigInt(totalCap)) {
-      return {
-        denied: new GuardDenied("total_cap", {
-          card: t.card,
-          attempted,
-          limit: formatUsdc(totalCap),
-          detail: `${formatUsdc(s.total)} USDC spent in total, ${formatUsdc(reserved)} USDC in flight`,
-        }),
-        state: s,
-        amount,
-      };
-    }
-    return { denied: null, state: s, amount };
+    const counters = { day: s.day, daily: s.daily, total: s.total, reserved: MemoryGuard.reserved(s) };
+    const denied = decideGuard(t, this.caps, counters, this.globalStop ?? s.stopped);
+    return { denied, state: s, amount: BigInt(t.amount) };
   }
 
   async check(t: GuardTerms): Promise<GuardDenied | null> {
