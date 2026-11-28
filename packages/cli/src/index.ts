@@ -10,6 +10,7 @@ import {
   CardPolicyDenied,
   DEFAULT_APP_URL,
   GuardDenied,
+  PaymentError,
   allowMerchantUrl,
   createCard,
   deploymentFor,
@@ -240,6 +241,15 @@ export function buildProgram(deps: CliDeps = realDeps): Command {
               deps.stdout(`Allow it: ${allowMerchantUrl(DEFAULT_APP_URL, opts.card, err.merchant.url)}`);
             }
             process.exitCode = 2;
+            return;
+          }
+          if (err instanceof PaymentError && err.detail?.startsWith("agent_unfunded")) {
+            // An agent-paid MPP charge needs the agent account to exist with XLM for the fee.
+            deps.stdout(err.detail);
+            deps.stdout(
+              `Fund the agent account with XLM (testnet: https://friendbot.stellar.org?addr=${agent.publicKey()})`,
+            );
+            process.exitCode = 1;
             return;
           }
           throw err;

@@ -3,6 +3,7 @@ import {
   CardPolicyDenied,
   GuardDenied,
   MemoryGuard,
+  PaymentError,
   type GuardCaps,
   type PayOptions,
   type Receipt,
@@ -191,6 +192,41 @@ describe("mooring pay", () => {
     }
     expect(process.exitCode).toBe(2);
     process.exitCode = undefined;
+  });
+
+  it("prints the funding hint and exits 1 when the agent account is unfunded", async () => {
+    const out: string[] = [];
+    process.exitCode = undefined;
+    const { Keypair } = await import("@stellar/stellar-sdk");
+    const agentKey = Keypair.fromSecret(SECRET).publicKey();
+    const detail = `agent_unfunded: ${agentKey} has no XLM for the network fee (testnet: fund it with friendbot)`;
+    const program = buildProgram(
+      payDeps(out, async () => {
+        throw new PaymentError({ kind: "rejected", detail });
+      }),
+    );
+    await program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]);
+    expect(out).toEqual([
+      detail,
+      `Fund the agent account with XLM (testnet: https://friendbot.stellar.org?addr=${agentKey})`,
+    ]);
+    expect(out.join("\n")).not.toContain(SECRET);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
+  });
+
+  it("leaves any other PaymentError to the top-level handler", async () => {
+    const out: string[] = [];
+    const failure = new PaymentError({ kind: "rejected", detail: "not_payable: 402 without x402 or MPP terms" });
+    const program = buildProgram(
+      payDeps(out, async () => {
+        throw failure;
+      }),
+    );
+    await expect(
+      program.parseAsync(["node", "mooring", "pay", "http://x/weather", "--card", CARD]),
+    ).rejects.toBe(failure);
+    expect(out).toEqual([]);
   });
 
   it("prints a clean error and exits 1 on a malformed agent secret, without a stack trace", async () => {

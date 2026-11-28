@@ -44,7 +44,7 @@ export function parseGuardConfig(cfg: GuardConfig): GuardCaps {
  * (decimal USDC) into a `GuardConfig`. Unset or empty variables are left out.
  * Pass it to `parseGuardConfig` for the caps.
  */
-export function guardCapsFromEnv(env: NodeJS.ProcessEnv): GuardConfig {
+export function guardCapsFromEnv(env: Record<string, string | undefined>): GuardConfig {
   const cfg: GuardConfig = {};
   const read = (name: string) => {
     const v = env[name]?.trim();

@@ -50,7 +50,11 @@ the local guard prints, before anything is signed:
 refused before signing: <reason> (<attempted> USDC attempted, limit <limit>)
 ```
 
-and also exits **2**. `--no-precheck` skips the local policy mirror (the card still enforces
+and also exits **2**. An MPP charge the seller does not sponsor is paid in network fees by the
+agent account, so that account must exist and hold XLM (testnet: friendbot). When it does not,
+`mooring pay` prints the `agent_unfunded: …` detail and
+`Fund the agent account with XLM (testnet: https://friendbot.stellar.org?addr=<G…>)`, and exits
+**1**. `--no-precheck` skips the local policy mirror (the card still enforces
 on-chain); `--agent-secret-env <NAME>` reads the secret from a different variable; `--network` and
 `--rpc` select the network.
 

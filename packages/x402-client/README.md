@@ -78,7 +78,7 @@ try {
 | `PaymentError.kind` | When | Was the card debited? |
 |---|---|---|
 | `rejected` | the facilitator refused before submitting — a malformed payload, a fee above its ceiling, an expiration too far out, a 5xx — or the client's own CAP-71 credential guard fired before signing | no |
-| `unconfirmed` | the settlement state is unknown or contradictory: the server reported a failure for a transaction the ledger accepted, the transaction was never observed within the reconciliation window, or the server answered a bare `402` with no `PAYMENT-REQUIRED` and no `PAYMENT-RESPONSE` | possibly — reconcile `err.transaction` and the card's `spent` before retrying |
+| `unconfirmed` | the settlement state is unknown or contradictory: the server reported a failure for a transaction the ledger accepted, the transaction was never observed within the reconciliation window, the server answered a bare `402` with no `PAYMENT-REQUIRED` and no `PAYMENT-RESPONSE` (an MPP seller: any non-OK answer without a `Payment-Receipt`; the detail carries what the seller said), or the paid request failed in transit after the payment was sent (`paid request failed in transit: …`) | possibly — reconcile `err.transaction` and the card's `spent` before retrying |
 
 The facilitator answers `settle_exact_stellar_transaction_failed` both for a transaction the
 ledger rejected and for one it stopped waiting for, so a settle failure carrying a hash is
@@ -144,7 +144,10 @@ not ask for payment), `settlement` (`{ txHash, amount, payTo, asset, network }` 
 errors as above, plus `GuardDenied` (next section).
 
 MPP is supported in **pull mode only**: the client signs, the seller broadcasts the transaction.
-The agent account pays the network fee unless the seller sponsors it. The credential's `source`
+The agent account pays the network fee unless the seller sponsors it, so for agent-paid
+(unsponsored) charges the agent account must exist and hold XLM for the fee (testnet: fund it with
+friendbot); an unfunded agent account is a `PaymentError` `rejected` with an `agent_unfunded: …`
+detail, before anything is handed to the seller. The credential's `source`
 is `did:pkh:stellar:testnet:<card>`, so the card is the payer. Stock `@stellar/mpp` servers
 currently accept only `G…` payers; the hosted Mooring seller accepts cards, and an upstream fix is
 being prepared.
@@ -169,8 +172,11 @@ try {
 
 - **Caps** are decimal USDC strings: `dailyCap` (per card, per UTC day), `totalCap` (per card, all
   time) and `maxPerTx`.
-- **Config precedence:** options, then `mooring.guard.json` in the working directory, then the
-  environment (`MOORING_DAILY_CAP`, `MOORING_TOTAL_CAP`, `MOORING_MAX_PER_TX`).
+- **Config loading (Node):** `loadGuardConfig(cwd)` from the `@mooring-live/x402-client/node`
+  subpath reads `mooring.guard.json` in `cwd` over the environment (`MOORING_DAILY_CAP`,
+  `MOORING_TOTAL_CAP`, `MOORING_MAX_PER_TX`), key by key; spread your own options over its result
+  before `parseGuardConfig` (the CLI does this with its flags). In the browser, build the config
+  yourself (`guardCapsFromEnv` reads any string record).
 - **Stop switch:** `guard.stop(reason?, card?)` and `guard.resume(card?)`. With `fileGuard` the
   switch is the `stop` file in the state directory, so another process can flip it.
 - **Decision order:** stopped, then `max_per_tx`, then daily, then total. Open reservations count
@@ -179,8 +185,9 @@ try {
   (the card's refusals) nor `onPaymentError`.
 - **Receipts** are signed by the agent key (`signReceipt` / `verifyReceipt`) for every attempt with
   known terms: settled, denied or failed. Pass `onReceipt` to `pay()` to collect them.
-  `appendReceipt` writes them to the ledger `~/.mooring/receipts.jsonl`; set `MOORING_HOME` to
-  move the state directory.
+  `appendReceipt(stateDir, r)` (Node) appends one to the ledger `<stateDir>/receipts.jsonl`; the
+  directory is always passed explicitly — `defaultStateDir()` gives the default, `~/.mooring`, or
+  `$MOORING_HOME` when set (e.g. `onReceipt: (r) => appendReceipt(defaultStateDir(), r)`).
 - A payment whose outcome is `unconfirmed` **counts as spent** in the guard until you reconcile it.
 
 The main entry is browser-safe. The `@mooring-live/x402-client/node` subpath (`fileGuard`, the

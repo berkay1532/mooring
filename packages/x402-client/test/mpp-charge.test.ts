@@ -313,6 +313,57 @@ describe("cardChargeMethod", () => {
     expect(onDenial).not.toHaveBeenCalled();
   });
 
+  it("unsponsored: an agent account the network does not know is agent_unfunded", async () => {
+    const { buildTransfer, getAccount } = stubCardTransferRpc();
+    // What stellar-sdk 17.4.0's rpc.Server.getAccount throws for a missing account.
+    getAccount.mockImplementation(async (address: string) => {
+      throw new Error(`Account not found: ${address}`);
+    });
+    const onPaymentError = vi.fn();
+    const m = cardChargeMethod(
+      { ...base, usdc: USDC, precheck: false, onPaymentError },
+      { ...readers(), buildTransfer },
+    );
+    const err = await m.createCredential({ challenge: challengeWith() }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PaymentError);
+    expect(err).toMatchObject({
+      kind: "rejected",
+      detail: `agent_unfunded: ${agent.publicKey()} has no XLM for the network fee (testnet: fund it with friendbot)`,
+    });
+    expect(onPaymentError).toHaveBeenCalledWith(err);
+  });
+
+  it("sponsored: the agent account is never read, so agent_unfunded cannot arise", async () => {
+    const { buildTransfer, getAccount } = stubCardTransferRpc();
+    getAccount.mockImplementation(async (address: string) => {
+      throw new Error(`Account not found: ${address}`);
+    });
+    const onPaymentError = vi.fn();
+    const m = cardChargeMethod(
+      { ...base, usdc: USDC, precheck: false, onPaymentError },
+      { ...readers(), buildTransfer },
+    );
+    const cred = await m.createCredential({ challenge: challengeWith({ feePayer: true }) });
+    expect(Credential.deserialize<{ type: string }>(cred).payload.type).toBe("transaction");
+    expect(getAccount).not.toHaveBeenCalled();
+    expect(onPaymentError).not.toHaveBeenCalled();
+  });
+
+  it("unsponsored: another build failure stays a plain error", async () => {
+    const onPaymentError = vi.fn();
+    const buildTransfer = vi.fn(async () => {
+      throw new Error("connect ECONNREFUSED");
+    });
+    const m = cardChargeMethod(
+      { ...base, usdc: USDC, precheck: false, onPaymentError },
+      { ...readers(), buildTransfer },
+    );
+    const err = await m.createCredential({ challenge: challengeWith() }).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(PaymentError);
+    expect((err as Error).message).toBe("connect ECONNREFUSED");
+    expect(onPaymentError).not.toHaveBeenCalled();
+  });
+
   for (const spelling of ["txBAD_SEQ", "tx_bad_seq"]) {
     it(`an enforcing-simulation failure with ${spelling} is a sequence_conflict`, async () => {
       const { buildTransfer } = stubCardTransferRpc({ enforcingError: `transaction failed: ${spelling}` });

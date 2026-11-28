@@ -189,17 +189,29 @@ export function cardChargeMethod(opts: CardChargeOptions, deps: CardChargeDeps =
     sponsored: boolean,
   ): Promise<string> {
     const { amount, currency, recipient } = request;
-    const tx = await buildTransfer({
-      asset: currency,
-      from: opts.card,
-      to: recipient,
-      amount: BigInt(amount),
-      rpcUrl,
-      passphrase,
-      // Sponsored: keep the SDK's all-zeros placeholder source for the
-      // sponsor to replace. Unsponsored: the agent account is the source.
-      ...(sponsored ? {} : { publicKey: opts.agent.publicKey() }),
-    });
+    const agent = opts.agent.publicKey();
+    let tx: contract.AssembledTransaction<unknown>;
+    try {
+      tx = await buildTransfer({
+        asset: currency,
+        from: opts.card,
+        to: recipient,
+        amount: BigInt(amount),
+        rpcUrl,
+        passphrase,
+        // Sponsored: keep the SDK's all-zeros placeholder source for the
+        // sponsor to replace. Unsponsored: the agent account is the source.
+        ...(sponsored ? {} : { publicKey: agent }),
+      });
+    } catch (err) {
+      // Unsponsored, the agent account pays the network fee, so it must
+      // exist: stellar-sdk's `rpc.Server.getAccount` throws exactly this for
+      // an account the ledger does not have (an agent key never funded).
+      if (!sponsored && err instanceof Error && err.message === `Account not found: ${agent}`) {
+        reject(`agent_unfunded: ${agent} has no XLM for the network fee (testnet: fund it with friendbot)`);
+      }
+      throw err;
+    }
 
     const pending = tx.needsNonInvokerSigningBy();
     if (pending.length !== 1 || pending[0] !== opts.card) {
