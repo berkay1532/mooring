@@ -42,7 +42,7 @@ export const fakeFacilitator: FacilitatorClient = {
 export function fakeChargeRpc(over: Partial<ChargeRpc> = {}) {
   return {
     simulate: vi.fn(over.simulate ?? (async () => ({ ok: true as const }))),
-    send: vi.fn(over.send ?? (async () => ({ hash: TX_HASH }))),
+    send: vi.fn(over.send ?? (async () => ({ status: "PENDING" as const, hash: TX_HASH }))),
     wait: vi.fn(over.wait ?? (async () => "SUCCESS" as const)),
     latestLedger: vi.fn(over.latestLedger ?? (async () => LATEST_LEDGER)),
   };

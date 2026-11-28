@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Asset, Keypair, Operation, StrKey, xdr } from "@stellar/stellar-sdk";
 import { cardChargeMethod } from "@mooring-live/x402-client";
 import { Challenge, Receipt } from "mppx";
+import type { ChargeRpc } from "../src/mpp-card-charge.js";
 import {
   CARD,
   LATEST_LEDGER,
@@ -53,7 +54,9 @@ async function credentialFor(app: ReturnType<typeof sellerApp>, payer: "card" | 
     { latestLedger: async () => LATEST_LEDGER },
   );
   const credential = await method.createCredential({ challenge: challenge as never });
-  return { agent, credential };
+  /** Another credential for the same challenge (a client's retry). */
+  const again = () => method.createCredential({ challenge: challenge as never });
+  return { agent, credential, again };
 }
 
 const paid = (app: ReturnType<typeof sellerApp>, credential: string) =>
@@ -210,6 +213,91 @@ describe("card-aware MPP charge", () => {
     expect((await paid(app, credential)).status).toBe(200);
     expect((await paid(app, credential)).status).toBe(402);
     expect(rpc.send).toHaveBeenCalledTimes(1);
+  });
+
+  // The post-send messages below are matched by the client (packages/x402-client
+  // src/pay.ts, OUTCOME_OPEN): "not confirmed" / "was not accepted" leave the
+  // outcome open, "rejected by the network" spent nothing. Keep them exact.
+  describe("after the envelope is handed to the network", () => {
+    it("releases both claims when send throws, so a retry for the same challenge is broadcast", async () => {
+      const send = vi.fn<ChargeRpc["send"]>();
+      send.mockRejectedValueOnce(new Error("fetch failed"));
+      send.mockResolvedValue({ status: "PENDING", hash: TX_HASH });
+      const rpc = fakeChargeRpc({ send });
+      const app = sellerApp(rpc);
+      const { credential, again } = await credentialFor(app, "card");
+
+      const { detail } = await refusal(await paid(app, credential));
+      expect(detail).toBe("Payment verification failed: transaction was not accepted: fetch failed.");
+
+      const retry = await paid(app, await again());
+      expect(retry.status).toBe(200);
+      expect(Receipt.fromResponse(retry).reference).toBe(TX_HASH);
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it("answers a network rejection (ERROR with a result code) with its own message and releases the claims", async () => {
+      const send = vi.fn<ChargeRpc["send"]>();
+      send.mockResolvedValueOnce({ status: "ERROR", code: "tx_bad_seq" });
+      send.mockResolvedValue({ status: "PENDING", hash: TX_HASH });
+      const rpc = fakeChargeRpc({ send });
+      const app = sellerApp(rpc);
+      const { credential } = await credentialFor(app, "card");
+
+      const { detail } = await refusal(await paid(app, credential));
+      expect(detail).toBe("Payment verification failed: transaction rejected by the network: tx_bad_seq.");
+      expect(rpc.wait).not.toHaveBeenCalled();
+
+      // Neither the challenge id nor the tx hash stayed claimed.
+      expect((await paid(app, credential)).status).toBe(200);
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it("treats TRY_AGAIN_LATER as not accepted and releases the claims", async () => {
+      const send = vi.fn<ChargeRpc["send"]>();
+      send.mockResolvedValueOnce({ status: "TRY_AGAIN_LATER" });
+      send.mockResolvedValue({ status: "PENDING", hash: TX_HASH });
+      const rpc = fakeChargeRpc({ send });
+      const app = sellerApp(rpc);
+      const { credential } = await credentialFor(app, "card");
+
+      const { detail } = await refusal(await paid(app, credential));
+      expect(detail).toBe("Payment verification failed: transaction was not accepted: TRY_AGAIN_LATER.");
+      expect((await paid(app, credential)).status).toBe(200);
+    });
+
+    it("keeps the claims on DUPLICATE: the envelope is already in flight", async () => {
+      const send = vi.fn<ChargeRpc["send"]>();
+      send.mockResolvedValueOnce({ status: "DUPLICATE" });
+      const rpc = fakeChargeRpc({ send });
+      const app = sellerApp(rpc);
+      const { credential } = await credentialFor(app, "card");
+
+      const { detail } = await refusal(await paid(app, credential));
+      expect(detail).toBe("Payment verification failed: transaction was not accepted: DUPLICATE.");
+      expect((await paid(app, credential)).status).toBe(402);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the claims once send returned PENDING, and names the hash when it is not confirmed", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout"] });
+      try {
+        const rpc = fakeChargeRpc({ wait: async () => "NOT_FOUND" as const });
+        const app = sellerApp(rpc);
+        const { credential } = await credentialFor(app, "card");
+
+        const pending = paid(app, credential);
+        await vi.runAllTimersAsync();
+        const { detail } = await refusal(await pending);
+        expect(detail).toBe(`Payment verification failed: transaction not confirmed: ${TX_HASH}.`);
+        expect(rpc.wait).toHaveBeenCalledTimes(30);
+
+        expect((await paid(app, credential)).status).toBe(402);
+        expect(rpc.send).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("reports an on-chain failure with the transaction hash", async () => {

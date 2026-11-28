@@ -1,3 +1,4 @@
+import { StrKey } from "@stellar/stellar-sdk";
 import { HTTPFacilitatorClient, type FacilitatorClient } from "@x402/core/server";
 import { USDC_PUBNET_ADDRESS, USDC_TESTNET_ADDRESS, getRpcUrl } from "@x402/stellar";
 import type { ChargeRpc } from "./mpp-card-charge.js";
@@ -54,6 +55,12 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
   }
   const payTo = env.SELLER_PAY_TO;
   if (!payTo) throw new Error("SELLER_PAY_TO is required");
+  if (!StrKey.isValidEd25519PublicKey(payTo) && !StrKey.isValidContract(payTo)) {
+    // Only a prefix is echoed: enough to spot a pasted secret or a typo.
+    throw new Error(
+      `SELLER_PAY_TO must be a Stellar G… account or C… contract address (got "${payTo.slice(0, 4)}…")`,
+    );
+  }
   const mppSecretKey = env.MPP_SECRET_KEY;
   if (!mppSecretKey || mppSecretKey.length < 32) {
     throw new Error("MPP_SECRET_KEY is required (at least 32 characters)");

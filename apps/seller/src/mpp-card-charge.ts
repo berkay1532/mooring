@@ -9,6 +9,7 @@ import {
   type Transaction,
   type xdr,
 } from "@stellar/stellar-sdk";
+import { randomUUID } from "node:crypto";
 import { getNetworkPassphrase } from "@x402/stellar";
 import { chargeMethod, type ChargeRequest } from "@mooring-live/x402-client";
 import { Errors, Method, Receipt, Store } from "mppx";
@@ -16,12 +17,23 @@ import { addressCredentials, verifyAuthEntrySignature } from "./verify-auth.js";
 
 export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
 
+/**
+ * What `sendTransaction` answered: `PENDING` (accepted, outcome to poll),
+ * `ERROR` with the result code (the network rejected the envelope; nothing
+ * was applied), or a status that did not accept it this time.
+ */
+export type SendResult =
+  | { status: "PENDING"; hash: string }
+  | { status: "ERROR"; code: string }
+  | { status: "TRY_AGAIN_LATER" }
+  | { status: "DUPLICATE" };
+
 /** The Soroban RPC calls the charge method makes; injectable for tests. */
 export interface ChargeRpc {
   /** Simulates the signed envelope (enforcing: its auth entries are checked). */
   simulate(xdr: string): Promise<{ ok: true } | { ok: false; error: string }>;
-  /** Broadcasts the envelope; throws when the network does not accept it. */
-  send(xdr: string): Promise<{ hash: string }>;
+  /** Broadcasts the envelope; throws only when the RPC could not be reached or answered badly. */
+  send(xdr: string): Promise<SendResult>;
   /** The transaction's status as the RPC knows it now. */
   wait(hash: string): Promise<"SUCCESS" | "FAILED" | "NOT_FOUND">;
   latestLedger(): Promise<number>;
@@ -214,8 +226,8 @@ export function cardChargeServer(opts: CardChargeServerOptions) {
     return { tx, payer: sourceAddr, envelope: payload.transaction };
   }
 
-  /** Records first use of `key`; false when it was already used. */
-  const claim = async (key: string) => Store.tryClaim(store, key, now().getTime() + CLAIM_MS);
+  /** Records first use of `key` for `owner`; false when it was already used. */
+  const claim = async (key: string, owner: string) => Store.tryClaim(store, key, now().getTime() + CLAIM_MS, owner);
 
   return Method.toServer(chargeMethod, {
     // The challenge always names this seller's network and pull mode.
@@ -246,19 +258,44 @@ export function cardChargeServer(opts: CardChargeServerOptions) {
       if (credential.payload.type !== "transaction") refuse(MSG.pullOnly);
       const envelope = credential.payload.transaction;
       const txHash = Buffer.from(decode(envelope, passphrase).hash()).toString("hex");
-      if (!(await claim(`mooring:charge:challenge:${credential.challenge.id}`))) {
+      // Claims are owned by this attempt, so it can give them back when the
+      // network did not take the envelope (nothing was applied): the client's
+      // retry for the same challenge is then verified afresh, not replayed.
+      const owner = randomUUID();
+      const challengeKey = `mooring:charge:challenge:${credential.challenge.id}`;
+      const txKey = `mooring:charge:tx:${txHash}`;
+      if (!(await claim(challengeKey, owner))) {
         throw new Errors.CredentialReplayedError();
       }
-      if (!(await claim(`mooring:charge:tx:${txHash}`))) {
+      if (!(await claim(txKey, owner))) {
         throw new Errors.CredentialReplayedError({ reason: "transaction already submitted" });
       }
+      const release = async () => {
+        await Store.releaseClaim(store, challengeKey, owner);
+        await Store.releaseClaim(store, txKey, owner);
+      };
 
-      let hash: string;
+      // The messages below are matched by the client (OUTCOME_OPEN in
+      // packages/x402-client/src/pay.ts); keep them in step.
+      let sent: SendResult;
       try {
-        ({ hash } = await opts.rpc.send(envelope));
+        sent = await opts.rpc.send(envelope);
       } catch (err) {
+        await release();
         refuse(`transaction was not accepted: ${err instanceof Error ? err.message : String(err)}`);
       }
+      if (sent.status === "ERROR") {
+        await release();
+        refuse(`transaction rejected by the network: ${sent.code}`);
+      }
+      if (sent.status === "TRY_AGAIN_LATER") {
+        await release();
+        refuse("transaction was not accepted: TRY_AGAIN_LATER");
+      }
+      // DUPLICATE: the network already holds this envelope, which may still
+      // apply, so the claims stay and the outcome stays open.
+      if (sent.status === "DUPLICATE") refuse("transaction was not accepted: DUPLICATE");
+      const hash = sent.hash;
 
       for (let attempt = 0; attempt < WAIT_ATTEMPTS; attempt += 1) {
         let status: "SUCCESS" | "FAILED" | "NOT_FOUND";
@@ -297,11 +334,11 @@ export function chargeRpcFromServer(rpcUrl: string, network: StellarNetwork): Ch
     },
     async send(envelope) {
       const sent = await server.sendTransaction(tx(envelope));
-      if (sent.status !== "PENDING") {
-        const code = sent.errorResult ? ` ${resultCode(sent.errorResult.result.type)}` : "";
-        throw new Error(`${sent.status}${code}`);
+      if (sent.status === "PENDING") return { status: "PENDING", hash: sent.hash };
+      if (sent.status === "ERROR") {
+        return { status: "ERROR", code: sent.errorResult ? resultCode(sent.errorResult.result.type) : "unknown" };
       }
-      return { hash: sent.hash };
+      return { status: sent.status };
     },
     async wait(hash) {
       const got = await server.getTransaction(hash);
