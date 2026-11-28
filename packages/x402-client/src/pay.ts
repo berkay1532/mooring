@@ -2,7 +2,15 @@ import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { Receipt as MppReceipt } from "mppx";
 import { Mppx } from "mppx/client/core";
 import { paidInTransit, payX402, type MooringClientOptions, type X402Paid } from "./client.js";
-import { CardPolicyDenied, GuardDenied, PaymentError, isAbsoluteHttpUrl, stripQuery } from "./denial.js";
+import {
+  CardPolicyDenied,
+  DEFAULT_APP_URL,
+  GuardDenied,
+  PaymentError,
+  isAbsoluteHttpUrl,
+  stripQuery,
+} from "./denial.js";
+import { SELLER_REFUSAL_MARKER, classifySellerRefusal } from "./denial-from-sim.js";
 import { deploymentFor } from "./deployments.js";
 import { formatUsdc } from "./guard/config.js";
 import type { Guard, GuardTerms, Reservation } from "./guard/types.js";
@@ -274,6 +282,41 @@ function refusalText(body: string, challenge: string): string | undefined {
 }
 
 /**
+ * Seller refusals given after the transaction was handed to the network
+ * without learning its outcome (the Mooring seller's broadcast step): the
+ * payment may still settle.
+ */
+const OUTCOME_OPEN = /transaction (?:not confirmed|was not accepted):/;
+
+/**
+ * A paid request's refusal, read in full for classification: an RFC 9457
+ * problem body (what mppx sends) contributes its `detail` and `details.why`
+ * decoded, any other body its raw text, and the `WWW-Authenticate` is
+ * appended. `line` is what is displayed: the first non-empty line of the
+ * problem `detail` (else `refusalText`), truncated.
+ */
+function sellerRefusal(body: string, challenge: string): { text: string; line: string | undefined } {
+  let problem: { detail?: unknown; details?: { why?: unknown } } | undefined;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === "object") problem = parsed as typeof problem;
+  } catch {
+    /* not JSON */
+  }
+  const detail = typeof problem?.detail === "string" ? problem.detail : undefined;
+  if (detail === undefined) return { text: `${body}\n${challenge}`, line: refusalText(body, challenge) };
+  const why = typeof problem?.details?.why === "string" ? problem.details.why : undefined;
+  const line = detail
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  return {
+    text: [detail, why, challenge].filter((t) => t !== undefined).join("\n"),
+    line: line ? line.slice(0, REFUSAL_MAX) : refusalText(body, challenge),
+  };
+}
+
+/**
  * Pays an MPP charge. A `sequence_conflict` (the agent account's sequence
  * moved under an unsponsored payment: `txBAD_SEQ` from the simulation or the
  * seller) means the transaction was not applied, so the payment is retried
@@ -340,6 +383,33 @@ async function payMpp(
       if (isSequenceConflict(`${body}\n${challenge}`)) {
         // Not applied: the network refused the sequence, nothing was spent.
         throw sequenceConflict(`seller answered ${response.status}`);
+      }
+      const refusal = sellerRefusal(body, challenge);
+      if (refusal.text.includes(SELLER_REFUSAL_MARKER)) {
+        // The seller refused the credential at verification.
+        const denial = classifySellerRefusal(refusal.text, {
+          card: opts.card,
+          merchant: {
+            payTo: charge.recipient,
+            amount: charge.amount,
+            network: charge.methodDetails?.network ?? opts.network,
+            ...(requestUrl ? { url: requestUrl } : {}),
+          },
+          appUrl: opts.appUrl ?? DEFAULT_APP_URL,
+          detail: refusal.line,
+        });
+        if (denial) {
+          // The card's own `__check_auth` said no in the seller's simulation:
+          // nothing was broadcast.
+          opts.onDenial?.(denial);
+          throw denial;
+        }
+        // Any other refusal before broadcast spent nothing. One the seller
+        // gives after broadcasting without learning the outcome may still
+        // settle, so it stays unconfirmed below.
+        if (!OUTCOME_OPEN.test(refusal.text)) {
+          return fail(new PaymentError({ kind: "rejected", detail: `seller_refused: ${refusal.line ?? ""}` }));
+        }
       }
       sellerSaid = refusalText(body, challenge);
     }

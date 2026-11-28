@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Account, Keypair, rpc, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
-import { Challenge, Credential, Receipt } from "mppx";
+import { Challenge, Credential, Errors, Receipt } from "mppx";
 import { chargeMethod } from "../src/mpp/schema.js";
 import { readCardInfo, readMerchants } from "../src/card.js";
 import { CardPolicyDenied, GuardDenied, PaymentError } from "../src/denial.js";
@@ -891,6 +891,146 @@ describe("pay", () => {
       const err = await pay("http://api.test/weather", undefined, opts(fetch)).catch((e) => e);
 
       expect(err.detail).toBe(`400 without a Payment-Receipt; settlement state unknown — seller said: ${"x".repeat(200)}`);
+    });
+
+    describe("an MPP seller's verification refusal", () => {
+      /** The card's `__check_auth` refusing, as the RPC reports it (and the seller keeps it). */
+      const cardRejection = (code: number) =>
+        [
+          "HostError: Error(Auth, InvalidAction)",
+          "",
+          "Event log (newest first):",
+          `   0: [Diagnostic Event] contract:${USDC_TESTNET}, topics:[error, Error(Auth, InvalidAction)], ` +
+            `data:["failed account authentication with error", ${CARD}, Error(Contract, #${code})]`,
+        ].join("\n");
+      /** What the seller answers when it refuses a credential: mppx's problem document and a fresh challenge. */
+      const refused = (reason: string, why?: string) => () =>
+        new Response(
+          JSON.stringify(
+            new Errors.VerificationFailedError({ reason, ...(why ? { details: { why } } : {}) }).toProblemDetails("id"),
+          ),
+          { status: 402, headers: { ...Object.fromEntries(mppChallengeResponse().headers), "content-type": "application/problem+json" } },
+        );
+
+      it("a seller verification refusal naming the card is a CardPolicyDenied at stage verify and releases the reservation", async () => {
+        stubMppRpc();
+        const { guard, commit } = spiedGuard();
+        const receipts: MooringReceipt[] = [];
+        const onDenial = vi.fn();
+        const onPaymentError = vi.fn();
+        const fetch = scripted(() => mppChallengeResponse(), refused(`simulation failed: ${cardRejection(6)}`));
+
+        const err = await pay("http://api.test/weather", undefined, {
+          ...opts(fetch),
+          guard,
+          onDenial,
+          onPaymentError,
+          onReceipt: (r) => receipts.push(r),
+        }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(CardPolicyDenied);
+        expect(err).toMatchObject({
+          reason: "not_allowlisted",
+          stage: "verify",
+          contractError: 6,
+          merchant: { payTo: PAY_TO, amount: "10000", network: "stellar:testnet", url: "http://api.test/weather" },
+        });
+        expect(err.detail).toBe(
+          "Payment verification failed: simulation failed: HostError: Error(Auth, InvalidAction)",
+        );
+        // The card and the app reach the denial: the owner gets an allow link.
+        expect(err.message).toContain(`https://app.mooring.live/allow?card=${CARD}&url=`);
+        expect(onDenial).toHaveBeenCalledTimes(1);
+        expect(onDenial).toHaveBeenCalledWith(err);
+        expect(onPaymentError).not.toHaveBeenCalled();
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "denied");
+        expect(receipts.map((r) => [r.status, r.reason])).toEqual([["denied", "not_allowlisted"]]);
+        expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", reserved: "0" });
+      });
+
+      it("a seller verification refusal for another reason is rejected as seller_refused and releases the reservation", async () => {
+        stubMppRpc();
+        const { guard, commit } = spiedGuard();
+        const receipts: MooringReceipt[] = [];
+        const onDenial = vi.fn();
+        const onPaymentError = vi.fn();
+        const fetch = scripted(
+          () => mppChallengeResponse(),
+          refused("no authorization entry authorizes the transfer", "signature does not match"),
+        );
+
+        const err = await pay("http://api.test/weather", undefined, {
+          ...opts(fetch),
+          guard,
+          onDenial,
+          onPaymentError,
+          onReceipt: (r) => receipts.push(r),
+        }).catch((e) => e);
+
+        expect(err).toBeInstanceOf(PaymentError);
+        expect(err.kind).toBe("rejected");
+        expect(err.detail).toMatch(/^seller_refused: /);
+        expect(err.detail).toBe(
+          "seller_refused: Payment verification failed: no authorization entry authorizes the transfer.",
+        );
+        expect(onDenial).not.toHaveBeenCalled();
+        expect(onPaymentError).toHaveBeenCalledTimes(1);
+        expect(onPaymentError).toHaveBeenCalledWith(err);
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "failed");
+        expect(receipts.map((r) => [r.status, r.reason])).toEqual([["failed", err.detail]]);
+        expect(await guard.snapshot(CARD)).toMatchObject({ daily: "0", total: "0", reserved: "0" });
+      });
+
+      it("caps a seller_refused detail at 200 characters of the refusal", async () => {
+        stubMppRpc();
+        const fetch = scripted(() => mppChallengeResponse(), refused(`simulation failed: ${"y".repeat(500)}`));
+
+        const err = await pay("http://api.test/weather", undefined, opts(fetch)).catch((e) => e);
+
+        expect(err).toMatchObject({ kind: "rejected" });
+        expect(err.detail).toBe(
+          `seller_refused: ${`Payment verification failed: simulation failed: ${"y".repeat(500)}`.slice(0, 200)}`,
+        );
+      });
+
+      it("a non-OK paid response without the verification marker is still unconfirmed and counted as spent", async () => {
+        stubMppRpc();
+        const { guard, commit } = spiedGuard();
+        const onPaymentError = vi.fn();
+        const fetch = scripted(
+          () => mppChallengeResponse(),
+          () =>
+            new Response(JSON.stringify(new Errors.CredentialReplayedError().toProblemDetails("id")), {
+              status: 402,
+              headers: mppChallengeResponse().headers,
+            }),
+        );
+
+        const err = await pay("http://api.test/weather", undefined, { ...opts(fetch), guard, onPaymentError }).catch(
+          (e) => e,
+        );
+
+        expect(err).toBeInstanceOf(PaymentError);
+        expect(err.kind).toBe("unconfirmed");
+        expect(err.detail).toContain("Credential has already been used");
+        expect(onPaymentError).toHaveBeenCalledTimes(1);
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+        expect(await guard.snapshot(CARD)).toMatchObject({ daily: "10000", total: "10000", reserved: "0" });
+      });
+
+      it("a refusal after broadcast that leaves the outcome open stays unconfirmed", async () => {
+        stubMppRpc();
+        const { guard, commit } = spiedGuard();
+        const fetch = scripted(() => mppChallengeResponse(), refused(`transaction not confirmed: ${MPP_TX}`));
+
+        const err = await pay("http://api.test/weather", undefined, { ...opts(fetch), guard }).catch((e) => e);
+
+        expect(err).toMatchObject({ kind: "unconfirmed" });
+        expect(err.detail).toContain("transaction not confirmed: ");
+        expect(commit).toHaveBeenCalledWith(expect.anything(), "settled");
+      });
     });
 
     describe("a POST body", () => {
